@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y curl && \
 
 WORKDIR /app
 
-# Python依存（標準ライブラリのみなので追加インストール不要）
-# Node依存（generate.js はfs/pathのみ使用 = 追加パッケージ不要）
+# Python依存
+RUN pip install --no-cache-dir watchdog
 
 # プロジェクトファイルをコピー
 COPY scripts/ ./scripts/
+COPY front/ ./front/
 COPY server.py run.py ./
 
 # 各種ディレクトリ作成
@@ -22,4 +23,4 @@ EXPOSE 5000
 
 ENV PYTHONIOENCODING=utf-8
 
-CMD ["python", "server.py"]
+CMD ["watchmedo", "auto-restart", "--patterns=*.py", "--recursive", "--", "python", "server.py"]

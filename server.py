@@ -17,6 +17,7 @@ import cgi
 
 ROOT       = Path(__file__).parent
 SCRIPTS    = ROOT / "scripts"
+FRONT_DIR  = ROOT / "front"
 INPUT_DIR  = ROOT / "input"
 OUTPUT_DIR = ROOT / "output"
 DATA_DIR   = ROOT / "data"
@@ -75,124 +76,23 @@ def run_pipeline(txt_path: Path) -> tuple[bool, str, Path | None]:
     return True, "\n".join(logs), html_files[0]
 
 
-# ─── HTMLテンプレート ─────────────────────────────────────────────────────────
+# ─── 静的ファイル配信 ─────────────────────────────────────────────────────────
 
-UPLOAD_PAGE = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>ポーカーGTO レポート生成</title>
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}}
-.card {{
-  background: #16213e;
-  border-radius: 16px;
-  padding: 48px 56px;
-  width: 480px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  text-align: center;
-}}
-h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
-.sub {{ font-size: 13px; color: #888; margin-bottom: 32px; }}
-.dropzone {{
-  border: 2px dashed #e94560;
-  border-radius: 12px;
-  padding: 36px 20px;
-  cursor: pointer;
-  transition: background 0.2s;
-  margin-bottom: 24px;
-  position: relative;
-}}
-.dropzone:hover, .dropzone.dragover {{ background: rgba(233,69,96,0.08); }}
-.dropzone input[type=file] {{
-  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-}}
-.dropzone-icon {{ font-size: 40px; margin-bottom: 8px; }}
-.dropzone-label {{ font-size: 14px; color: #aaa; }}
-.dropzone-label span {{ color: #e94560; font-weight: bold; }}
-.file-name {{ font-size: 13px; color: #4caf93; margin-top: 8px; min-height: 20px; }}
-button {{
-  width: 100%;
-  padding: 14px;
-  background: #e94560;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s;
-}}
-button:hover {{ background: #c73652; }}
-button:disabled {{ background: #555; cursor: not-allowed; }}
-.loading {{ display: none; margin-top: 20px; font-size: 14px; color: #888; }}
-.spinner {{
-  display: inline-block; width: 16px; height: 16px;
-  border: 2px solid #555; border-top-color: #e94560;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-  margin-right: 8px; vertical-align: middle;
-}}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>🂡 ポーカーGTO</h1>
-  <p class="sub">ハンド履歴をアップロードしてレポート生成</p>
-  <form id="form" method="post" enctype="multipart/form-data" action="/upload">
-    <div class="dropzone" id="drop">
-      <input type="file" name="file" id="file" accept=".txt" required>
-      <div class="dropzone-icon">📄</div>
-      <div class="dropzone-label"><span>ファイルを選択</span>またはドロップ</div>
-      <div class="file-name" id="fname"></div>
-    </div>
-    <button type="submit" id="btn">レポート生成</button>
-    <div class="loading" id="loading"><span class="spinner"></span>処理中...</div>
-  </form>
-</div>
-<script>
-const file = document.getElementById('file');
-const fname = document.getElementById('fname');
-const drop = document.getElementById('drop');
-const btn = document.getElementById('btn');
-const loading = document.getElementById('loading');
-const form = document.getElementById('form');
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css":  "text/css; charset=utf-8",
+    ".js":   "application/javascript; charset=utf-8",
+}
 
-file.addEventListener('change', () => {{
-  fname.textContent = file.files[0]?.name || '';
-}});
-drop.addEventListener('dragover', e => {{ e.preventDefault(); drop.classList.add('dragover'); }});
-drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-drop.addEventListener('drop', e => {{
-  e.preventDefault(); drop.classList.remove('dragover');
-  if (e.dataTransfer.files[0]) {{
-    file.files = e.dataTransfer.files;
-    fname.textContent = e.dataTransfer.files[0].name;
-  }}
-}});
-form.addEventListener('submit', () => {{
-  btn.disabled = true;
-  loading.style.display = 'block';
-}});
-</script>
-</body>
-</html>"""
+def read_front(filename: str) -> bytes:
+    return (FRONT_DIR / filename).read_bytes()
 
 ERROR_PAGE = """<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><title>エラー</title>
 <style>
-body {{ font-family: monospace; background: #1a1a2e; color: #eee; padding: 40px; }}
+body {{ font-family: monospace; background: #0d0d0d; color: #eee; padding: 40px; }}
 h2 {{ color: #e94560; margin-bottom: 16px; }}
-pre {{ background: #0f0f1a; padding: 20px; border-radius: 8px; white-space: pre-wrap; color: #f88; }}
+pre {{ background: #111; padding: 20px; border-radius: 8px; white-space: pre-wrap; color: #f88; }}
 a {{ color: #e94560; }}
 </style></head><body>
 <h2>❌ エラーが発生しました</h2>
@@ -211,7 +111,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/" or self.path == "/index.html":
-            self._send_html(UPLOAD_PAGE)
+            self._send_bytes(read_front("index.html"), "text/html; charset=utf-8")
+        elif self.path == "/style.css":
+            self._send_bytes(read_front("style.css"), "text/css; charset=utf-8")
         elif self.path.startswith("/report/"):
             fname = self.path[len("/report/"):]
             fpath = OUTPUT_DIR / fname
@@ -269,6 +171,13 @@ class Handler(BaseHTTPRequestHandler):
         # レポートにリダイレクト
         report_name = html_path.name
         self._redirect(f"/report/{report_name}")
+
+    def _send_bytes(self, body: bytes, content_type: str, code: int = 200):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_html(self, html: str, code: int = 200):
         body = html.encode("utf-8")
