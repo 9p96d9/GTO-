@@ -1,0 +1,10 @@
+services:
+  poker-gto:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # レポートとデータをホストと共有（コンテナ再起動後も残る）
+      - ./output:/app/output
+      - ./data:/app/data
+      - ./input:/app/input

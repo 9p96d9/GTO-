@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test.js)",
+      "Bash(node --check scripts/generate.js)",
+      "Bash(node -e \":*)",
+      "Bash(python -c \":*)",
+      "Bash(pip install google-generativeai -q)",
+      "Bash(python -c \"import google.generativeai; print\\(''import OK''\\)\")",
+      "Bash(pip install google-genai -q)",
+      "Bash(python -c \"from google import genai; print\\(''google-genai OK''\\)\")",
+      "Bash(pip show pyinstaller)",
+      "Bash(pip install pyinstaller -q)",
+      "Bash(pyinstaller --version)",
+      "Bash(pyinstaller --onefile --console --name \"ポーカーGTO\" launcher.py)",
+      "Bash(ls /c/poker-gto/*.exe)",
+      "Bash(ls data/hand_history_2026-02-28.json \"data/hand_history_2026-03-01\\(2\\).json\")",
+      "Bash(ls \"input/done/hand_history_2026-02-28.txt\" \"input/done/hand_history_2026-02-28_1.txt\" \"input/done/hand_history_2026-02-28_2.txt\" \"input/done/hand_history_2026-03-01\\(2\\).txt\" \"input/done/hand_history_2026-03-01\\(2\\)_1.txt\" \"input/done/hand_history_2026-03-01 \\(1\\).txt\" \"input/done/hand_history_2026-03-01 \\(1\\)_1.txt\")",
+      "Bash(node -e \"require\\(''@google/generative-ai''\\)\")",
+      "Bash(npm install @google/generative-ai)",
+      "Bash(npm install puppeteer)",
+      "Bash(node -e \"require\\(''./scripts/generate.js''\\)\")",
+      "Bash(node scripts/generate.js output data/2026-03-04.json)"
+    ]
+  }
+}
