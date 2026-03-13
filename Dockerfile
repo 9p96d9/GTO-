@@ -18,6 +18,7 @@ RUN npm ci --omit=dev
 
 # プロジェクトファイルをコピー
 COPY scripts/ ./scripts/
+COPY static/ ./static/
 COPY server.py ./
 
 # 各種ディレクトリ作成
