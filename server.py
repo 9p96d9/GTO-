@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 ROOT       = Path(__file__).parent
@@ -30,6 +31,10 @@ for d in [INPUT_DIR, OUTPUT_DIR, DATA_DIR, DONE_DIR]:
 BASE_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 app = FastAPI()
+
+STATIC_DIR = ROOT / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ─── ジョブ管理 ───────────────────────────────────────────────────────────────
 jobs: dict[str, dict] = {}
@@ -198,6 +203,7 @@ UPLOAD_PAGE = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ポーカーGTO レポート生成</title>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -209,12 +215,14 @@ body {{
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 20px;
 }}
 .card {{
   background: #16213e;
   border-radius: 16px;
-  padding: 48px 56px;
-  width: 500px;
+  padding: 40px 48px;
+  width: 100%;
+  max-width: 500px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   text-align: center;
 }}
@@ -239,7 +247,7 @@ h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
 .file-name {{ font-size: 13px; color: #4caf93; margin-top: 6px; min-height: 18px; }}
 .field-group {{ margin-bottom: 16px; text-align: left; }}
 .field-group label {{ font-size: 12px; color: #888; display: block; margin-bottom: 6px; }}
-.field-group input[type=text], .field-group input[type=password] {{
+.field-group input[type=password] {{
   width: 100%;
   padding: 10px 12px;
   background: #0f0f1a;
@@ -253,7 +261,7 @@ h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
 .field-group input:focus {{ border-color: #e94560; }}
 .key-hint {{ font-size: 11px; color: #555; margin-top: 4px; }}
 .key-hint a {{ color: #e94560; text-decoration: none; }}
-button {{
+.btn-primary {{
   width: 100%;
   padding: 14px;
   background: #e94560;
@@ -266,14 +274,146 @@ button {{
   transition: background 0.2s;
   margin-top: 8px;
 }}
-button:hover {{ background: #c73652; }}
-button:disabled {{ background: #555; cursor: not-allowed; }}
+.btn-primary:hover {{ background: #c73652; }}
+.btn-primary:disabled {{ background: #555; cursor: not-allowed; }}
+.btn-guide {{
+  width: 100%;
+  padding: 11px;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 10px;
+}}
+.btn-guide:hover {{ border-color: #e94560; color: #e94560; }}
+/* ─── モーダル ─── */
+.modal-overlay {{
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}}
+.modal-overlay.open {{ display: flex; }}
+.modal {{
+  background: #16213e;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}}
+.modal-header {{
+  padding: 24px 28px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}}
+.modal-header h2 {{ font-size: 17px; color: #e94560; }}
+.modal-close {{
+  background: none; border: none; color: #666;
+  font-size: 22px; cursor: pointer; padding: 0 4px;
+  transition: color 0.2s;
+}}
+.modal-close:hover {{ color: #eee; }}
+.step-indicator {{
+  display: flex;
+  align-items: center;
+  padding: 20px 28px 0;
+  gap: 0;
+}}
+.step-dot {{
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #0f0f1a;
+  border: 2px solid #333;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: bold; color: #555;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}}
+.step-dot.active {{ border-color: #e94560; color: #e94560; background: rgba(233,69,96,0.1); }}
+.step-dot.done  {{ border-color: #4caf93; color: #fff; background: #4caf93; }}
+.step-line {{ flex: 1; height: 2px; background: #333; transition: background 0.3s; }}
+.step-line.done {{ background: #4caf93; }}
+.modal-body {{ padding: 20px 28px 28px; }}
+.step-panel {{ display: none; }}
+.step-panel.active {{ display: block; }}
+.step-title {{ font-size: 15px; font-weight: bold; margin-bottom: 16px; color: #eee; }}
+.guide-steps {{ list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }}
+.guide-steps li {{
+  display: flex; gap: 12px; align-items: flex-start;
+  background: #0f0f1a; border-radius: 8px; padding: 12px 14px;
+  font-size: 13px; line-height: 1.5; color: #ccc;
+}}
+.guide-steps li .num {{
+  background: #e94560; color: #fff;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: bold; flex-shrink: 0; margin-top: 1px;
+}}
+.skip-row {{
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 20px; font-size: 13px; color: #888; cursor: pointer;
+}}
+.skip-row input {{ accent-color: #e94560; width: 16px; height: 16px; cursor: pointer; }}
+.dl-btn {{
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  background: rgba(233,69,96,0.12);
+  border: 1px solid #e94560;
+  border-radius: 8px;
+  color: #e94560;
+  text-decoration: none;
+  font-size: 14px; font-weight: bold;
+  margin-bottom: 20px;
+  transition: background 0.2s;
+}}
+.dl-btn:hover {{ background: rgba(233,69,96,0.22); }}
+.info-box {{
+  background: #0f0f1a; border-radius: 8px; padding: 14px 16px;
+  font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 20px;
+}}
+.info-box code {{
+  background: #1e2a3a; padding: 1px 6px; border-radius: 4px;
+  font-size: 12px; color: #7ec8e3;
+}}
+.modal-footer {{
+  display: flex; gap: 10px; justify-content: flex-end;
+}}
+.btn-back-modal {{
+  padding: 10px 20px;
+  background: transparent; color: #aaa;
+  border: 1px solid #444; border-radius: 6px;
+  font-size: 14px; cursor: pointer; transition: all 0.2s;
+}}
+.btn-back-modal:hover {{ border-color: #e94560; color: #e94560; }}
+.btn-next-modal {{
+  padding: 10px 24px;
+  background: #e94560; color: #fff;
+  border: none; border-radius: 6px;
+  font-size: 14px; font-weight: bold; cursor: pointer;
+  transition: background 0.2s;
+}}
+.btn-next-modal:hover {{ background: #c73652; }}
+@media (max-width: 540px) {{
+  .card {{ padding: 28px 20px; }}
+  .modal-body {{ padding: 16px 16px 24px; }}
+  .modal-header {{ padding: 20px 16px 0; }}
+  .step-indicator {{ padding: 16px 16px 0; }}
+}}
 </style>
 </head>
 <body>
 <div class="card">
   <h1>&#x1F0A1; ポーカーGTO</h1>
-  <p class="sub">ハンド履歴をアップロードしてレポート生成</p>
+  <p class="sub">TenFourのハンド履歴を分析してPDFレポートを生成</p>
   <form id="form" method="post" enctype="multipart/form-data" action="/upload">
     <div class="dropzone" id="drop">
       <input type="file" name="file" id="file" accept=".txt" required>
@@ -288,13 +428,94 @@ button:disabled {{ background: #555; cursor: not-allowed; }}
              value="{_DEFAULT_KEY}"
              autocomplete="off">
       <p class="key-hint">
-        キーは送信時のみ使用されサーバーに保存されません。
+        キーは送信時のみ使用・サーバーに保存されません。
         取得: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
       </p>
     </div>
-    <button type="submit" id="btn">レポート生成</button>
+    <button type="submit" id="btn" class="btn-primary">レポート生成</button>
   </form>
+  <button class="btn-guide" id="open-guide">&#x1F4D6; はじめての方 — ハンド履歴の取得方法</button>
 </div>
+
+<!-- ウィザードモーダル -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>ハンド履歴の取得方法</h2>
+      <button class="modal-close" id="modal-close">&#x2715;</button>
+    </div>
+
+    <!-- ステップインジケーター -->
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1">1</div>
+      <div class="step-line" id="line1"></div>
+      <div class="step-dot" id="dot2">2</div>
+      <div class="step-line" id="line2"></div>
+      <div class="step-dot" id="dot3">3</div>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- STEP 1: 拡張機能インストール -->
+      <div class="step-panel active" id="panel1">
+        <p class="step-title">STEP 1 — Chrome拡張機能をインストール</p>
+        <label class="skip-row">
+          <input type="checkbox" id="already-installed">
+          すでにインストール済み（スキップ）
+        </label>
+        <div id="install-guide">
+          <a class="dl-btn" href="/static/tenfour-scraper.zip" download>
+            &#x2B07; tenfour-scraper.zip をダウンロード
+          </a>
+          <ul class="guide-steps">
+            <li><span class="num">1</span>ダウンロードしたZIPを解凍して <code>tenfour-scraper</code> フォルダを取り出す</li>
+            <li><span class="num">2</span>Chromeのアドレスバーに <code>chrome://extensions</code> と入力して開く</li>
+            <li><span class="num">3</span>右上の「デベロッパーモード」をONにする</li>
+            <li><span class="num">4</span>「パッケージ化されていない拡張機能を読み込む」をクリックして <code>tenfour-scraper</code> フォルダを選択</li>
+            <li><span class="num">5</span>アドレスバー右の &#x1F9E9; アイコン → TenFour Scraper の &#x1F4CC; ピンをクリックしてツールバーに表示</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-next-modal" id="next1">次へ &#x2192;</button>
+        </div>
+      </div>
+
+      <!-- STEP 2: ハンド履歴の取得 -->
+      <div class="step-panel" id="panel2">
+        <p class="step-title">STEP 2 — TenFourからハンド履歴を取得</p>
+        <ul class="guide-steps">
+          <li><span class="num">1</span>tenfour-poker.com を開き、ブックマークタブを表示する</li>
+          <li><span class="num">2</span>ツールバーの 🃏 TenFour Scraper アイコンをクリック</li>
+          <li><span class="num">3</span>「&#x25B6; ハンド履歴を取得」ボタンを押す</li>
+          <li><span class="num">4</span>進捗バーが完了したら <code>hand_history_YYYY-MM-DD.txt</code> が自動ダウンロードされる</li>
+        </ul>
+        <div class="info-box">
+          取得対象はブックマーク済みのハンドのみです（最大100件）。<br>
+          分析したいハンドを事前にTenFourでブックマークしておいてください。
+        </div>
+        <div class="modal-footer">
+          <button class="btn-back-modal" id="back2">&#x2190; 戻る</button>
+          <button class="btn-next-modal" id="next2">次へ &#x2192;</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: アップロード -->
+      <div class="step-panel" id="panel3">
+        <p class="step-title">STEP 3 — ファイルをアップロードして分析</p>
+        <div class="info-box">
+          ダウンロードした <code>hand_history_*.txt</code> をモーダルを閉じて<br>
+          メイン画面にドロップするか、「ファイルを選択」からアップロードしてください。
+        </div>
+        <div class="modal-footer">
+          <button class="btn-back-modal" id="back3">&#x2190; 戻る</button>
+          <button class="btn-next-modal" id="close-final">&#x2705; 準備完了 — 閉じる</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <script>
 const file = document.getElementById('file');
 const fname = document.getElementById('fname');
@@ -313,6 +534,46 @@ drop.addEventListener('drop', e => {{
   }}
 }});
 form.addEventListener('submit', () => {{ btn.disabled = true; }});
+
+// ─── ウィザード ───
+const modal = document.getElementById('modal');
+let currentStep = 1;
+
+function openModal() {{
+  modal.classList.add('open');
+  goStep(1);
+}}
+function closeModal() {{
+  modal.classList.remove('open');
+}}
+function goStep(n) {{
+  currentStep = n;
+  [1,2,3].forEach(i => {{
+    document.getElementById('panel' + i).classList.toggle('active', i === n);
+    const dot = document.getElementById('dot' + i);
+    dot.classList.remove('active', 'done');
+    if (i < n) dot.classList.add('done'), dot.textContent = '✓';
+    else if (i === n) dot.classList.add('active'), dot.textContent = i;
+    else dot.textContent = i;
+    if (i < 3) {{
+      document.getElementById('line' + i).classList.toggle('done', i < n);
+    }}
+  }});
+}}
+
+document.getElementById('open-guide').addEventListener('click', openModal);
+document.getElementById('modal-close').addEventListener('click', closeModal);
+modal.addEventListener('click', e => {{ if (e.target === modal) closeModal(); }});
+
+document.getElementById('already-installed').addEventListener('change', e => {{
+  document.getElementById('install-guide').style.display = e.target.checked ? 'none' : '';
+}});
+
+document.getElementById('next1').addEventListener('click', () => goStep(2));
+document.getElementById('back2').addEventListener('click', () => goStep(1));
+document.getElementById('next2').addEventListener('click', () => goStep(3));
+document.getElementById('back3').addEventListener('click', () => goStep(2));
+document.getElementById('close-final').addEventListener('click', closeModal);
 </script>
 </body>
 </html>"""
