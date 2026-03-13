@@ -8,18 +8,22 @@ RUN apt-get update && apt-get install -y curl && \
 
 WORKDIR /app
 
-# Python依存（標準ライブラリのみなので追加インストール不要）
-# Node依存（generate.js はfs/pathのみ使用 = 追加パッケージ不要）
+# Python依存インストール
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Node依存インストール
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # プロジェクトファイルをコピー
 COPY scripts/ ./scripts/
-COPY server.py run.py ./
+COPY server.py ./
 
 # 各種ディレクトリ作成
 RUN mkdir -p input/done output data
 
-EXPOSE 5000
-
 ENV PYTHONIOENCODING=utf-8
 
+# RailwayはPORTを自動設定する
 CMD ["python", "server.py"]
