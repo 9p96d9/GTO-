@@ -11,7 +11,7 @@ from datetime import datetime
 
 
 HERO_NAMES = {"Guest"}
-HERO_PATTERN = re.compile(r'^Weq\*+$')
+HERO_PATTERN = re.compile(r'^(Weq\*+|Guest\d*)$')
 
 POSITIONS = {"SB", "BB", "UTG", "UTG+1", "LJ", "HJ", "CO", "BTN"}
 
@@ -36,13 +36,18 @@ def parse_amount(s: str) -> float:
         return 0.0
 
 
+def normalize_card(s: str) -> str:
+    """カード文字列の変体セレクタ（U+FE0E/FE0F）を除去して正規化"""
+    return s.replace("\ufe0e", "").replace("\ufe0f", "")
+
+
 def is_card(s: str) -> bool:
     """カード文字列かどうかを判定（例: K♠, T♥, 2♦）"""
+    s = normalize_card(s)
     if len(s) < 2:
         return False
     suits = "♠♥♦♣"
     ranks = "23456789TJQKA"
-    # 1〜2文字のランク + スート
     if s[-1] in suits and s[:-1] in ranks:
         return True
     return False
@@ -152,7 +157,7 @@ def parse_hand(raw_lines: list[str]) -> dict:
             idx += 1
             continue
 
-        # 日時・ゲーム情報行
+        # 日時・ゲーム情報行（ゲーム情報あり版: "2026/03/13 08:58 · 6-Max NLH (0.5/1)"）
         m = re.match(r'^(\d{4}/\d{2}/\d{2} \d{2}:\d{2})\s+·\s+(.+?)\s+\((.+?)\)$', line)
         if m:
             dt_str = m.group(1)
@@ -163,8 +168,6 @@ def parse_hand(raw_lines: list[str]) -> dict:
             except ValueError:
                 hand["datetime"] = dt_str
             hand["game"] = game
-
-            # ブラインド解析: "0.5/1"
             blind_parts = blinds_str.split("/")
             if len(blind_parts) == 2:
                 try:
@@ -172,6 +175,16 @@ def parse_hand(raw_lines: list[str]) -> dict:
                     hand["blinds"]["bb"] = float(blind_parts[1])
                 except ValueError:
                     pass
+            idx += 1
+            break
+
+        # 日時のみ版: "2026/03/13 08:58"
+        m = re.match(r'^(\d{4}/\d{2}/\d{2} \d{2}:\d{2})$', line)
+        if m:
+            try:
+                hand["datetime"] = datetime.strptime(m.group(1), "%Y/%m/%d %H:%M").isoformat()
+            except ValueError:
+                hand["datetime"] = m.group(1)
             idx += 1
             break
 
@@ -191,18 +204,32 @@ def parse_hand(raw_lines: list[str]) -> dict:
         if line in POSITIONS:
             pos = line
             if idx + 4 < len(lines):
-                name_line = lines[idx + 1]
-                card1_line = lines[idx + 2]
-                card2_line = lines[idx + 3]
-                result_line = lines[idx + 4]
+                name_line   = lines[idx + 1]
+                line2       = lines[idx + 2]
+                line3       = lines[idx + 3]
+                line4       = lines[idx + 4]
 
-                if is_card(card1_line) and is_card(card2_line) and is_amount_line(result_line):
+                # 旧フォーマット: 名前→カード1→カード2→結果
+                if is_card(line2) and is_card(line3) and is_amount_line(line4):
                     player = {
                         "position": pos,
                         "name": name_line,
                         "is_hero": is_hero(name_line),
-                        "hole_cards": [card1_line, card2_line],
-                        "result_bb": parse_amount(result_line),
+                        "hole_cards": [normalize_card(line2), normalize_card(line3)],
+                        "result_bb": parse_amount(line4),
+                    }
+                    players.append(player)
+                    idx += 5
+                    continue
+
+                # 新フォーマット: 名前→結果→カード1→カード2
+                if is_amount_line(line2) and is_card(line3) and is_card(line4):
+                    player = {
+                        "position": pos,
+                        "name": name_line,
+                        "is_hero": is_hero(name_line),
+                        "hole_cards": [normalize_card(line3), normalize_card(line4)],
+                        "result_bb": parse_amount(line2),
                     }
                     players.append(player)
                     idx += 5
@@ -417,14 +444,14 @@ def parse_streets(lines: list[str], start_idx: int) -> dict:
             if street_name == "flop":
                 for _ in range(3):
                     if i < len(lines) and is_card(lines[i]):
-                        current_board.append(lines[i])
+                        current_board.append(normalize_card(lines[i]))
                         i += 1
                     elif i < len(lines) and lines[i] == "-":
                         current_board.append("-")
                         i += 1
             else:
                 if i < len(lines) and is_card(lines[i]):
-                    current_board.append(lines[i])
+                    current_board.append(normalize_card(lines[i]))
                     i += 1
                 elif i < len(lines) and lines[i] == "-":
                     current_board.append("-")

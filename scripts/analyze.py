@@ -1,157 +1,139 @@
 """
-analyze.py - ハンドのGTO評価をローカルルールベースで生成し、JSONに追記する
+analyze.py - ハンドのGTO評価をGemini APIで生成し、JSONに追記する
 使用法: python scripts/analyze.py data/file.json
-
-# --- API版（無効化中）---
-# import time
-# from google import genai
-# MODEL = "gemini-2.5-flash"
-# BATCH_SIZE = 10
-# RETRY_WAIT_ON_429 = 5.0
-# MAX_RETRIES_429 = 3
 """
 
 import json
+import re
 import sys
 import os
+import time
 from datetime import datetime
 
-# from dotenv import load_dotenv
-# from google import genai
-# load_dotenv()
+from dotenv import load_dotenv
+from google import genai
+
+load_dotenv()
+
+MODEL      = "gemini-2.5-flash"
+BATCH_SIZE = 10          # 1リクエストあたりのハンド数（50ハンド→5リクエスト）
+RETRY_WAIT = 5.0         # 429エラー時の待機秒数
+MAX_RETRY  = 3
 
 
-# ─── ローカルルールベース評価 ─────────────────────────────────────────────────
+# ─── プロンプト生成 ───────────────────────────────────────────────────────────
 
-def rule_based_evaluate(hand: dict) -> dict:
-    """
-    APIなしでルールベースの簡易GTO評価を返す。
-    戻り値: {"gto_rating": str, "ichi": str, "detail": str, "kaizen": str, "ev_loss": str}
-    """
-    preflop = hand.get("streets", {}).get("preflop", [])
-    hero_pos = hand.get("hero_position", "")
-    hero_result = hand.get("hero_result_bb", 0.0)
-    is_3bet = hand.get("is_3bet_pot", False)
-    went_sd = hand.get("went_to_showdown", False)
-    hero_cards = hand.get("hero_cards", [])
+def format_action_summary(hand: dict) -> str:
+    lines = []
+    preflop = hand["streets"].get("preflop", [])
+    if preflop:
+        lines.append("【プリフロップ】")
+        for a in preflop:
+            amt = f" {a['amount_bb']}bb" if "amount_bb" in a else ""
+            lines.append(f"  {a['position']} {a['name']}: {a['action']}{amt}")
 
-    # ヒーローのアクションのみ抽出
-    hero_pf_actions = [a for a in preflop if a.get("name") and
-                       any(p["name"] == a["name"] and p["is_hero"]
-                           for p in hand.get("players", []))]
-    hero_actions_all = []
-    for street in ["preflop", "flop", "turn", "river"]:
+    for street in ("flop", "turn", "river"):
         s = hand["streets"].get(street)
-        acts = s if street == "preflop" else (s.get("actions", []) if s else [])
-        for a in acts:
-            if any(p["name"] == a.get("name") and p["is_hero"]
-                   for p in hand.get("players", [])):
-                hero_actions_all.append((street, a))
+        if s:
+            board = " ".join(s.get("board", []))
+            lines.append(f"【{street.capitalize()}】{board} (ポット: {s.get('pot_bb', 0)}bb)")
+            for a in s.get("actions", []):
+                amt = f" {a['amount_bb']}bb" if "amount_bb" in a else ""
+                lines.append(f"  {a['position']} {a['name']}: {a['action']}{amt}")
 
-    pf_raise = any(a.get("action") == "Raise" for a in hero_pf_actions)
-    pf_call  = any(a.get("action") == "Call"  for a in hero_pf_actions)
-    pf_fold  = any(a.get("action") == "Fold"  for a in hero_pf_actions)
-
-    # ポストフロップのチェック/コール/ベット
-    post_actions = [(st, a) for st, a in hero_actions_all if st != "preflop"]
-    post_fold = any(a.get("action") == "Fold" for _, a in post_actions)
-
-    # ─ 判定ロジック ─
-    # 1. プリフロップ3BETポットでオープン/コールが多い → 良好
-    if is_3bet and pf_raise:
-        return {
-            "gto_rating": "✅良好",
-            "ichi": "3BETアグレッション",
-            "detail": f"{hero_pos}から3BETポットを構築。アグレッシブなライン。",
-            "kaizen": "",
-            "ev_loss": "",
-        }
-
-    # 2. SB/BBでのコール → 守備的だが許容範囲
-    if hero_pos in ("SB", "BB") and pf_call and not went_sd and hero_result < 0:
-        return {
-            "gto_rating": "⚠️改善",
-            "ichi": "ブラインドからのコール後フォールド",
-            "detail": f"{hero_pos}でコールしてポストフロップでフォールド。頻度を要確認。",
-            "kaizen": "3BETかフォールドのレンジを広げる",
-            "ev_loss": "",
-        }
-
-    # 3. BTN/COでフォールド（スティール機会の見逃し）
-    if hero_pos in ("BTN", "CO") and pf_fold:
-        return {
-            "gto_rating": "⚠️改善",
-            "ichi": "有利ポジションでフォールド",
-            "detail": f"{hero_pos}はスティール有利ポジション。オープンレンジを広げ検討。",
-            "kaizen": "BTN/COではオープンレンジを拡大",
-            "ev_loss": "",
-        }
-
-    # 4. ショーダウン到達して勝利
-    if went_sd and hero_result > 0:
-        return {
-            "gto_rating": "✅良好",
-            "ichi": "SDで勝利",
-            "detail": f"{hero_pos}でショーダウンまで持ち込み勝利。バリューライン良好。",
-            "kaizen": "",
-            "ev_loss": "",
-        }
-
-    # 5. ショーダウン到達して敗北（大きな負け）
-    if went_sd and hero_result < -5:
-        return {
-            "gto_rating": "🎲クーラー",
-            "ichi": "SD敗北（クーラー候補）",
-            "detail": f"{hero_pos} SD到達も敗北。ハンド強度と相手レンジを要確認。",
-            "kaizen": "",
-            "ev_loss": "",
-        }
-
-    # 6. プリフロップレイズで勝利
-    if pf_raise and hero_result > 0:
-        return {
-            "gto_rating": "✅良好",
-            "ichi": "アグレッシブに勝利",
-            "detail": f"{hero_pos}からレイズし勝利。アグレッション良好。",
-            "kaizen": "",
-            "ev_loss": "",
-        }
-
-    # 7. デフォルト（プレイ継続して負け）
-    if hero_result < -3:
-        return {
-            "gto_rating": "⚠️改善",
-            "ichi": "損失ハンド",
-            "detail": f"{hero_pos}で{hero_result:.1f}bb損失。ライン選択を見直し。",
-            "kaizen": "ポジションとレンジを再確認",
-            "ev_loss": f"{hero_result:.1f}bb",
-        }
-
-    return {
-        "gto_rating": "✅良好",
-        "ichi": "標準的なプレイ",
-        "detail": f"{hero_pos}での標準ライン。大きな問題なし。",
-        "kaizen": "",
-        "ev_loss": "",
-    }
-
-
-def reconstruct_evaluation(j: dict) -> str:
-    """dictから評価テキストを生成（generate.jsが期待する形式）"""
-    lines = [f"GTO評価: {j['gto_rating']}"]
-    if j.get("ichi"):
-        lines.append(f"一言: {j['ichi']}")
-    if j.get("detail"):
-        lines.append(f"詳細: {j['detail']}")
-    if j.get("kaizen"):
-        lines.append(f"改善: {j['kaizen']}")
-    if j.get("ev_loss"):
-        lines.append(f"EV損失推定: {j['ev_loss']}")
     return "\n".join(lines)
 
 
+def get_board_summary(hand: dict) -> str:
+    boards = []
+    for street in ("flop", "turn", "river"):
+        s = hand["streets"].get(street)
+        if s and s.get("board"):
+            boards.extend(s["board"])
+    return " ".join(boards) if boards else "(プリフロップのみ)"
+
+
+def build_hand_block(idx: int, hand: dict) -> str:
+    pos    = hand.get("hero_position", "不明")
+    cards  = " ".join(hand.get("hero_cards", []))
+    board  = get_board_summary(hand)
+    action = format_action_summary(hand)
+
+    allin_ev = hand.get("result", {}).get("allin_ev", {})
+    ev_info  = ""
+    if allin_ev:
+        hero_name = next((p["name"] for p in hand.get("players", []) if p.get("is_hero")), None)
+        if hero_name and hero_name in allin_ev:
+            ev_info = f"\nAll-in EV: {allin_ev[hero_name]:+.2f}bb"
+
+    return f"""=== ハンド {idx} ===
+ヒーロー: {pos} / 手札: {cards}
+ボード: {board}
+アクション履歴:
+{action}{ev_info}"""
+
+
+def build_batch_prompt(indexed_hands: list) -> str:
+    blocks     = [build_hand_block(idx, hand) for idx, hand in indexed_hands]
+    hands_text = "\n\n".join(blocks)
+    n          = len(indexed_hands)
+
+    return f"""あなたはポーカーのGTOコーチです。以下の{n}ハンドを一括評価してください。
+
+{hands_text}
+
+以下のJSON配列形式のみで回答してください（説明文・コードブロック記号なし）:
+[
+  {{
+    "id": <ハンド番号>,
+    "gto_rating": "✅良好 or ⚠️改善 or ❌エラー or 🎲クーラー",
+    "ichi": "20字以内の結論",
+    "detail": "60字以内の詳細",
+    "kaizen": "❌⚠️の場合のみ正しいアクション40字以内、それ以外は空文字",
+    "ev_loss": "❌の場合のみ例: -15bb、それ以外は空文字"
+  }}
+]"""
+
+
+def reconstruct_evaluation(j: dict) -> str:
+    lines = [f"GTO評価: {j['gto_rating']}"]
+    if j.get("ichi"):   lines.append(f"一言: {j['ichi']}")
+    if j.get("detail"): lines.append(f"詳細: {j['detail']}")
+    if j.get("kaizen"): lines.append(f"改善: {j['kaizen']}")
+    if j.get("ev_loss"):lines.append(f"EV損失推定: {j['ev_loss']}")
+    return "\n".join(lines)
+
+
+# ─── API呼び出し ──────────────────────────────────────────────────────────────
+
+def evaluate_batch(client: genai.Client, indexed_hands: list) -> dict:
+    """{hand_idx: evaluation_text} を返す"""
+    prompt  = build_batch_prompt(indexed_hands)
+    retries = 0
+    while True:
+        try:
+            response = client.models.generate_content(model=MODEL, contents=prompt)
+            raw = response.text.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            results = json.loads(raw)
+            return {item["id"]: reconstruct_evaluation(item) for item in results}
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str and retries < MAX_RETRY:
+                retries += 1
+                ids = [idx for idx, _ in indexed_hands]
+                print(f"  [429] バッチ{ids}: レート制限 — {RETRY_WAIT}秒後リトライ ({retries}/{MAX_RETRY})", file=sys.stderr)
+                time.sleep(RETRY_WAIT)
+                continue
+            ids = [idx for idx, _ in indexed_hands]
+            print(f"  [ERROR] バッチ{ids}: {e}", file=sys.stderr)
+            return {idx: "評価エラー" for idx, _ in indexed_hands}
+
+
+# ─── フラグ設定 ───────────────────────────────────────────────────────────────
+
 def apply_rating_flags(hand: dict, evaluation: str):
-    """評価テキストからhas_gto_error/is_good_playを設定"""
     rating = ""
     for line in evaluation.split("\n"):
         stripped = line.strip()
@@ -163,14 +145,16 @@ def apply_rating_flags(hand: dict, evaluation: str):
 
     if rating.startswith("❌"):
         hand["has_gto_error"] = True
-        hand["is_good_play"] = False
+        hand["is_good_play"]  = False
     elif rating.startswith("✅") or rating.startswith("🎲"):
         hand["has_gto_error"] = False
-        hand["is_good_play"] = True
+        hand["is_good_play"]  = True
     else:
         hand["has_gto_error"] = False
-        hand["is_good_play"] = False
+        hand["is_good_play"]  = False
 
+
+# ─── JSON保存 ─────────────────────────────────────────────────────────────────
 
 def save_json(json_path: str, data: dict):
     data["analyzed_at"] = datetime.now().isoformat()
@@ -178,41 +162,56 @@ def save_json(json_path: str, data: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# ─── メイン処理 ───────────────────────────────────────────────────────────────
+
 def analyze_file(json_path: str):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("[ERROR] GEMINI_API_KEY が .env に設定されていません", file=sys.stderr)
+        sys.exit(1)
+
+    client = genai.Client(api_key=api_key)
+
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    hands = data.get("hands", [])
-    total = len(hands)
-
+    hands   = data.get("hands", [])
+    total   = len(hands)
     pending = [(i + 1, hand) for i, hand in enumerate(hands) if not hand.get("analyzed", False)]
-    cached_count = total - len(pending)
+    cached  = total - len(pending)
 
-    if cached_count > 0:
-        print(f"  [SKIP] {cached_count}ハンドは評価済みのためスキップ")
+    if cached > 0:
+        print(f"  [SKIP] {cached}ハンドは評価済みのためスキップ")
     if not pending:
         print(f"  [SKIP] 全{total}ハンドが評価済みです")
         return total, 0
 
-    print(f"  [ANALYZE] {len(pending)}ハンドをローカル評価します")
+    batches = [pending[i:i + BATCH_SIZE] for i in range(0, len(pending), BATCH_SIZE)]
+    print(f"  [ANALYZE] {len(pending)}ハンドを{len(batches)}バッチで評価します（{MODEL}）")
 
-    errors = 0
-    for hand_idx, hand in pending:
-        try:
-            result = rule_based_evaluate(hand)
-            evaluation = reconstruct_evaluation(result)
-        except Exception as e:
-            print(f"  [ERROR] ハンド{hand_idx}: {e}", file=sys.stderr)
-            evaluation = "評価エラー"
-            errors += 1
+    errors    = 0
+    completed = cached
 
-        hand["gto_evaluation"] = evaluation
-        hand["analyzed"] = True
-        apply_rating_flags(hand, evaluation)
+    for batch in batches:
+        result_map = evaluate_batch(client, batch)
 
-    completed = total
-    print(f"  ローカル評価完了: {completed}/{total}ハンド")
-    save_json(json_path, data)
+        for hand_idx, hand in batch:
+            evaluation = result_map.get(hand_idx, "評価エラー")
+            hand["gto_evaluation"] = evaluation
+            hand["analyzed"]       = True
+            apply_rating_flags(hand, evaluation)
+            if evaluation == "評価エラー":
+                errors += 1
+
+        completed += len(batch)
+        pct = int(completed / total * 100) if total > 0 else 100
+        print(f"  分析中... {completed}/{total}ハンド完了 ({pct}%)")
+
+        # バッチごとに即時保存（Ctrl+C対策）
+        save_json(json_path, data)
+
+    if errors > 0:
+        print(f"  [WARN] {errors}ハンドが評価エラーでした")
 
     return total, errors
 
