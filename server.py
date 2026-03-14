@@ -14,9 +14,10 @@ import threading
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, Form, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 import uvicorn
 
@@ -35,6 +36,14 @@ for d in [INPUT_DIR, OUTPUT_DIR, DATA_DIR, DONE_DIR]:
 BASE_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 app = FastAPI()
+
+# CORS（ブックマークレットからの別オリジンPOSTを許可）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 STATIC_DIR = ROOT / "static"
 STATIC_DIR.mkdir(exist_ok=True)
@@ -180,6 +189,29 @@ async def upload(
 
     background_tasks.add_task(run_pipeline, job_id, txt_path, key)
     return RedirectResponse(f"/progress/{job_id}", status_code=303)
+
+@app.post("/scrape_upload")
+async def scrape_upload(background_tasks: BackgroundTasks, request: Request):
+    """ブックマークレットからのJSON直接POSTを受け付けるエンドポイント"""
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        return JSONResponse({"error": "text is empty"}, status_code=400)
+
+    key = os.environ.get("GEMINI_API_KEY", "")
+    if not key:
+        return JSONResponse({"error": "GEMINI_API_KEY not set on server"}, status_code=500)
+
+    txt_path = INPUT_DIR / "upload.txt"
+    txt_path.write_text(text, encoding="utf-8")
+    print(f"[scrape_upload] {len(text)} chars")
+
+    job_id = uuid.uuid4().hex
+    with jobs_lock:
+        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": ""}
+
+    background_tasks.add_task(run_pipeline, job_id, txt_path, key)
+    return JSONResponse({"job_id": job_id})
 
 @app.get("/progress/{job_id}", response_class=HTMLResponse)
 async def progress(job_id: str):
