@@ -4,6 +4,7 @@ server.py - ポーカーGTO FastAPI サーバー
 ブラウザで http://localhost:5000 を開く
 """
 
+import asyncio
 import os
 import sys
 import json
@@ -16,10 +17,13 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sse_starlette.sse import EventSourceResponse
 import uvicorn
 
 ROOT       = Path(__file__).parent
 SCRIPTS    = ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+from analyze import analyze_file as _analyze_file  # noqa: E402
 INPUT_DIR  = ROOT / "input"
 OUTPUT_DIR = ROOT / "output"
 DATA_DIR   = ROOT / "data"
@@ -40,6 +44,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 jobs: dict[str, dict] = {}
 jobs_lock = threading.Lock()
 
+# SSEイベントキュー（job_idごと）
+event_queues: dict[str, asyncio.Queue] = {}
+
 STEP_LABELS = {
     0: "処理開始...",
     1: "ハンド履歴をパース中...",
@@ -47,9 +54,15 @@ STEP_LABELS = {
     3: "PDFを生成中...",
 }
 
-def run_pipeline(job_id: str, txt_path: Path, api_key: str):
-    env = {**BASE_ENV, "GEMINI_API_KEY": api_key}
+async def run_pipeline(job_id: str, txt_path: Path, api_key: str):
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    event_queues[job_id] = q
+    env  = {**BASE_ENV, "GEMINI_API_KEY": api_key}
     logs = []
+
+    def push(data: dict):
+        loop.call_soon_threadsafe(q.put_nowait, data)
 
     def set_step(s):
         with jobs_lock:
@@ -60,14 +73,21 @@ def run_pipeline(job_id: str, txt_path: Path, api_key: str):
         with jobs_lock:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["log"] = msg
+        push({"type": "error", "message": msg[:300]})
+        loop.call_soon_threadsafe(q.put_nowait, None)  # sentinel
         print(f"[job:{job_id[:8]}] ERROR: {msg[:200]}")
 
+    # ── Step 1: パース ──────────────────────────────────────────────────────
     set_step(1)
     json_path = DATA_DIR / (txt_path.stem + ".json")
-    r = subprocess.run(
-        [sys.executable, str(SCRIPTS / "parse.py"), str(txt_path), str(json_path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-    )
+
+    def do_parse():
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "parse.py"), str(txt_path), str(json_path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+
+    r = await loop.run_in_executor(None, do_parse)
     logs.append(r.stdout.strip())
     if r.stderr.strip():
         logs.append(r.stderr.strip())
@@ -75,23 +95,37 @@ def run_pipeline(job_id: str, txt_path: Path, api_key: str):
         fail("\n".join(logs))
         return
 
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            hands_total = len(json.load(f).get("hands", []))
+    except Exception:
+        hands_total = 0
+    push({"type": "parse_done", "hands_total": hands_total})
+
+    # ── Step 2: Gemini分析（analyze_fileを直接呼び出し）────────────────────
     set_step(2)
-    r = subprocess.run(
-        [sys.executable, str(SCRIPTS / "analyze.py"), str(json_path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-    )
-    logs.append(r.stdout.strip())
-    if r.stderr.strip():
-        logs.append(r.stderr.strip())
-    if r.returncode != 0:
-        fail("\n".join(logs))
-        return
 
+    def do_analyze():
+        _analyze_file(str(json_path), progress_cb=push, api_key=api_key)
+
+    try:
+        await loop.run_in_executor(None, do_analyze)
+    except SystemExit as e:
+        if e.code != 0:
+            fail("Gemini APIキーが無効またはAPI呼び出しエラーが発生しました")
+            return
+
+    # ── Step 3: PDF生成 ─────────────────────────────────────────────────────
+    push({"type": "generate_start"})
     set_step(3)
-    r = subprocess.run(
-        ["node", str(SCRIPTS / "generate.js"), str(OUTPUT_DIR), str(json_path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-    )
+
+    def do_generate():
+        return subprocess.run(
+            ["node", str(SCRIPTS / "generate.js"), str(OUTPUT_DIR), str(json_path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+
+    r = await loop.run_in_executor(None, do_generate)
     logs.append(r.stdout.strip())
     if r.stderr.strip():
         logs.append(r.stderr.strip())
@@ -111,7 +145,10 @@ def run_pipeline(job_id: str, txt_path: Path, api_key: str):
 
     with jobs_lock:
         jobs[job_id]["status"] = "done"
-        jobs[job_id]["pdf"] = pdf_files[0].name
+        jobs[job_id]["pdf"]    = pdf_files[0].name
+
+    push({"type": "done", "pdf": pdf_files[0].name})
+    loop.call_soon_threadsafe(q.put_nowait, None)  # sentinel（SSE接続を閉じる）
     print(f"[job:{job_id[:8]}] 完了: {pdf_files[0].name}")
 
 
@@ -158,6 +195,41 @@ async def status(job_id: str):
     if not job:
         return JSONResponse({"status": "error", "log": "job not found"})
     return JSONResponse(job)
+
+@app.get("/stream/{job_id}")
+async def stream(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "job not found"}, status_code=404)
+
+    # ジョブが既に完了/エラーの場合はその場でイベントを送って終了
+    async def immediate_done():
+        if job["status"] == "done":
+            yield {"data": json.dumps({"type": "done", "pdf": job["pdf"]}, ensure_ascii=False)}
+        elif job["status"] == "error":
+            yield {"data": json.dumps({"type": "error", "message": job.get("log", "不明なエラー")[:300]}, ensure_ascii=False)}
+
+    if job["status"] in ("done", "error"):
+        return EventSourceResponse(immediate_done())
+
+    q = event_queues.get(job_id)
+    if not q:
+        return JSONResponse({"error": "stream not ready"}, status_code=503)
+
+    async def event_generator():
+        try:
+            while True:
+                data = await asyncio.wait_for(q.get(), timeout=60.0)
+                if data is None:  # sentinel: ストリーム終了
+                    break
+                yield {"data": json.dumps(data, ensure_ascii=False)}
+        except asyncio.TimeoutError:
+            yield {"data": json.dumps({"type": "error", "message": "タイムアウト"}, ensure_ascii=False)}
+        finally:
+            event_queues.pop(job_id, None)
+
+    return EventSourceResponse(event_generator())
 
 @app.get("/error/{job_id}", response_class=HTMLResponse)
 async def error_page(job_id: str):
@@ -589,58 +661,56 @@ def progress_page(job_id: str) -> str:
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
   font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #1a1a2e; color: #eee;
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center;
 }}
 .card {{
-  background: #16213e;
-  border-radius: 16px;
-  padding: 48px 56px;
-  width: 480px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  text-align: center;
+  background: #16213e; border-radius: 16px;
+  padding: 48px 56px; width: 500px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
 }}
 h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
 .status-msg {{ font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }}
 .progress-bar-wrap {{
-  background: #0f0f1a;
-  border-radius: 99px;
-  height: 6px;
-  overflow: hidden;
-  margin-bottom: 6px;
+  background: #0f0f1a; border-radius: 99px;
+  height: 6px; overflow: hidden; margin-bottom: 6px;
 }}
 .progress-bar {{
-  height: 100%;
-  background: #e94560;
-  border-radius: 99px;
-  transition: width 0.5s ease;
-  width: 0%;
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.5s ease; width: 5%;
 }}
 .elapsed {{ font-size: 12px; color: #555; margin-bottom: 24px; }}
 .steps {{ display: flex; flex-direction: column; gap: 10px; text-align: left; }}
 .step {{
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #0f0f1a;
-  font-size: 14px;
-  color: #555;
-  transition: all 0.3s;
-  border-left: 3px solid transparent;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px; border-radius: 8px;
+  background: #0f0f1a; font-size: 14px; color: #555;
+  transition: all 0.3s; border-left: 3px solid transparent;
 }}
 .step.active {{ background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }}
-.step.done  {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
-.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; }}
+.step.done   {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
+.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }}
+.step-body {{ flex: 1; }}
+.step-label {{ display: block; }}
 .spinner {{
   display: inline-block; width: 16px; height: 16px;
   border: 2px solid #444; border-top-color: #e94560;
   border-radius: 50%; animation: spin 0.8s linear infinite;
 }}
 @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+/* バッチ進捗 */
+.batch-detail {{ display: none; margin-top: 8px; }}
+.batch-bar-wrap {{
+  background: rgba(0,0,0,0.35); border-radius: 99px;
+  height: 4px; overflow: hidden; margin-bottom: 6px;
+}}
+.batch-bar {{
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.4s ease; width: 0%;
+}}
+.batch-text {{ font-size: 11px; color: #a0a0b8; font-family: monospace; }}
+.hand-text  {{ font-size: 10px; color: #666; margin-top: 3px; font-style: italic; }}
 </style>
 </head>
 <body>
@@ -650,51 +720,131 @@ h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
   <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
   <p class="elapsed" id="elapsed"></p>
   <div class="steps">
-    <div class="step" id="step1"><span class="step-icon" id="icon1">1</span><span>ハンド履歴をパース</span></div>
-    <div class="step" id="step2"><span class="step-icon" id="icon2">2</span><span>GTO分析（Gemini API）</span></div>
-    <div class="step" id="step3"><span class="step-icon" id="icon3">3</span><span>PDFを生成</span></div>
+    <div class="step" id="step1">
+      <span class="step-icon" id="icon1">1</span>
+      <div class="step-body"><span class="step-label" id="label1">ハンド履歴をパース</span></div>
+    </div>
+    <div class="step" id="step2">
+      <span class="step-icon" id="icon2">2</span>
+      <div class="step-body">
+        <span class="step-label" id="label2">GTO分析（Gemini API）</span>
+        <div class="batch-detail" id="batch-detail">
+          <div class="batch-bar-wrap"><div class="batch-bar" id="batch-bar"></div></div>
+          <div class="batch-text" id="batch-text"></div>
+          <div class="hand-text"  id="hand-text"></div>
+        </div>
+      </div>
+    </div>
+    <div class="step" id="step3">
+      <span class="step-icon" id="icon3">3</span>
+      <div class="step-body"><span class="step-label" id="label3">PDFを生成</span></div>
+    </div>
   </div>
 </div>
 <script>
 const JOB_ID = '{job_id}';
-const PROGRESS = [0, 10, 30, 85, 100];
-const MSGS = ['', 'ハンド履歴をパース中...', 'GTO分析中（Gemini API）...', 'PDFを生成中...', '完了！'];
 let startTime = Date.now();
+let sseActive = false;
 
-function updateElapsed() {{
+setInterval(() => {{
   const s = Math.floor((Date.now() - startTime) / 1000);
   const m = Math.floor(s / 60), sec = s % 60;
   document.getElementById('elapsed').textContent =
     m > 0 ? `経過時間: ${{m}}分${{sec}}秒` : `経過時間: ${{sec}}秒`;
+}}, 1000);
+
+function blocks(pct, len=12) {{
+  const f = Math.round(pct / 100 * len);
+  return '\u2588'.repeat(f) + '\u2591'.repeat(len - f) + ' ' + pct + '%';
+}}
+function setPbar(pct) {{ document.getElementById('pbar').style.width = pct + '%'; }}
+
+function markDone(n, txt) {{
+  const el = document.getElementById('step' + n);
+  el.className = 'step done';
+  document.getElementById('icon' + n).textContent = '\u2713';
+  if (txt) document.getElementById('label' + n).textContent = txt;
+}}
+function markActive(n, txt) {{
+  const el = document.getElementById('step' + n);
+  el.className = 'step active';
+  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
+  if (txt) document.getElementById('label' + n).textContent = txt;
+}}
+function markIdle(n) {{
+  document.getElementById('step' + n).className = 'step';
+  document.getElementById('icon' + n).textContent = n;
 }}
 
-function setStep(current) {{
-  for (let i = 1; i <= 3; i++) {{
-    const el = document.getElementById('step' + i);
-    const icon = document.getElementById('icon' + i);
-    el.className = 'step';
-    if (i < current) {{
-      el.classList.add('done'); icon.textContent = '✓';
-    }} else if (i === current) {{
-      el.classList.add('active'); icon.innerHTML = '<span class="spinner"></span>';
-    }} else {{
-      icon.textContent = i;
-    }}
+// ─── SSE ──────────────────────────────────────────────────────────────────
+const es = new EventSource('/stream/' + JOB_ID);
+
+// 10秒以内にSSEイベントが届かなければポーリングへフォールバック
+const fallbackTimer = setTimeout(() => {{
+  if (!sseActive) {{ es.close(); pollFallback(); }}
+}}, 10000);
+
+es.onmessage = function(e) {{
+  sseActive = true;
+  clearTimeout(fallbackTimer);
+  const d = JSON.parse(e.data);
+
+  if (d.type === 'parse_done') {{
+    markDone(1, `ハンド履歴を解析しました（${{d.hands_total}}ハンド検出）`);
+    markActive(2);
+    setPbar(20);
+    document.getElementById('msg').textContent = 'GTO分析中（Gemini API）...';
+
+  }} else if (d.type === 'batch_progress') {{
+    const pct = Math.round(d.hands_done / d.hands_total * 100);
+    setPbar(20 + Math.round(pct * 0.5));
+    document.getElementById('batch-detail').style.display = 'block';
+    document.getElementById('batch-bar').style.width = pct + '%';
+    document.getElementById('batch-text').textContent =
+      `バッチ ${{d.batch_current}}/${{d.batch_total}} 完了  ${{blocks(pct)}}  (${{d.hands_done}}/${{d.hands_total}}ハンド)`;
+    if (d.current_hand_info)
+      document.getElementById('hand-text').textContent = '\u2192 ' + d.current_hand_info;
+
+  }} else if (d.type === 'generate_start') {{
+    markDone(2, 'GTO分析が完了しました');
+    markActive(3, 'PDFを生成中...');
+    document.getElementById('batch-detail').style.display = 'none';
+    setPbar(72);
+    document.getElementById('msg').textContent = 'PDFを生成中...';
+
+  }} else if (d.type === 'done') {{
+    markDone(1); markDone(2); markDone(3);
+    setPbar(100);
+    document.getElementById('msg').textContent = '完了！レポートを表示します...';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/report/' + d.pdf; }}, 800);
+
+  }} else if (d.type === 'error') {{
+    document.getElementById('msg').textContent = 'エラーが発生しました';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/error/' + JOB_ID; }}, 1000);
   }}
-  document.getElementById('pbar').style.width = PROGRESS[current] + '%';
-  if (MSGS[current]) document.getElementById('msg').textContent = MSGS[current];
-}}
+}};
 
-async function poll() {{
+es.onerror = function() {{
+  if (sseActive) return;
+  es.close();
+  clearTimeout(fallbackTimer);
+  pollFallback();
+}};
+
+// ─── ポーリングフォールバック ──────────────────────────────────────────────
+const POLL_PROGRESS = [0, 10, 30, 85, 100];
+const POLL_MSGS     = ['', 'ハンド履歴をパース中...', 'GTO分析中（Gemini API）...', 'PDFを生成中...', '完了！'];
+
+async function pollFallback() {{
+  if (sseActive) return;
   try {{
-    const res = await fetch('/status/' + JOB_ID);
+    const res  = await fetch('/status/' + JOB_ID);
     const data = await res.json();
     if (data.status === 'done') {{
-      for (let i = 1; i <= 3; i++) {{
-        document.getElementById('step' + i).className = 'step done';
-        document.getElementById('icon' + i).textContent = '✓';
-      }}
-      document.getElementById('pbar').style.width = '100%';
+      markDone(1); markDone(2); markDone(3);
+      setPbar(100);
       document.getElementById('msg').textContent = '完了！レポートを表示します...';
       setTimeout(() => {{ window.location.href = '/report/' + data.pdf; }}, 800);
       return;
@@ -703,16 +853,17 @@ async function poll() {{
       window.location.href = '/error/' + JOB_ID;
       return;
     }}
-    setStep(data.step);
-  }} catch(e) {{}}
-  updateElapsed();
-  setTimeout(poll, 3000);
+    const s = data.step || 0;
+    setPbar(POLL_PROGRESS[s]);
+    if (POLL_MSGS[s]) document.getElementById('msg').textContent = POLL_MSGS[s];
+    for (let i = 1; i <= 3; i++) {{
+      if (i < s) markDone(i);
+      else if (i === s) markActive(i);
+      else markIdle(i);
+    }}
+  }} catch(_) {{}}
+  if (!sseActive) setTimeout(pollFallback, 3000);
 }}
-
-setStep(0);
-updateElapsed();
-setInterval(updateElapsed, 1000);
-setTimeout(poll, 1000);
 </script>
 </body>
 </html>"""

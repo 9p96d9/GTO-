@@ -21,6 +21,22 @@ RETRY_WAIT = 5.0         # 429エラー時の待機秒数
 MAX_RETRY  = 3
 
 
+# ─── ハンドサマリ（SSE進捗用）────────────────────────────────────────────────
+
+def get_hand_summary(hand: dict) -> str:
+    pos      = hand.get("hero_position", "?")
+    is_3bet  = hand.get("is_three_bet_pot", False)
+    pot_type = "3betポット" if is_3bet else "シングルレイズ"
+    flop     = hand.get("streets", {}).get("flop")
+    if flop and flop.get("board"):
+        street_str = "Flop: " + " ".join(flop["board"])
+    else:
+        street_str = "プリフロップ"
+    opponents = [p for p in hand.get("players", []) if not p.get("is_hero")]
+    opp_pos   = opponents[0].get("position", "?") if opponents else "?"
+    return f"{pos} vs {opp_pos}, {pot_type}, {street_str}"
+
+
 # ─── プロンプト生成 ───────────────────────────────────────────────────────────
 
 def format_action_summary(hand: dict) -> str:
@@ -164,8 +180,8 @@ def save_json(json_path: str, data: dict):
 
 # ─── メイン処理 ───────────────────────────────────────────────────────────────
 
-def analyze_file(json_path: str):
-    api_key = os.environ.get("GEMINI_API_KEY")
+def analyze_file(json_path: str, progress_cb=None, api_key: str = None):
+    api_key = api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("[ERROR] GEMINI_API_KEY が .env に設定されていません", file=sys.stderr)
         sys.exit(1)
@@ -192,7 +208,7 @@ def analyze_file(json_path: str):
     errors    = 0
     completed = cached
 
-    for batch in batches:
+    for batch_idx, batch in enumerate(batches):
         result_map = evaluate_batch(client, batch)
 
         for hand_idx, hand in batch:
@@ -209,6 +225,16 @@ def analyze_file(json_path: str):
 
         # バッチごとに即時保存（Ctrl+C対策）
         save_json(json_path, data)
+
+        if progress_cb:
+            progress_cb({
+                "type":              "batch_progress",
+                "batch_current":     batch_idx + 1,
+                "batch_total":       len(batches),
+                "hands_done":        completed,
+                "hands_total":       total,
+                "current_hand_info": get_hand_summary(batch[-1][1]),
+            })
 
     if errors > 0:
         print(f"  [WARN] {errors}ハンドが評価エラーでした")
