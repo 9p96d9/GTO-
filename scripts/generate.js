@@ -676,11 +676,8 @@ async function main() {
   const minDate = dates.length ? dates.reduce((a, b) => a < b ? a : b) : today;
   const maxDate = dates.length ? dates.reduce((a, b) => a > b ? a : b) : today;
 
-  const opponentStats = loadOpponentSummary(dataDir);
   const totalPL       = hands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
   const posStats      = calcPositionStats(hands);
-  const goodHands     = hands.filter(h => h.is_good_play);
-  const topOpponents  = opponentStats.slice(0, 10);
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -689,14 +686,8 @@ async function main() {
   }
   const genAI = new GoogleGenerativeAI(apiKey);
 
-  console.log("  セクション5・6をGemini APIで生成中...");
-  const [improvementText, strengthText] = await Promise.all([
-    fetchImprovement(genAI, hands),
-    fetchStrength(genAI, goodHands),
-  ]);
-
-  console.log("  セクション7: 対戦相手分析中...");
-  await fetchOpponentStrategies(genAI, topOpponents, hands);
+  console.log("  セクション5をGemini APIで生成中...");
+  const improvementText = await fetchImprovement(genAI, hands);
 
   const html = buildFullHtml([
     buildTitleHtml(minDate, maxDate, hands.length, totalPL),
@@ -705,8 +696,6 @@ async function main() {
     buildSection3Html(hands),
     buildSection4Html(hands),
     buildSection5Html(improvementText),
-    buildSection6Html(strengthText, goodHands),
-    buildSection7Html(topOpponents),
   ]);
 
   const dateStr = minDate === maxDate ? minDate : `${minDate}_${maxDate}`;
