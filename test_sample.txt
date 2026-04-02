@@ -1,0 +1,129 @@
+====================
+ハンド 1 / 3
+Hand #TEST001
+2026/03/25 10:00 · 6-Max NLH (0.5/1)
+BTN
+Guest
++4.5bb
+A♠
+K♥
+CO
+Villain1
+-2bb
+Q♦
+J♦
+Preflop
+BTN
+Guest
+Raise
+3bb
+CO
+Villain1
+Fold
+Result
+Rake: 0.1bb
+BTN Guest won 2.5bb
+====================
+ハンド 2 / 3
+Hand #TEST002
+2026/03/25 10:05 · 6-Max NLH (0.5/1)
+BB
+Guest
+-1bb
+7♠
+2♦
+BTN
+Villain1
++1bb
+A♥
+K♣
+Preflop
+BTN
+Villain1
+Raise
+2.5bb
+BB
+Guest
+Fold
+Result
+Rake: 0.05bb
+BTN Villain1 won 1.5bb
+====================
+ハンド 3 / 3
+Hand #TEST003
+2026/03/25 10:10 · 6-Max NLH (0.5/1)
+CO
+Guest
++6bb
+A♠
+A♥
+BB
+Villain1
+-5bb
+K♠
+K♦
+Preflop
+CO
+Guest
+Raise
+3bb
+BB
+Villain1
+Raise
+9bb
+CO
+Guest
+Raise
+22bb
+BB
+Villain1
+Call
+Flop5.5bb
+K♣
+Q♠
+J♦
+BB
+Villain1
+Bet
+5bb
+CO
+Guest
+Raise
+15bb
+BB
+Villain1
+Call
+Turn10bb
+9♠
+BB
+Villain1
+Check
+CO
+Guest
+Bet
+8bb
+BB
+Villain1
+Call
+River20bb
+2♥
+BB
+Villain1
+Check
+CO
+Guest
+Bet
+15bb
+BB
+Villain1
+Call
+SD35bb
+CO
+Guest:
+Two Pair
+BB
+Villain1:
+Two Pair
+Result
+Rake: 0.5bb
+CO Guest won 45bb

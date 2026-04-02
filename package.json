@@ -1,0 +1,17 @@
+{
+  "name": "poker-gto-report",
+  "version": "1.0.0",
+  "description": "ポーカーGTO分析レポート自動生成システム",
+  "main": "scripts/generate.js",
+  "scripts": {
+    "generate": "node scripts/generate.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@google/generative-ai": "^0.24.1",
+    "docx": "^8.5.0",
+    "dotenv": "^16.4.5",
+    "puppeteer": "^24.37.5"
+  }
+}
