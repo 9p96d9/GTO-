@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "PokerGTO - ハンドログ送信",
+  "version": "2.0.0",
+  "description": "T4のブックマーク一覧からハンドログを収集してPokerGTOサーバーに送信します",
+
+  "permissions": [
+    "storage",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://gto-production.up.railway.app/*",
+    "https://*.tenfourpoker.com/*",
+    "https://*.t4poker.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.tenfourpoker.com/*",
+        "https://*.t4poker.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

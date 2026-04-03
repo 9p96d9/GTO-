@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  width: 320px;
+  min-height: 160px;
+  padding: 20px;
+}
+h1 { font-size: 17px; color: #e94560; margin-bottom: 4px; }
+.sub { font-size: 11px; color: #666; margin-bottom: 20px; }
+
+/* ─── ログイン前 ─── */
+#view-login { display: block; }
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px;
+  background: #fff;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-google:hover { background: #f0f0f0; }
+.btn-google img { width: 18px; height: 18px; }
+
+/* ─── ログイン後 ─── */
+#view-main { display: none; }
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.user-email { font-size: 11px; color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-logout {
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 5px;
+  color: #888;
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.btn-logout:hover { border-color: #e94560; color: #e94560; }
+
+.btn-scrape {
+  width: 100%;
+  padding: 13px;
+  background: #e94560;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 10px;
+}
+.btn-scrape:hover { background: #c73652; }
+.btn-scrape:disabled { background: #555; cursor: not-allowed; }
+
+.btn-open-site {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.btn-open-site:hover { border-color: #888; color: #eee; }
+
+/* ─── ステータス ─── */
+.status {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #888;
+  min-height: 18px;
+  line-height: 1.5;
+}
+.status.error { color: #e94560; }
+.status.success { color: #4caf93; }
+
+/* ─── プログレスバー ─── */
+.progress-wrap {
+  display: none;
+  background: #0f0f1a;
+  border-radius: 4px;
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: #e94560;
+  width: 0%;
+  transition: width 0.3s;
+}
+</style>
+</head>
+<body>
+<h1>🃏 PokerGTO</h1>
+<p class="sub">T4ハンドログ → PokerGTO自動送信</p>
+
+<!-- ログイン前 -->
+<div id="view-login">
+  <button class="btn-google" id="btn-login">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G">
+    Googleでログイン
+  </button>
+  <p class="status" id="login-status"></p>
+</div>
+
+<!-- ログイン後 -->
+<div id="view-main">
+  <div class="user-row">
+    <span class="user-email" id="user-email"></span>
+    <button class="btn-logout" id="btn-logout">ログアウト</button>
+  </div>
+  <button class="btn-scrape" id="btn-scrape">▶ ハンドログを送信</button>
+  <button class="btn-open-site" id="btn-open-site">PokerGTOサイトを開く</button>
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+  <p class="status" id="scrape-status"></p>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

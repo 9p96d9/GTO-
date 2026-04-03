@@ -2435,6 +2435,543 @@ async function exportPDF(){{
 </html>"""
 
 
+# ─── Firebase連携エンドポイント ───────────────────────────────────────────────
+# 環境変数 FIREBASE_SERVICE_ACCOUNT_JSON が未設定の場合はこれらのエンドポイントは
+# 503を返す（既存機能への影響なし）
+
+def _get_uid_from_request(request: Request) -> str:
+    """
+    Authorization: Bearer {idToken} ヘッダーからuidを取得。
+    失敗時は ValueError を送出。
+    """
+    from scripts.firebase_utils import verify_id_token
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise ValueError("Authorization ヘッダーがありません")
+    id_token = auth_header.removeprefix("Bearer ").strip()
+    decoded = verify_id_token(id_token)
+    return decoded["uid"]
+
+
+@app.post("/api/upload-from-extension")
+async def upload_from_extension(request: Request):
+    """
+    Chrome拡張機能からのハンドログ受信エンドポイント。
+    Header: Authorization: Bearer {Firebase idToken}
+    Body JSON: { raw_text: str, filename: str, hand_count: int }
+    → Firestore users/{uid}/sessions/{id} に保存
+    """
+    from scripts.firebase_utils import is_firebase_enabled, save_session
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSONパース失敗"}, status_code=400)
+
+    raw_text   = body.get("raw_text", "").strip()
+    filename   = body.get("filename", "upload.txt")
+    hand_count = int(body.get("hand_count", 0))
+
+    if not raw_text:
+        return JSONResponse({"error": "raw_text が空です"}, status_code=400)
+
+    try:
+        session_id = save_session(uid, raw_text, filename, hand_count)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore保存失敗: {e}"}, status_code=500)
+
+    return JSONResponse({"session_id": session_id, "status": "saved"})
+
+
+@app.get("/api/sessions")
+async def api_sessions(request: Request):
+    """
+    ログイン中ユーザーのセッション一覧を返す。
+    Header: Authorization: Bearer {Firebase idToken}
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_sessions
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        sessions = get_sessions(uid)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+
+    return JSONResponse({"sessions": sessions})
+
+
+@app.delete("/api/sessions/{session_id}")
+async def api_delete_session(session_id: str, request: Request):
+    """
+    Firestoreからセッションを削除する。
+    Header: Authorization: Bearer {Firebase idToken}
+    """
+    from scripts.firebase_utils import is_firebase_enabled, delete_session
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        delete_session(uid, session_id)
+    except Exception as e:
+        return JSONResponse({"error": f"削除失敗: {e}"}, status_code=500)
+
+    return JSONResponse({"status": "deleted"})
+
+
+@app.post("/api/sessions/{session_id}/analyze")
+async def api_analyze_session(session_id: str, request: Request, background_tasks: BackgroundTasks):
+    """
+    Firestoreのセッションデータを取得して classifyパイプラインを実行する。
+    Header: Authorization: Bearer {Firebase idToken}
+    → /classify_progress/{job_id} の URLを返す
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_session, update_session_status
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        session = get_session(uid, session_id)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+
+    if not session:
+        return JSONResponse({"error": "セッションが見つかりません"}, status_code=404)
+
+    raw_text = session.get("raw_text", "")
+    if not raw_text:
+        return JSONResponse({"error": "raw_text が空です"}, status_code=400)
+
+    # txtファイルとして書き出して既存パイプラインに渡す
+    txt_path = INPUT_DIR / f"fb_{session_id}.txt"
+    txt_path.write_text(raw_text, encoding="utf-8")
+
+    job_id = uuid.uuid4().hex
+    with jobs_lock:
+        jobs[job_id] = {
+            "step": 0, "status": "running", "pdf": "", "log": "",
+            "mode": "classify",
+            "firebase_uid": uid,
+            "firebase_session_id": session_id,
+        }
+
+    try:
+        update_session_status(uid, session_id, "analyzing")
+    except Exception:
+        pass  # ステータス更新失敗は致命的ではない
+
+    background_tasks.add_task(run_classify_pipeline, job_id, txt_path)
+    return JSONResponse({"job_id": job_id, "progress_url": f"/classify_progress/{job_id}"})
+
+
+# ─── PokerGTO ログイン / セッション一覧 画面 ─────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Firebase Auth (Google) ログイン画面"""
+    from scripts.firebase_utils import is_firebase_enabled
+    if not is_firebase_enabled():
+        return HTMLResponse("<h1>Firebase未設定</h1><p>環境変数 FIREBASE_SERVICE_ACCOUNT_JSON を設定してください。</p>", status_code=503)
+    return HTMLResponse(_LOGIN_PAGE_HTML)
+
+
+@app.get("/sessions", response_class=HTMLResponse)
+async def sessions_page():
+    """セッション一覧画面（フロントエンドがAPIを叩いて表示）"""
+    from scripts.firebase_utils import is_firebase_enabled
+    if not is_firebase_enabled():
+        return HTMLResponse("<h1>Firebase未設定</h1>", status_code=503)
+    return HTMLResponse(_SESSIONS_PAGE_HTML)
+
+
+# ─── ログイン / セッション一覧 HTMLテンプレート ───────────────────────────────
+
+# Firebase設定はフロントエンドが /api/firebase-config から取得する
+# （クライアントSDKはpublicキーなので環境変数に置いてOK）
+_FIREBASE_API_KEY       = os.environ.get("FIREBASE_API_KEY", "")
+_FIREBASE_AUTH_DOMAIN   = os.environ.get("FIREBASE_AUTH_DOMAIN", "")
+_FIREBASE_PROJECT_ID    = os.environ.get("FIREBASE_PROJECT_ID", "")
+
+
+@app.get("/api/firebase-config")
+async def firebase_config():
+    """フロントエンドのFirebase JS SDKに渡すpublic設定を返す"""
+    return JSONResponse({
+        "apiKey":     _FIREBASE_API_KEY,
+        "authDomain": _FIREBASE_AUTH_DOMAIN,
+        "projectId":  _FIREBASE_PROJECT_ID,
+    })
+
+
+_LOGIN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO ログイン</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 48px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}
+h1 { font-size: 22px; color: #e94560; margin-bottom: 8px; }
+.sub { font-size: 13px; color: #888; margin-bottom: 32px; }
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  background: #fff;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-google:hover { background: #f0f0f0; }
+.btn-google img { width: 20px; height: 20px; }
+.status { margin-top: 16px; font-size: 13px; color: #888; min-height: 20px; }
+.error { color: #e94560; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🃏 PokerGTO</h1>
+  <p class="sub">Googleアカウントでログインしてください</p>
+  <button class="btn-google" id="btn-login">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+    Googleでログイン
+  </button>
+  <p class="status" id="status"></p>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  // すでにログイン済みならセッション一覧へ
+  onAuthStateChanged(auth, user => {
+    if (user) window.location.href = "/sessions";
+  });
+
+  document.getElementById("btn-login").addEventListener("click", async () => {
+    const st = document.getElementById("status");
+    st.textContent = "ログイン中...";
+    st.classList.remove("error");
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged が /sessions にリダイレクトする
+    } catch (e) {
+      st.textContent = "ログイン失敗: " + e.message;
+      st.classList.add("error");
+    }
+  });
+</script>
+</body>
+</html>"""
+
+
+_SESSIONS_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO セッション一覧</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  padding: 20px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 900px;
+  margin: 0 auto 24px;
+}
+h1 { font-size: 20px; color: #e94560; }
+.user-info { font-size: 13px; color: #888; display: flex; align-items: center; gap: 12px; }
+.btn-logout {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 6px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-logout:hover { border-color: #e94560; color: #e94560; }
+.container { max-width: 900px; margin: 0 auto; }
+.loading { text-align: center; color: #888; padding: 60px; }
+.empty { text-align: center; color: #666; padding: 60px; }
+.empty p { margin-bottom: 8px; }
+.session-card {
+  background: #16213e;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.session-info { flex: 1; }
+.session-date { font-size: 13px; color: #888; margin-bottom: 4px; }
+.session-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.session-meta { font-size: 12px; color: #666; }
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-pending  { background: #333; color: #888; }
+.badge-analyzing { background: #1a3a5c; color: #5bc0de; }
+.badge-done     { background: #1a3a1a; color: #5cb85c; }
+.badge-error    { background: #3a1a1a; color: #e94560; }
+.actions { display: flex; gap: 8px; align-items: center; }
+.btn-analyze {
+  padding: 8px 18px;
+  background: #e94560;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-analyze:hover { background: #c73652; }
+.btn-analyze:disabled { background: #555; cursor: not-allowed; }
+.btn-result {
+  padding: 8px 18px;
+  background: #0f3460;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-result:hover { background: #1a4a80; }
+.btn-delete {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-delete:hover { border-color: #e94560; color: #e94560; }
+.alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+.alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🃏 PokerGTO</h1>
+  <div class="user-info">
+    <span id="user-email"></span>
+    <button class="btn-logout" id="btn-logout">ログアウト</button>
+  </div>
+</div>
+<div class="container">
+  <div id="alert-area"></div>
+  <div id="content" class="loading">読み込み中...</div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  let currentUser = null;
+
+  function showAlert(msg) {
+    document.getElementById("alert-area").innerHTML =
+      `<div class="alert alert-error">${msg}</div>`;
+  }
+
+  async function getIdToken() {
+    if (!currentUser) throw new Error("未ログイン");
+    return currentUser.getIdToken();
+  }
+
+  async function loadSessions() {
+    document.getElementById("content").innerHTML = '<div class="loading">読み込み中...</div>';
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/sessions", {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || "取得失敗"); return; }
+      renderSessions(data.sessions || []);
+    } catch (e) {
+      showAlert("セッション取得失敗: " + e.message);
+    }
+  }
+
+  function statusBadge(status) {
+    const map = {
+      pending:   ["pending", "未解析"],
+      analyzing: ["analyzing", "解析中..."],
+      done:      ["done", "完了"],
+      error:     ["error", "エラー"],
+    };
+    const [cls, label] = map[status] || ["pending", status];
+    return `<span class="badge badge-${cls}">${label}</span>`;
+  }
+
+  function renderSessions(sessions) {
+    const el = document.getElementById("content");
+    if (!sessions.length) {
+      el.innerHTML = `<div class="empty">
+        <p>セッションがありません</p>
+        <p style="font-size:12px">Chrome拡張機能を使ってT4からハンドログを送信してください</p>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = sessions.map(s => {
+      const date = s.uploaded_at ? s.uploaded_at.replace("T", " ").slice(0, 16) : "-";
+      const canAnalyze = s.status === "pending" || s.status === "error";
+      const isDone = s.status === "done";
+
+      const analyzeBtn = canAnalyze
+        ? `<button class="btn-analyze" onclick="analyzeSession('${s.id}', this)">解析する</button>`
+        : `<button class="btn-analyze" disabled>${s.status === "analyzing" ? "解析中..." : "解析済"}</button>`;
+
+      const resultBtn = isDone && s.result_pdf
+        ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
+        : "";
+
+      return `<div class="session-card" id="card-${s.id}">
+        <div class="session-info">
+          <div class="session-date">${date}</div>
+          <div class="session-title">${s.filename || "upload.txt"}</div>
+          <div class="session-meta">${s.hand_count || 0} ハンド　${statusBadge(s.status)}</div>
+        </div>
+        <div class="actions">
+          ${resultBtn}
+          ${analyzeBtn}
+          <button class="btn-delete" onclick="deleteSession('${s.id}', this)">削除</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  window.analyzeSession = async (sessionId, btn) => {
+    btn.disabled = true;
+    btn.textContent = "送信中...";
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`/api/sessions/${sessionId}/analyze`, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; return; }
+      window.location.href = data.progress_url;
+    } catch (e) {
+      showAlert("エラー: " + e.message);
+      btn.disabled = false;
+    }
+  };
+
+  window.deleteSession = async (sessionId, btn) => {
+    if (!confirm("このセッションを削除しますか？")) return;
+    btn.disabled = true;
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      if (!res.ok) { showAlert("削除失敗"); btn.disabled = false; return; }
+      document.getElementById(`card-${sessionId}`)?.remove();
+    } catch (e) {
+      showAlert("削除エラー: " + e.message);
+      btn.disabled = false;
+    }
+  };
+
+  document.getElementById("btn-logout").addEventListener("click", async () => {
+    await signOut(auth);
+    window.location.href = "/login";
+  });
+
+  onAuthStateChanged(auth, user => {
+    if (!user) {
+      window.location.href = "/login";
+      return;
+    }
+    currentUser = user;
+    document.getElementById("user-email").textContent = user.email || user.displayName || "";
+    loadSessions();
+  });
+</script>
+</body>
+</html>"""
+
+
 # ─── メイン ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

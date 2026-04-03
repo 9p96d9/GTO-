@@ -24,6 +24,7 @@ RUN npm ci --omit=dev
 COPY scripts/ ./scripts/
 COPY static/ ./static/
 COPY server.py ./
+# extension/ はサーバー側には不要なのでCOPY対象外
 
 # 各種ディレクトリ作成
 RUN mkdir -p input/done output data
