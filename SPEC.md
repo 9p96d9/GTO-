@@ -57,6 +57,8 @@ T4ポーカーサイトのハンド履歴テキストをアップロードする
 | 手役評価 | treys ライブラリ（classify.py で使用） |
 | PDF生成 | puppeteer（Chromium内蔵） |
 | リアルタイム通信 | SSE（Server-Sent Events） |
+| 認証・DB | Firebase Auth（Google）/ Firestore |
+| ブラウザ拡張 | Chrome拡張機能（MV3） |
 | ホスティング | Railway（Docker） |
 | コンテナ | python:3.11-slim + Node.js 20 |
 
@@ -67,16 +69,24 @@ GTO-/
 ├── server.py                   # FastAPI サーバー（全エンドポイント・HTMLテンプレート含む）
 ├── Dockerfile                  # Railway/本番用コンテナ定義
 ├── docker-compose.yml          # ローカルDocker用
-├── requirements.txt            # Python依存（fastapi, uvicorn, sse-starlette, treys, google-generativeai）
+├── requirements.txt            # Python依存（fastapi, uvicorn, sse-starlette, treys, google-generativeai, firebase-admin）
 ├── package.json                # Node.js依存（puppeteer）
-├── bookmarklet.js              # T4サイトからハンド履歴を直接送信するブックマークレット
+├── bookmarklet.js              # 旧: T4サイトからハンド履歴を直接送信するブックマークレット（後方互換）
 ├── scripts/
 │   ├── parse.py                # ハンド履歴パーサー（txt → JSON）
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
 │   ├── analyze.py              # Gemini GTO分析（JSON → JSON + gto_analysis）
 │   ├── generate.js             # AI PDFレポート生成（puppeteer）
 │   ├── generate_noapilist.js   # NoAPI PDFレポート生成（puppeteer）
-│   └── quick_analyzer.py       # クイック統計計算（API不要・即時）
+│   ├── quick_analyzer.py       # クイック統計計算（API不要・即時）
+│   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ（Firestore CRUD / idToken検証）
+├── extension/                  # Chrome拡張機能（MV3）
+│   ├── manifest.json           # 拡張機能設定（oauth2 client_id含む）
+│   ├── popup.html / popup.js   # ポップアップUI（ログイン・スクレイプ送信）
+│   ├── background.js           # Service Worker（Firebase Auth管理）
+│   ├── content.js              # T4スクレイプ処理（bookmarklet移植）
+│   ├── icons/                  # アイコン画像（16/48/128px）
+│   └── README.md               # セットアップ手順
 ├── static/                     # 静的ファイル（/static/ で配信）
 ├── input/                      # アップロードtxt一時置き場
 │   └── done/                   # 処理済みtxt（処理後自動移動）
