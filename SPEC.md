@@ -300,6 +300,14 @@ postflopあり:
 | POST | `/analyze/quick` | クイック解析 → ダッシュボードへリダイレクト |
 | GET | `/dashboard/{job_id}` | クイック解析ダッシュボード |
 | POST | `/scrape_upload` | ブックマークレットからJSON直接POST（サーバーAPIキー使用） |
+| **Firebase連携（要 FIREBASE_SERVICE_ACCOUNT_JSON）** | | |
+| GET | `/login` | Googleログイン画面（Firebase Auth） |
+| GET | `/sessions` | セッション一覧画面（ログイン必須） |
+| GET | `/api/firebase-config` | フロントエンド向けFirebase public設定を返す |
+| POST | `/api/upload-from-extension` | Chrome拡張機能からセッション保存（Bearer認証） |
+| GET | `/api/sessions` | ログインユーザーのセッション一覧JSON（Bearer認証） |
+| DELETE | `/api/sessions/{session_id}` | セッション削除（Bearer認証） |
+| POST | `/api/sessions/{session_id}/analyze` | Firestoreのセッションをclassifyパイプラインに流す（Bearer認証） |
 
 ### POST /upload フォームパラメータ
 
@@ -388,6 +396,12 @@ event_queues: dict[str, asyncio.Queue]  # job_id → SSEキュー
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini APIキー | AIモードのみ。BYOKで代替可 |
 | `PORT` | サーバーポート（デフォルト: 5000） | 任意 |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | FirebaseサービスアカウントキーJSON（全体） | Firebase機能を使う場合 |
+| `FIREBASE_API_KEY` | Firebase Web API Key | Firebase機能を使う場合 |
+| `FIREBASE_AUTH_DOMAIN` | `{project-id}.firebaseapp.com` | Firebase機能を使う場合 |
+| `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase機能を使う場合 |
+
+**注:** `FIREBASE_SERVICE_ACCOUNT_JSON` が未設定の場合、Firebase系エンドポイントはすべて503を返す。既存機能への影響はない。
 
 ---
 
@@ -428,8 +442,64 @@ git push
 
 ---
 
-## 12. 今後の実装候補（メモ）
+## 12. Firebase / Firestoreデータ構造
 
+### Firestoreコレクション設計
+
+```
+users/{uid}/sessions/{sessionId}
+  ├── raw_text:    string        # T4ハンドログ全文
+  ├── filename:    string        # 元ファイル名（例: t4_hands_20260403.txt）
+  ├── hand_count:  number        # ハンド数
+  ├── uploaded_at: timestamp     # アップロード日時（UTC）
+  ├── status:      string        # "pending" | "analyzing" | "done" | "error"
+  └── result_pdf:  string        # 生成PDFファイル名（空文字 or "NoAPI_Report_*.pdf"）
+```
+
+### セキュリティルール
+
+```javascript
+rules_version = '2';
+service cloud.firestore.beta {
+  match /databases/{database}/documents {
+    match /users/{uid}/sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```
+
+### Chrome拡張機能（extension/）
+
+| ファイル | 役割 |
+|---|---|
+| `manifest.json` | MV3設定。`oauth2.client_id` でGoogleログインを設定 |
+| `background.js` | Service Worker。Firebase Auth（GET_USER / SIGN_IN / GET_ID_TOKEN）を管理 |
+| `popup.html/js` | ポップアップUI。ログイン状態表示・スクレイプ送信ボタン |
+| `content.js` | T4ページで動作。ハンドカードをクリックしてテキストを収集 |
+
+**Chrome拡張 → サーバー通信フロー:**
+```
+[T4ブックマーク一覧]
+  content.js: ハンドカードをクリック → テキスト収集
+       ↓
+  popup.js: idToken取得（background.js経由）
+       ↓
+  POST /api/upload-from-extension  （Bearer: idToken）
+       ↓
+  server.py: idTokenをFirebase Admin SDKで検証 → Firestoreに保存
+       ↓
+  /sessions に遷移 → 解析ボタンをクリック
+       ↓
+  POST /api/sessions/{id}/analyze → 既存classifyパイプライン起動
+```
+
+---
+
+## 13. 今後の実装候補（メモ）
+
+- Phase 4: 管理者ダッシュボード（/admin）- Firebase Custom Claimsでadminロール管理
 - classify結果のWebビューアでハンドを直接閲覧・編集
 - NoAPI PDFへのクイック統計グラフ埋め込み
 - 複数セッションの累積レポート生成
+- opponents_summary.jsonをFirestoreに移行（Railway再起動でリセットされる問題の解消）
