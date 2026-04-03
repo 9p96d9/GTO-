@@ -278,7 +278,7 @@ async def run_noapi_pipeline(job_id: str, txt_path: Path):
     print(f"[job:{job_id[:8]}] 完了: {pdf_files[0].name}")
 
 
-async def run_classify_pipeline(job_id: str, txt_path: Path):
+async def run_classify_pipeline(job_id: str, txt_path: Path, hero_name: str = ""):
     """parse → classify → Web結果画面（PDF生成なし）"""
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
@@ -305,7 +305,8 @@ async def run_classify_pipeline(job_id: str, txt_path: Path):
     json_path = DATA_DIR / (txt_path.stem + ".json")
 
     r = await loop.run_in_executor(None, lambda: subprocess.run(
-        [sys.executable, str(SCRIPTS / "parse.py"), str(txt_path), str(json_path)],
+        [sys.executable, str(SCRIPTS / "parse.py"), str(txt_path), str(json_path)]
+        + (["--hero-name", hero_name] if hero_name else []),
         capture_output=True, text=True, encoding="utf-8", errors="replace", env=BASE_ENV,
     ))
     if r.returncode != 0:
@@ -457,16 +458,17 @@ async def index():
 async def upload(
     background_tasks: BackgroundTasks,
     file: UploadFile,
+    hero_name: str = Form(""),
 ):
     data = await file.read()
     txt_path = INPUT_DIR / "upload.txt"
     txt_path.write_bytes(data)
 
     job_id = uuid.uuid4().hex
-    print(f"[upload] {len(data)} bytes → classify pipeline")
+    print(f"[upload] {len(data)} bytes → classify pipeline (hero={hero_name!r})")
     with jobs_lock:
-        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "classify"}
-    background_tasks.add_task(run_classify_pipeline, job_id, txt_path)
+        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "classify", "hero_name": hero_name}
+    background_tasks.add_task(run_classify_pipeline, job_id, txt_path, hero_name)
     return RedirectResponse(f"/classify_progress/{job_id}", status_code=303)
 
 @app.post("/scrape_upload")
@@ -536,21 +538,25 @@ async def classify_result_view(job_id: str):
 
     total_hands = blue_count + red_count + pf_count
 
-    # オールインEV差（実収支との差）を計算
-    player_ev_diffs: dict = {}
+    # オールインEV差（Heroのみ集計）
+    hero_ev_total = 0.0
+    hero_name_found = ""
+    hero_ev_count = 0
     for hand in hands:
         allin_ev = hand.get("result", {}).get("allin_ev", {})
         if not allin_ev:
             continue
         for p in hand.get("players", []):
+            if not p.get("is_hero"):
+                continue
             name = p.get("name", "")
             if name in allin_ev:
                 ev = float(allin_ev[name])
                 actual = float(p.get("result_bb", 0.0))
-                diff = ev - actual
-                player_ev_diffs[name] = round(player_ev_diffs.get(name, 0.0) + diff, 2)
-    # 差がほぼ0のプレイヤーは非表示
-    allin_ev_diffs = {k: v for k, v in player_ev_diffs.items() if abs(v) > 0.05}
+                hero_ev_total = round(hero_ev_total + (ev - actual), 2)
+                hero_name_found = name
+                hero_ev_count += 1
+    allin_ev_diffs = {hero_name_found: hero_ev_total} if hero_name_found and abs(hero_ev_total) > 0.05 else {}
 
     # AI推定時間
     batches = max(1, (total_hands + 9) // 10)
@@ -564,7 +570,7 @@ async def classify_result_view(job_id: str):
 
     return HTMLResponse(classify_result_page(
         job_id, total_hands, blue_count, red_count, pf_count,
-        categories, allin_ev_diffs, ai_time_str, classified_path, json_path,
+        categories, allin_ev_diffs, ai_time_str, classified_path, json_path, hands,
     ))
 
 
@@ -961,7 +967,6 @@ h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
       <div class="dropzone-label"><span>ファイルを選択</span>またはドロップ</div>
       <div class="file-name" id="fname"></div>
     </div>
-
     <button type="submit" id="btn" class="btn-primary" disabled>ファイルを選択してください</button>
   </form>
   <button class="btn-guide" id="open-guide">&#x1F4D6; はじめての方 — ハンド履歴の取得方法</button>
@@ -1513,7 +1518,9 @@ def classify_result_page(
     ai_time_str: str,
     classified_path: str,
     json_path: str,
+    hands: list = None,
 ) -> str:
+    import re as _re
     _DEFAULT_KEY = os.environ.get("GEMINI_API_KEY", "")
 
     # カテゴリ行HTML
@@ -1533,20 +1540,154 @@ def classify_result_page(
         color = cat_colors.get(label, "#aaa")
         cat_rows += f'<div class="cat-row"><span class="cat-label" style="color:{color}">{_esc(label)}</span><span class="cat-count">{count}</span></div>\n'
 
-    # オールインEV差HTML（差がある場合のみ）
+    # オールインEV差HTML（Heroのみ表示）
     ev_html = ""
     if allin_ev_diffs:
-        ev_rows = ""
-        for player, diff in sorted(allin_ev_diffs.items(), key=lambda x: -abs(x[1])):
-            sign = "+" if diff >= 0 else ""
-            color = "#4caf93" if diff > 0 else "#e94560"
-            note = "（EV > 実収支：ランアウト悪）" if diff > 0 else "（EV < 実収支：ランアウト良）"
-            ev_rows += f'<div class="ev-row"><span class="ev-name">{_esc(player)}</span><span class="ev-val" style="color:{color}">{sign}{diff:.2f}bb</span><span class="ev-note">{note}</span></div>\n'
+        player, diff = next(iter(allin_ev_diffs.items()))
+        # オールイン発生ハンド数をhands引数から算出
+        ev_count = sum(
+            1 for h in (hands or [])
+            for p in h.get("players", [])
+            if p.get("is_hero") and h.get("result", {}).get("allin_ev", {})
+        )
+        sign = "+" if diff >= 0 else ""
+        if diff > 0:
+            ev_color = "#e94560"
+            ev_verdict = "運が悪かった（EV より実収支が悪い）"
+            ev_detail = f"Heroはオールインで期待値通りなら {sign}{diff:.2f}bb 多く取れていた"
+        else:
+            ev_color = "#4caf93"
+            ev_verdict = "運が良かった（EV より実収支が良い）"
+            ev_detail = f"Heroはオールインで期待値より {abs(diff):.2f}bb 多く得た"
         ev_html = f"""
-  <div class="section">
-    <div class="section-title">&#x1F3B2; All-in EV差（実収支との差・運の影響）</div>
-    <div class="ev-list">{ev_rows}</div>
-    <div class="ev-hint">プラス = EVより悪い結果（運が悪かった）　マイナス = EVより良い結果（運が良かった）</div>
+  <div class="section" style="padding:10px 16px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-size:11px;color:#888">&#x1F3B2; All-in EV差</span>
+      <span style="font-size:22px;font-weight:bold;color:{ev_color}">{sign}{diff:.2f}bb</span>
+      <span style="font-size:12px;color:{ev_color};font-weight:bold">{_esc(ev_verdict)}</span>
+      <span style="font-size:11px;color:#666">{_esc(ev_detail)}（{ev_count}手）</span>
+    </div>
+  </div>"""
+
+    # ─── 青線/赤線 ハンド一覧 ──────────────────────────────────────────────
+    # ダーク背景向けスートカラー（♠黒→グレー、♣濃緑→明緑）
+    _SUIT_COLORS = {'♠': '#c0c0c0', '♥': '#ff6b6b', '♦': '#5ba8ff', '♣': '#55cc55'}
+    def _card_html(s):
+        if not s: return ""
+        def _r(m):
+            c = _SUIT_COLORS.get(m.group(2), '#000')
+            return f'{_esc(m.group(1))}<span style="color:{c}">{m.group(2)}</span>'
+        return _re.sub(r'([23456789TJQKA]{1,2})([\u2660\u2665\u2666\u2663])', _r, str(s))
+
+    def _fmt_bb(val):
+        try:
+            n = float(val)
+            if n > 0: return f"+{n:.2f}"
+            if n < 0: return f"{n:.2f}"
+            return "0"
+        except Exception: return "—"
+
+    def _opp_cards(hand):
+        others = [p for p in hand.get("players", []) if not p.get("is_hero")]
+        if not others: return ""
+        winners = [w.get("name") for w in hand.get("result", {}).get("winners", [])]
+        opp = next((p for p in others if p.get("name") in winners), others[0])
+        return "".join(opp.get("hole_cards", []))
+
+    def _board_at(hand, last_st):
+        order = ["flop", "turn", "river"]
+        if last_st == "preflop": return ""
+        idx = order.index(last_st) if last_st in order else len(order) - 1
+        cards = []
+        for s in order[:idx + 1]:
+            board = hand.get("streets", {}).get(s, {}).get("board", [])
+            cards.extend(c for c in board if c and c != "-")
+        return " ".join(cards)
+
+    _ST_JP = {"preflop": "PF", "flop": "F", "turn": "T", "river": "R"}
+    _BLUE_ORDER = ["value_or_bluff_success", "bluff_catch", "bluff_failed", "call_lost"]
+    _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
+
+    # ダーク背景向けカテゴリバッジ色（暗めのbg + 明るいfg）
+    _CAT_COLORS = {
+        "value_or_bluff_success": ("#1a3d2a", "#6dd49a"),
+        "bluff_catch":            ("#1a2d40", "#7ec8e3"),
+        "bluff_failed":           ("#3d1a22", "#f47b8a"),
+        "call_lost":              ("#3d1a22", "#f47b8a"),
+        "hero_aggression_won":    ("#1a3d2a", "#6dd49a"),
+        "bad_fold":               ("#3d1a22", "#f47b8a"),
+        "nice_fold":              ("#1e3020", "#a0cfa0"),
+        "fold_unknown":           ("#2e2a14", "#c8a840"),
+    }
+
+    def _build_hand_table(filtered_hands, cat_order):
+        html = ""
+        for cat in cat_order:
+            cat_hands = [h for h in filtered_hands
+                         if h.get("bluered_classification", {}).get("category") == cat]
+            cat_hands.sort(key=lambda h: (
+                ["preflop","flop","turn","river"].index(
+                    h.get("bluered_classification", {}).get("last_street", "preflop")
+                ),
+                h.get("hand_number", 0)
+            ))
+            if not cat_hands: continue
+            cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
+            cat_pl = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
+            pl_color = "#4caf93" if cat_pl > 0 else "#e94560" if cat_pl < 0 else "#888"
+            bg, fg = _CAT_COLORS.get(cat, ("#eee", "#333"))
+            needs_api_cnt = sum(1 for h in cat_hands if h.get("bluered_classification", {}).get("needs_api"))
+            api_badge = f' <span style="color:#d97706;font-size:10px">★要AI:{needs_api_cnt}</span>' if needs_api_cnt else ""
+            html += f'<tr class="cat-hdr"><td colspan="6"><span style="background:{bg};color:{fg};padding:1px 6px;border-radius:3px;font-size:11px;font-weight:bold">{_esc(cat_label)}</span> {len(cat_hands)}手 <span style="float:right;color:{pl_color};font-weight:bold">{_fmt_bb(cat_pl)}bb</span>{api_badge}</td></tr>\n'
+            for h in cat_hands:
+                clf = h.get("bluered_classification", {})
+                last_st = clf.get("last_street", "river")
+                hero_cards = "".join(h.get("hero_cards", []))
+                opp_c = _opp_cards(h)
+                board = _board_at(h, last_st)
+                pl = float(h.get("hero_result_bb", 0))
+                pl_c = "#4caf93" if pl > 0 else "#e94560" if pl < 0 else "#888"
+                needs_api = clf.get("needs_api")
+                row_bg = "background:#2a2214;" if needs_api else ""
+                api_mark = '<span style="color:#c8a840;font-size:9px">★</span>' if needs_api else ""
+                html += f'<tr style="{row_bg}"><td style="color:#888;font-size:10px">{api_mark}H{h.get("hand_number","")}</td><td style="text-align:center;font-weight:bold;font-size:11px">{_ST_JP.get(last_st,last_st)}</td><td>{_card_html(hero_cards)}</td><td>{_card_html(opp_c) if opp_c else "<span style=\'color:#555\'>—</span>"}</td><td style="font-size:10px">{_card_html(board) if board else "<span style=\'color:#555\'>—</span>"}</td><td style="text-align:right;color:{pl_c};font-weight:bold">{_fmt_bb(pl)}</td></tr>\n'
+        return html
+
+    hands_html = ""
+    if hands:
+        blue_hands = [h for h in hands if h.get("bluered_classification", {}).get("line") == "blue"]
+        red_hands  = [h for h in hands if h.get("bluered_classification", {}).get("line") == "red"]
+        blue_pl = sum(float(h.get("hero_result_bb", 0)) for h in blue_hands)
+        red_pl  = sum(float(h.get("hero_result_bb", 0)) for h in red_hands)
+        blue_pl_c = "#4caf93" if blue_pl > 0 else "#e94560" if blue_pl < 0 else "#888"
+        red_pl_c  = "#4caf93" if red_pl  > 0 else "#e94560" if red_pl  < 0 else "#888"
+        blue_rows = _build_hand_table(blue_hands, _BLUE_ORDER)
+        red_rows  = _build_hand_table(red_hands, _RED_ORDER)
+        th = '<th style="background:#2E4057;color:#fff;padding:4px 6px;font-size:11px;text-align:center">'
+        td_hdr = "border:1px solid #334;padding:2px 4px;font-size:11px;vertical-align:middle;"
+        hands_html = f"""
+  <div class="section" id="hand-list-section">
+    <div class="section-title">&#x1F4CB; 青線 / 赤線 ハンド一覧
+      <button onclick="document.getElementById('hand-list-body').style.display=document.getElementById('hand-list-body').style.display==='none'?'':'none'" style="float:right;padding:2px 10px;background:transparent;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:11px">折りたたむ</button>
+    </div>
+    <div id="hand-list-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;color:#7ec8e3;font-weight:bold;margin-bottom:6px">&#x1F535; 青線 {len(blue_hands)}手 &nbsp; <span style="color:{blue_pl_c}">{_fmt_bb(blue_pl)}bb</span></div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr>{th}#</th>{th}St</th>{th}Hero</th>{th}相手</th>{th}Board</th>{th}損益</th></tr></thead>
+          <tbody style="color:#ddd">{blue_rows or '<tr><td colspan="6" style="text-align:center;color:#555;padding:8px">該当なし</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div>
+        <div style="font-size:12px;color:#e94560;font-weight:bold;margin-bottom:6px">&#x1F534; 赤線 {len(red_hands)}手 &nbsp; <span style="color:{red_pl_c}">{_fmt_bb(red_pl)}bb</span></div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr>{th}#</th>{th}St</th>{th}Hero</th>{th}相手</th>{th}Board</th>{th}損益</th></tr></thead>
+          <tbody style="color:#ddd">{red_rows or '<tr><td colspan="6" style="text-align:center;color:#555;padding:8px">該当なし</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+    </div>
   </div>"""
 
     # APIキーのデフォルト値
@@ -1580,29 +1721,22 @@ body {{
   text-decoration: none; transition: border-color .2s, color .2s;
 }}
 .btn-back:hover {{ border-color: #e94560; color: #e94560; }}
-.container {{ max-width: 700px; margin: 0 auto; }}
-/* サマリー */
-.summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }}
-.stat-card {{ background: #16213e; border-radius: 12px; padding: 16px; text-align: center; }}
-.stat-label {{ font-size: 11px; color: #888; margin-bottom: 6px; }}
-.stat-value {{ font-size: 28px; font-weight: bold; }}
+.container {{ max-width: 1100px; margin: 0 auto; }}
+/* サマリーストリップ */
+.summary {{ display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }}
+.stat-card {{ background: #16213e; border-radius: 8px; padding: 8px 16px;
+  display: flex; align-items: center; gap: 10px; }}
+.stat-label {{ font-size: 11px; color: #888; white-space: nowrap; }}
+.stat-value {{ font-size: 20px; font-weight: bold; }}
 /* セクション */
-.section {{ background: #16213e; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }}
-.section-title {{ font-size: 14px; font-weight: bold; color: #e94560; margin-bottom: 14px; }}
+.section {{ background: #16213e; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }}
+.section-title {{ font-size: 13px; font-weight: bold; color: #e94560; margin-bottom: 8px; }}
 /* カテゴリ */
 .cat-row {{ display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0; border-bottom: 1px solid #222; }}
+  padding: 4px 0; border-bottom: 1px solid #1e2535; }}
 .cat-row:last-child {{ border-bottom: none; }}
-.cat-label {{ font-size: 13px; }}
-.cat-count {{ font-size: 16px; font-weight: bold; color: #eee; min-width: 32px; text-align: right; }}
-/* EV */
-.ev-list {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }}
-.ev-row {{ display: flex; align-items: center; gap: 12px; padding: 10px 14px;
-  background: #0f0f1a; border-radius: 8px; }}
-.ev-name {{ font-size: 13px; color: #ccc; min-width: 100px; }}
-.ev-val {{ font-size: 18px; font-weight: bold; }}
-.ev-note {{ font-size: 11px; color: #666; flex: 1; }}
-.ev-hint {{ font-size: 11px; color: #555; }}
+.cat-label {{ font-size: 12px; }}
+.cat-count {{ font-size: 13px; font-weight: bold; color: #eee; min-width: 28px; text-align: right; }}
 /* アクションエリア */
 .actions {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }}
 .action-card {{ background: #16213e; border-radius: 12px; padding: 24px; text-align: center; }}
@@ -1639,6 +1773,13 @@ body {{
 .field-group input:focus {{ border-color: #e94560; }}
 .key-hint {{ font-size: 11px; color: #555; margin-top: 4px; }}
 .key-hint a {{ color: #e94560; text-decoration: none; }}
+/* ハンド一覧テーブル */
+.cat-hdr td {{ background: #1e2a3a; font-size: 11px; padding: 3px 6px; border-bottom: 1px solid #334; }}
+#hand-list-section table td {{ padding: 3px 5px; border-bottom: 1px solid #1e2535; }}
+#hand-list-section table tr:hover td {{ background: rgba(255,255,255,0.04); }}
+@media (max-width: 800px) {{
+  #hand-list-section > div > div {{ grid-template-columns: 1fr !important; }}
+}}
 @media (max-width: 540px) {{
   .summary {{ grid-template-columns: 1fr 1fr; }}
   .actions {{ grid-template-columns: 1fr; }}
@@ -1654,18 +1795,18 @@ body {{
 
 <div class="container">
 
-  <!-- サマリー -->
+  <!-- サマリー（1行ストリップ） -->
   <div class="summary">
     <div class="stat-card">
       <div class="stat-label">総ハンド数</div>
       <div class="stat-value" style="color:#7ec8e3">{total_hands}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">青線</div>
+      <div class="stat-label">🔵 青線</div>
       <div class="stat-value" style="color:#7ec8e3">{blue_count}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">赤線</div>
+      <div class="stat-label">🔴 赤線</div>
       <div class="stat-value" style="color:#e94560">{red_count}</div>
     </div>
     <div class="stat-card">
@@ -1682,6 +1823,8 @@ body {{
 
   {ev_html}
 
+  {hands_html}
+
   <!-- アクション選択 -->
   <div class="actions">
 
@@ -1690,7 +1833,7 @@ body {{
       <div class="action-icon">&#x1F4C4;</div>
       <div class="action-title">PDFレポート生成</div>
       <div class="action-desc">APIなし・無料<br>分類結果をPDFに出力</div>
-      <form method="post" action="/generate_pdf/{job_id}">
+      <form method="post" action="/generate_pdf/{job_id}" target="_blank">
         <button type="submit" class="btn-primary">&#x1F4CA; PDFを生成</button>
       </form>
     </div>
@@ -1703,7 +1846,7 @@ body {{
       <div class="action-time">推定時間: {ai_time_str}</div>
       <button type="button" class="btn-secondary" onclick="toggleAI()">&#x1F916; AI分析を開始</button>
       <div id="ai-panel">
-        <form method="post" action="/start_ai/{job_id}" id="ai-form">
+        <form method="post" action="/start_ai/{job_id}" id="ai-form" target="_blank">
           <div class="field-group">
             <label>Gemini API キー</label>
             <input type="password" name="api_key" id="ai-key"

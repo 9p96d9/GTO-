@@ -210,7 +210,13 @@ def compute_quick_stats(parsed_data: dict) -> dict:
     if not hands:
         return {"error": "ハンドが見つかりませんでした"}
 
-    hero_name = detect_hero(hands)
+    # parse.py の is_hero フラグが使えれば優先、なければ frequency-based フォールバック
+    hero_name_from_flag = next(
+        (p["name"] for h in hands for p in h.get("players", []) if p.get("is_hero")),
+        None,
+    )
+    hero_name = hero_name_from_flag or detect_hero(hands)
+
     hero_hands = [
         h for h in hands
         if any(p.get("name") == hero_name for p in h.get("players", []))

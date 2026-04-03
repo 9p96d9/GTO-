@@ -7,12 +7,43 @@
 const fs        = require("fs");
 const path      = require("path");
 const puppeteer = require("puppeteer");
-require("dotenv").config();
+const SUIT_COLORS = { "♠": "#000000", "♥": "#E00000", "♦": "#0055CC", "♣": "#007700" };
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+// 青線/赤線カテゴリの表示順（generate_noapilist.js と統一）
+const BLUE_CAT_ORDER = ["value_or_bluff_success", "bluff_catch", "bluff_failed", "call_lost"];
+const RED_CAT_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"];
+const ALL_CAT_ORDER  = [...BLUE_CAT_ORDER, ...RED_CAT_ORDER];
+const STREET_ORDER   = ["preflop", "flop", "turn", "river"];
+const CAT_LABELS = {
+  value_or_bluff_success: "🔵 バリュー/ブラフ成功",
+  bluff_catch:            "🔵 ブラフキャッチ",
+  bluff_failed:           "🔵 ブラフ失敗",
+  call_lost:              "🔵 コール負け",
+  hero_aggression_won:    "🔴 アグレッション勝利",
+  bad_fold:               "🔴 バッドフォールド",
+  nice_fold:              "🔴 ナイスフォールド",
+  fold_unknown:           "🔴 フォールド(要確認)",
+};
+const CAT_BG = {
+  value_or_bluff_success: "#E0FFE0", bluff_catch: "#E0F0FF",
+  bluff_failed: "#FFE0E0", call_lost: "#FFE0E0",
+  hero_aggression_won: "#E0FFE0", bad_fold: "#FFE0E0",
+  nice_fold: "#EEFFEE", fold_unknown: "#FFF8E0",
+};
 
-const SUIT_COLORS  = { "♠": "#000000", "♥": "#E00000", "♦": "#0055CC", "♣": "#007700" };
-const GEMINI_MODEL = "gemini-2.5-flash";
+/** 手をカテゴリ → ストリート → 番号 順にソート */
+function sortByCategory(hands) {
+  return hands.slice().sort((a, b) => {
+    const ca = a.bluered_classification?.category || "";
+    const cb = b.bluered_classification?.category || "";
+    const ia = ALL_CAT_ORDER.indexOf(ca); const ib = ALL_CAT_ORDER.indexOf(cb);
+    const oa = ia < 0 ? 999 : ia;        const ob = ib < 0 ? 999 : ib;
+    if (oa !== ob) return oa - ob;
+    const sa = STREET_ORDER.indexOf(a.bluered_classification?.last_street || "preflop");
+    const sb = STREET_ORDER.indexOf(b.bluered_classification?.last_street || "preflop");
+    return sa !== sb ? sa - sb : (a.hand_number || 0) - (b.hand_number || 0);
+  });
+}
 
 // ─── ユーティリティ ──────────────────────────────────────────────────────────
 
@@ -318,12 +349,22 @@ function buildSection1Html(posStats) {
 <table class="data-table">${colgroup(ws)}${thead(hdrs)}<tbody>${rows}</tbody></table>`;
 }
 
-// ── セクション2: 3BETポット ──
+// ── セクション2: 3BETポット（カテゴリ順） ──
 function buildSection2Html(hands) {
-  const threeBetHands = hands.filter(h => h.is_3bet_pot);
+  const sorted = sortByCategory(hands.filter(h => h.is_3bet_pot));
   const hdrs = ["#","時刻","ポジ","Hero手札","ボード","アクション概要","結果(bb)","GTO評価"];
   const ws   = ["4%","6%","6%","8%","12%","22%","8%","34%"];
-  const rows = threeBetHands.map((h, i) => {
+
+  let rows = "";
+  let prevCat = null;
+  for (const h of sorted) {
+    const cat = h.bluered_classification?.category || "";
+    if (cat !== prevCat) {
+      prevCat = cat;
+      const catLabel = CAT_LABELS[cat] || cat;
+      const catBg    = CAT_BG[cat] || "#f0f0f0";
+      rows += `<tr><td colspan="8" style="background:${catBg};font-weight:700;font-size:7.5pt;padding:2pt 4pt;border:1px solid #bbb">${esc(catLabel)}</td></tr>`;
+    }
     const board = [
       ...(h.streets?.flop?.board  || []),
       ...(h.streets?.turn?.board  || []),
@@ -332,8 +373,8 @@ function buildSection2Html(hands) {
     const ev     = h.gto_evaluation || "";
     const rating = getGtoRating(ev);
     const cls    = rating.startsWith("❌") ? "row-error" : rating.startsWith("⚠️") ? "row-warn"
-                 : rating.startsWith("✅") ? "row-good"  : i % 2 === 0 ? "row-even" : "";
-    return `
+                 : rating.startsWith("✅") ? "row-good"  : "row-even";
+    rows += `
     <tr class="${cls}">
       <td>H${esc(h.hand_number)}</td>
       <td>${esc(fmtTime(h.datetime))}</td>
@@ -344,25 +385,36 @@ function buildSection2Html(hands) {
       <td style="text-align:right">${esc(fmtBb(h.hero_result_bb))}</td>
       <td style="white-space:pre-line">${esc(gtoFullDisplay(ev))}</td>
     </tr>`;
-  }).join("");
+  }
   return `
-<h2 class="section-title">② 3BETポット専用分析</h2>
-<p class="section-sub">対象ハンド数: ${threeBetHands.length}ハンド</p>
+<h2 class="section-title">① 3BETポット専用分析</h2>
+<p class="section-sub">対象ハンド数: ${sorted.length}ハンド　｜　青線/赤線カテゴリ順で表示</p>
 <table class="data-table">${colgroup(ws)}${thead(hdrs)}<tbody>${rows}</tbody></table>`;
 }
 
-// ── セクション3: 全ハンドアクション一覧（縦向き12列）──
+// ── セクション3: 全ハンドアクション一覧（カテゴリ順）──
 function buildSection3Html(hands) {
+  const sorted = sortByCategory(hands);
   const hdrs = ["#","ポジ","Hero手札","相手手札","ボード(F)","フロップ","T","ターン","R","リバー","結果","GTO評価・改善点"];
   const ws   = ["3%","4%","6%","6%","7%","9%","3%","8%","3%","8%","6%","37%"];
-  const rows = hands.map((h, idx) => {
+
+  let rows = "";
+  let prevCat = null;
+  for (const h of sorted) {
+    const cat = h.bluered_classification?.category || "";
+    if (cat !== prevCat) {
+      prevCat = cat;
+      const catLabel = CAT_LABELS[cat] || cat;
+      const catBg    = CAT_BG[cat] || "#f0f0f0";
+      rows += `<tr><td colspan="12" style="background:${catBg};font-weight:700;font-size:6pt;padding:1.5pt 3pt;border:1px solid #bbb">${esc(catLabel)}</td></tr>`;
+    }
     const ev      = h.gto_evaluation || "";
     const rating  = getGtoRating(ev);
     const cls     = rating.startsWith("❌") ? "row-error"
                   : rating.startsWith("⚠️") ? "row-warn"
                   : rating.startsWith("🎲") ? "row-cooler"
                   : rating.startsWith("✅") ? "row-good"
-                  : idx % 2 === 0           ? "row-even" : "";
+                  : "row-even";
     const heroCards = (h.hero_cards || []).join("");
     const oppCards  = getOpponentCards(h);
     const flop      = (h.streets?.flop?.board || []).join(" ");
@@ -370,7 +422,7 @@ function buildSection3Html(hands) {
     const riverCard = getBoardCard(h, "river", 0);
     const plNum     = h.hero_result_bb || 0;
     const plColor   = plNum > 0 ? "#27ae60" : plNum < 0 ? "#e74c3c" : "#666";
-    return `
+    rows += `
     <tr class="${cls}">
       <td>H${esc(h.hand_number)}</td>
       <td style="font-weight:700;text-align:center">${esc(h.hero_position || "")}</td>
@@ -385,10 +437,10 @@ function buildSection3Html(hands) {
       <td style="text-align:right;color:${plColor};font-weight:700">${esc(fmtBb(plNum))}</td>
       <td style="white-space:pre-line">${esc(gtoFullDisplay(ev))}</td>
     </tr>`;
-  }).join("");
+  }
   return `
-<h2 class="section-title">③ 全ハンドアクション一覧</h2>
-<p class="section-sub">スートカラー: ♠黒 ♥赤 ♦青 ♣緑 ｜ H=Hero V=Villain ｜ ✅良好 ⚠️改善 ❌エラー 🎲クーラー</p>
+<h2 class="section-title">② 全ハンドアクション一覧</h2>
+<p class="section-sub">スートカラー: ♠黒 ♥赤 ♦青 ♣緑 ｜ H=Hero V=Villain ｜ ✅良好 ⚠️改善 ❌エラー 🎲クーラー ｜ 青線/赤線カテゴリ順で表示</p>
 <table class="data-table table-s3">${colgroup(ws)}${thead(hdrs)}<tbody>${rows}</tbody></table>`;
 }
 
@@ -676,26 +728,12 @@ async function main() {
   const minDate = dates.length ? dates.reduce((a, b) => a < b ? a : b) : today;
   const maxDate = dates.length ? dates.reduce((a, b) => a > b ? a : b) : today;
 
-  const totalPL       = hands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
-  const posStats      = calcPositionStats(hands);
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error("[ERROR] GEMINI_API_KEY が .env に設定されていません");
-    process.exit(1);
-  }
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  console.log("  セクション5をGemini APIで生成中...");
-  const improvementText = await fetchImprovement(genAI, hands);
+  const totalPL = hands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
 
   const html = buildFullHtml([
     buildTitleHtml(minDate, maxDate, hands.length, totalPL),
-    buildSection1Html(posStats),
     buildSection2Html(hands),
     buildSection3Html(hands),
-    buildSection4Html(hands),
-    buildSection5Html(improvementText),
   ]);
 
   const dateStr = minDate === maxDate ? minDate : `${minDate}_${maxDate}`;

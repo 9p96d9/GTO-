@@ -20,7 +20,10 @@ ACTIONS = {"Fold", "Check", "Bet", "Call", "Raise"}
 SUITS_MAP = {"♠": "spade", "♥": "heart", "♦": "diamond", "♣": "club"}
 
 
-def is_hero(name: str) -> bool:
+def is_hero(name: str, specified_hero: str = "") -> bool:
+    """Hero判定: ①ユーザー指定名（完全一致・大文字小文字無視）② 既存パターン(Guest/Weq***)"""
+    if specified_hero:
+        return name.strip().lower() == specified_hero.strip().lower()
     return name in HERO_NAMES or bool(HERO_PATTERN.match(name))
 
 
@@ -100,7 +103,7 @@ SKIP_LINES = {
 }
 
 
-def parse_hand(raw_lines: list[str]) -> dict:
+def parse_hand(raw_lines: list[str], specified_hero: str = "") -> dict:
     """1ハンド分の行リストをパースしてdictを返す"""
     lines = [l.strip() for l in raw_lines if l.strip()]
 
@@ -214,7 +217,7 @@ def parse_hand(raw_lines: list[str]) -> dict:
                     player = {
                         "position": pos,
                         "name": name_line,
-                        "is_hero": is_hero(name_line),
+                        "is_hero": is_hero(name_line, specified_hero),
                         "hole_cards": [normalize_card(line2), normalize_card(line3)],
                         "result_bb": parse_amount(line4),
                     }
@@ -227,7 +230,7 @@ def parse_hand(raw_lines: list[str]) -> dict:
                     player = {
                         "position": pos,
                         "name": name_line,
-                        "is_hero": is_hero(name_line),
+                        "is_hero": is_hero(name_line, specified_hero),
                         "hole_cards": [normalize_card(line3), normalize_card(line4)],
                         "result_bb": parse_amount(line2),
                     }
@@ -628,7 +631,12 @@ def update_opponents_summary(hands: list, source_file: str, summary_path: str, s
 
 # ── メイン処理 ──────────────────────────────────────────────────────────────────
 
-def parse_file(input_path: str) -> dict:
+def parse_file(input_path: str, hero_name: str = "") -> dict:
+    """
+    hero_name: ユーザー指定のプレイヤー名。
+      - 指定あり → その名前（大文字小文字無視）を Hero として扱う
+      - 指定なし → HERO_NAMES / HERO_PATTERN でマッチ、それも失敗なら最多登場プレイヤーをフォールバック
+    """
     with open(input_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -640,28 +648,57 @@ def parse_file(input_path: str) -> dict:
         if not raw:
             continue
         try:
-            h = parse_hand(raw)
+            h = parse_hand(raw, specified_hero=hero_name)
             if h["hand_number"] > 0 or h["hand_id"]:
                 hands.append(h)
         except Exception as e:
             print(f"  [WARN] hand parse error: {e}", file=sys.stderr)
 
+    # ── Hero が1件もマッチしなかった場合の自動検出 ────────────────────────────
+    # 手牌が見えるプレイヤーだけが players[] に入る構造のため、
+    # 最多登場プレイヤー ≒ 全ハンドで手牌が表示される Hero と判断できる
+    hero_found = any(
+        p.get("is_hero") for h in hands for p in h.get("players", [])
+    )
+    if not hero_found and hands:
+        from collections import Counter
+        name_counts: Counter = Counter(
+            p["name"] for h in hands for p in h.get("players", []) if p.get("name")
+        )
+        if name_counts:
+            auto_name = name_counts.most_common(1)[0][0]
+            print(f"  [Hero自動検出] 最多登場プレイヤーをHeroに設定: {auto_name!r}", file=sys.stderr)
+            for h in hands:
+                for p in h["players"]:
+                    p["is_hero"] = (p["name"] == auto_name)
+                for p in h["players"]:
+                    if p["is_hero"]:
+                        h["hero_position"] = p["position"]
+                        h["hero_cards"] = p["hole_cards"]
+                        h["hero_result_bb"] = p["result_bb"]
+                        break
+
     return {
         "source_file": os.path.basename(input_path),
         "parsed_at": datetime.now().isoformat(),
+        "hero_name": hero_name,
         "hands": hands,
     }
 
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python scripts/parse.py <input.txt> <output.json>")
-        sys.exit(1)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("input_path")
+    ap.add_argument("output_path")
+    ap.add_argument("--hero-name", default="", help="Hero のプレイヤー名（省略時は自動検出）")
+    args = ap.parse_args()
 
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
+    input_path  = args.input_path
+    output_path = args.output_path
+    hero_name   = args.hero_name
 
-    result = parse_file(input_path)
+    result = parse_file(input_path, hero_name=hero_name)
     hand_count = len(result["hands"])
 
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
