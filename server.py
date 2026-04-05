@@ -696,6 +696,27 @@ async def download_pdf(name: str):
     return FileResponse(fpath, media_type="application/pdf", filename=name)
 
 
+@app.get("/download-extension")
+async def download_extension():
+    """Chrome拡張機能をZIPにまとめてダウンロード"""
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+
+    ext_dir = ROOT / "extension"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fpath in sorted(ext_dir.rglob("*")):
+            if fpath.is_file() and fpath.name != "README.md":
+                zf.write(fpath, fpath.relative_to(ext_dir))
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=pokergto-extension.zip"},
+    )
+
+
 @app.post("/analyze/quick")
 async def analyze_quick(file: UploadFile):
     """クイック解析: Gemini API不要、即座にダッシュボードを返す"""
@@ -2756,6 +2777,17 @@ h1 { font-size: 20px; color: #e94560; }
   font-size: 12px;
 }
 .btn-logout:hover { border-color: #e94560; color: #e94560; }
+.btn-dl-ext {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #4a7a4a;
+  border-radius: 6px;
+  color: #5cb85c;
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: none;
+}
+.btn-dl-ext:hover { background: #1a3a1a; }
 .container { max-width: 900px; margin: 0 auto; }
 .loading { text-align: center; color: #888; padding: 60px; }
 .empty { text-align: center; color: #666; padding: 60px; }
@@ -2890,6 +2922,7 @@ h1 { font-size: 20px; color: #e94560; }
 <div class="header">
   <h1>🃏 PokerGTO</h1>
   <div class="user-info">
+    <a href="/download-extension" class="btn-dl-ext" title="Chrome拡張機能をダウンロード">⬇ 拡張機能ZIP</a>
     <span id="user-email"></span>
     <button class="btn-logout" id="btn-logout">ログアウト</button>
   </div>
