@@ -2760,6 +2760,55 @@ h1 { font-size: 20px; color: #e94560; }
 .loading { text-align: center; color: #888; padding: 60px; }
 .empty { text-align: center; color: #666; padding: 60px; }
 .empty p { margin-bottom: 8px; }
+
+/* 一括操作バー */
+.bulk-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  background: #0f3460;
+  border-radius: 10px;
+  padding: 12px 18px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.bulk-bar.visible { display: flex; }
+.bulk-count { font-size: 13px; color: #aad4ff; flex: 1; }
+.btn-bulk-analyze {
+  padding: 8px 18px;
+  background: #e94560;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-bulk-analyze:hover { background: #c73652; }
+.btn-bulk-download {
+  padding: 8px 18px;
+  background: #1a4a30;
+  border: none;
+  border-radius: 8px;
+  color: #5cb85c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-bulk-download:hover { background: #255a38; }
+.btn-bulk-clear {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #445;
+  border-radius: 6px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-bulk-clear:hover { border-color: #aaa; color: #aaa; }
+
 .session-card {
   background: #16213e;
   border-radius: 12px;
@@ -2769,6 +2818,19 @@ h1 { font-size: 20px; color: #e94560; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  transition: background 0.15s;
+}
+.session-card.selected { background: #1a2e50; outline: 1px solid #0f3460; }
+.cb-wrap {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+.cb-wrap input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #e94560;
 }
 .session-info { flex: 1; }
 .session-date { font-size: 13px; color: #888; margin-bottom: 4px; }
@@ -2781,10 +2843,10 @@ h1 { font-size: 20px; color: #e94560; }
   font-size: 11px;
   font-weight: 600;
 }
-.badge-pending  { background: #333; color: #888; }
+.badge-pending   { background: #333; color: #888; }
 .badge-analyzing { background: #1a3a5c; color: #5bc0de; }
-.badge-done     { background: #1a3a1a; color: #5cb85c; }
-.badge-error    { background: #3a1a1a; color: #e94560; }
+.badge-done      { background: #1a3a1a; color: #5cb85c; }
+.badge-error     { background: #3a1a1a; color: #e94560; }
 .actions { display: flex; gap: 8px; align-items: center; }
 .btn-analyze {
   padding: 8px 18px;
@@ -2834,6 +2896,15 @@ h1 { font-size: 20px; color: #e94560; }
 </div>
 <div class="container">
   <div id="alert-area"></div>
+
+  <!-- 一括操作バー -->
+  <div class="bulk-bar" id="bulk-bar">
+    <span class="bulk-count" id="bulk-count">0件選択中</span>
+    <button class="btn-bulk-analyze" id="btn-bulk-analyze">まとめて解析</button>
+    <button class="btn-bulk-download" id="btn-bulk-download">テキストを保存</button>
+    <button class="btn-bulk-clear" id="btn-bulk-clear">選択解除</button>
+  </div>
+
   <div id="content" class="loading">読み込み中...</div>
 </div>
 
@@ -2847,6 +2918,7 @@ h1 { font-size: 20px; color: #e94560; }
   const auth = getAuth(app);
 
   let currentUser = null;
+  let selectedIds = new Set();
 
   function showAlert(msg) {
     document.getElementById("alert-area").innerHTML =
@@ -2884,6 +2956,32 @@ h1 { font-size: 20px; color: #e94560; }
     return `<span class="badge badge-${cls}">${label}</span>`;
   }
 
+  function updateBulkBar() {
+    const bar = document.getElementById("bulk-bar");
+    const count = document.getElementById("bulk-count");
+    if (selectedIds.size > 0) {
+      bar.classList.add("visible");
+      count.textContent = `${selectedIds.size}件選択中`;
+    } else {
+      bar.classList.remove("visible");
+    }
+  }
+
+  function toggleSelect(sessionId) {
+    const card = document.getElementById(`card-${sessionId}`);
+    const cb = document.getElementById(`cb-${sessionId}`);
+    if (selectedIds.has(sessionId)) {
+      selectedIds.delete(sessionId);
+      card.classList.remove("selected");
+      cb.checked = false;
+    } else {
+      selectedIds.add(sessionId);
+      card.classList.add("selected");
+      cb.checked = true;
+    }
+    updateBulkBar();
+  }
+
   function renderSessions(sessions) {
     const el = document.getElementById("content");
     if (!sessions.length) {
@@ -2907,13 +3005,16 @@ h1 { font-size: 20px; color: #e94560; }
         ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
         : "";
 
-      return `<div class="session-card" id="card-${s.id}">
+      return `<div class="session-card" id="card-${s.id}" onclick="toggleSelect('${s.id}')">
+        <div class="cb-wrap" onclick="event.stopPropagation()">
+          <input type="checkbox" id="cb-${s.id}" onclick="toggleSelect('${s.id}')">
+        </div>
         <div class="session-info">
           <div class="session-date">${date}</div>
           <div class="session-title">${s.filename || "upload.txt"}</div>
           <div class="session-meta">${s.hand_count || 0} ハンド　${statusBadge(s.status)}</div>
         </div>
-        <div class="actions">
+        <div class="actions" onclick="event.stopPropagation()">
           ${resultBtn}
           ${analyzeBtn}
           <button class="btn-delete" onclick="deleteSession('${s.id}', this)">削除</button>
@@ -2950,12 +3051,34 @@ h1 { font-size: 20px; color: #e94560; }
         headers: { "Authorization": "Bearer " + token }
       });
       if (!res.ok) { showAlert("削除失敗"); btn.disabled = false; return; }
+      selectedIds.delete(sessionId);
+      updateBulkBar();
       document.getElementById(`card-${sessionId}`)?.remove();
     } catch (e) {
       showAlert("削除エラー: " + e.message);
       btn.disabled = false;
     }
   };
+
+  // 一括操作ボタン（バックエンド未実装のため現状はアラート）
+  document.getElementById("btn-bulk-analyze").addEventListener("click", async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    showAlert("複数セッション結合解析は近日実装予定です（選択中: " + ids.length + "件）");
+  });
+
+  document.getElementById("btn-bulk-download").addEventListener("click", async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    showAlert("テキストダウンロードは近日実装予定です（選択中: " + ids.length + "件）");
+  });
+
+  document.getElementById("btn-bulk-clear").addEventListener("click", () => {
+    selectedIds.clear();
+    document.querySelectorAll(".session-card").forEach(c => c.classList.remove("selected"));
+    document.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+    updateBulkBar();
+  });
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
     await signOut(auth);
