@@ -1,6 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PokerGTO - ハンドログ送信",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz4TgxItCch603xgAfirUOqZF5wgdS0hlDua7L60GQUC4w6PaZRjwy/XBvAkWTaolQq09Co/8CmCx3uep3xnfmzxHAo5k6MyKzHYzM19ugGHx1dm0pzS9gVcRLR+0nOg12RfgdZfhZc2G3PYEtRxz2OR63ifVGxKujnROrbw8Vfd/Ij4d6Q7LmGao9+/Y2wLylXx9yx6Gcx9IQs0slbNfSIAJbuKkKztfIZ+WbiA8vPLB53og4SwipQzf1m0FI6+KpjLLJnnLRS8uyF3QLHKU+8r36q07lnfViNkSRjEIHsYBC9SlrP/LHONamXDIwmo2vCvKmb6ktYN0HxvXEolr1wIDAQAB",
   "version": "2.0.0",
   "description": "T4のブックマーク一覧からハンドログを収集してPokerGTOサーバーに送信します",
 
