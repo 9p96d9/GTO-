@@ -152,6 +152,95 @@ const CAT_CSS = {
   fold_unknown:           "cat-unknown",
 };
 
+// ─── アクション整形 ───────────────────────────────────────────────────────────
+
+function fmtActions(actions) {
+  const parts = [];
+  for (const a of (actions || [])) {
+    const pos  = a.position || a.name || "?";
+    const act  = a.action || "";
+    const amt  = a.amount_bb;
+    const amtS = amt ? `&nbsp;${amt}bb` : "";
+    if      (act === "Fold")              parts.push(`<span style="color:#999">${esc(pos)}&nbsp;F</span>`);
+    else if (act === "Check")             parts.push(`<span style="color:#666">${esc(pos)}&nbsp;X</span>`);
+    else if (act === "Call")              parts.push(`<span style="color:#0055CC">${esc(pos)}&nbsp;Call${amtS}</span>`);
+    else if (act === "Bet" || act === "Raise") parts.push(`<span style="color:#8a6000;font-weight:bold">${esc(pos)}&nbsp;${esc(act)}${amtS}</span>`);
+    else if (act)                         parts.push(`<span style="color:#555">${esc(pos)}&nbsp;${esc(act)}</span>`);
+  }
+  return parts.join(' <span style="color:#ccc">›</span> ');
+}
+
+// ─── ハンドカード（ストリート別アクション表示） ─────────────────────────────────
+
+function buildHandCard(h) {
+  const clf      = h.bluered_classification || {};
+  const heroCards = (h.hero_cards || []).join("");
+  const heroPos  = h.hero_position || "?";
+  const is3bet   = h.is_3bet_pot || false;
+  const plNum    = h.hero_result_bb || 0;
+  const plCls    = plNum > 0 ? "pl-pos" : plNum < 0 ? "pl-neg" : "";
+  const needsApi = clf.needs_api || false;
+  const cardBg   = needsApi ? "#fffbea" : "#fafafa";
+
+  const badge3bet = is3bet
+    ? '<span style="background:#e8e0ff;color:#5b00cc;font-size:5.5pt;padding:0 3px;border-radius:2px;font-weight:bold">3BET</span> '
+    : "";
+  const apiMark = needsApi
+    ? '<span style="color:#d97706;font-size:6pt">★</span>&nbsp;'
+    : "";
+
+  // 相手プレイヤー
+  const oppParts = [];
+  for (const p of (h.players || [])) {
+    if (!p.is_hero) {
+      const cards = (p.hole_cards || []).join("");
+      const pos   = p.position || "?";
+      if (cards) oppParts.push(`<span style="color:#888;font-size:6.5pt">${esc(pos)}</span>&nbsp;${cardToHtml(cards)}`);
+      else       oppParts.push(`<span style="color:#bbb;font-size:6.5pt">${esc(pos)}</span>`);
+    }
+  }
+  const oppHtml = oppParts.join("&nbsp;&nbsp;") || '<span style="color:#bbb">—</span>';
+
+  // ストリート別アクション
+  const streets = h.streets || {};
+  const stLines = [];
+
+  const pf = streets.preflop;
+  if (Array.isArray(pf) && pf.length) {
+    const acts = fmtActions(pf);
+    if (acts) stLines.push(`<span class="st-lbl">PF</span>&nbsp;${acts}`);
+  }
+
+  for (const [stKey, stLbl] of [["flop","F"],["turn","T"],["river","R"]]) {
+    const s = streets[stKey];
+    if (!s || typeof s !== "object") continue;
+    const boardCards = (s.board || []).filter(c => c && c !== "-");
+    const pot        = s.pot_bb || 0;
+    const actions    = s.actions || [];
+    const boardPart  = boardCards.length
+      ? `<span style="font-size:7.5pt">${cardToHtml(boardCards.join(" "))}</span>`
+      : "";
+    const potPart = `<span style="color:#aaa;font-size:6pt">(${pot}bb)</span>`;
+    const acts    = fmtActions(actions);
+    let line = `<span class="st-lbl">${stLbl}</span>&nbsp;${boardPart}&nbsp;${potPart}`;
+    if (acts) line += `&nbsp;&nbsp;${acts}`;
+    stLines.push(line);
+  }
+
+  return `
+<div class="hand-card" style="background:${cardBg}">
+  <div class="hand-top">
+    <span class="hand-num">${apiMark}H${esc(h.hand_number || "")}</span>
+    ${badge3bet}<span class="hero-pos">${esc(heroPos)}</span>
+    <span class="hand-cards">${cardToHtml(heroCards) || "—"}</span>
+    <span style="color:#bbb;font-size:6.5pt">vs</span>
+    <span class="hand-cards">${oppHtml}</span>
+    <span class="${plCls}" style="margin-left:auto;white-space:nowrap">${fmtBb(plNum)}</span>
+  </div>
+  ${stLines.length ? `<div class="hand-streets">${stLines.join("<br>")}</div>` : ""}
+</div>`;
+}
+
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
 function buildCss() {
@@ -264,6 +353,55 @@ body {
 .pos-table { font-size: 7.5pt; }
 .pos-table th { font-size: 7pt; }
 .pos-table td { font-size: 7pt; padding: 2pt 3pt; }
+
+/* ハンドカード（ストリート別アクション表示） */
+.hand-card {
+  border: 1px solid #dde;
+  border-left: 2px solid #bbc;
+  border-radius: 3px;
+  padding: 2pt 4pt;
+  margin-bottom: 2pt;
+  page-break-inside: avoid;
+}
+.hand-top {
+  display: flex;
+  align-items: center;
+  gap: 4pt;
+  flex-wrap: wrap;
+  margin-bottom: 1.5pt;
+  font-size: 7.5pt;
+}
+.hand-num  { color: #888; font-size: 6.5pt; white-space: nowrap; }
+.hero-pos  { font-weight: 700; color: #2E4057; font-size: 7.5pt; }
+.hand-cards { font-size: 8pt; }
+.hand-streets {
+  font-size: 6.5pt;
+  color: #444;
+  line-height: 1.8;
+  padding-left: 4pt;
+}
+.st-lbl {
+  display: inline-block;
+  background: #e8eaf0;
+  color: #2E4057;
+  font-size: 6pt;
+  font-weight: bold;
+  padding: 0 2px;
+  border-radius: 2px;
+  margin-right: 2pt;
+}
+.cat-section { margin-bottom: 4mm; }
+.cat-hdr {
+  display: flex;
+  align-items: center;
+  gap: 6pt;
+  background: #eef0f4;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  padding: 2pt 4pt;
+  margin: 4pt 0 2pt;
+  font-size: 7pt;
+}
 `;
 }
 
@@ -330,20 +468,16 @@ function buildSection1Html(hands, minDate, maxDate) {
 
 // ─── セクション2/3: 青線/赤線 横並び ─────────────────────────────────────────
 
-/**
- * カテゴリ別 → ストリート別 にグループ化してテーブル行HTMLを生成
- * @param {Array} filteredHands - 青線 or 赤線のハンド配列
- * @param {Array} catOrder      - カテゴリの表示順
- * @param {boolean} showApiFlag - 要AIフラグ列を表示するか
- */
-function buildGroupedRows(filteredHands, catOrder, showApiFlag) {
-  const colspan = showApiFlag ? 7 : 6;
+function buildCategorySection(filteredHands, catOrder) {
   let html = "";
-
   for (const cat of catOrder) {
     const catHands = filteredHands
       .filter(h => h.bluered_classification?.category === cat)
       .sort((a, b) => {
+        // 3BETポット優先、次にラストストリート順
+        const a3 = a.is_3bet_pot ? 0 : 1;
+        const b3 = b.is_3bet_pot ? 0 : 1;
+        if (a3 !== b3) return a3 - b3;
         const ai = STREET_ORDER.indexOf(a.bluered_classification?.last_street || "preflop");
         const bi = STREET_ORDER.indexOf(b.bluered_classification?.last_street || "preflop");
         return ai !== bi ? ai - bi : (a.hand_number || 0) - (b.hand_number || 0);
@@ -351,41 +485,27 @@ function buildGroupedRows(filteredHands, catOrder, showApiFlag) {
 
     if (!catHands.length) continue;
 
-    const clf0      = catHands[0].bluered_classification;
-    const catLabel  = clf0.category_label || cat;
-    const catPL     = catHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
-    const catCss    = CAT_CSS[cat] || "";
+    const clf0     = catHands[0].bluered_classification;
+    const catLabel = clf0.category_label || cat;
+    const catPL    = catHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
+    const catCss   = CAT_CSS[cat] || "";
+    const needsApiCnt = catHands.filter(h => h.bluered_classification?.needs_api).length;
+    const apiBadge = needsApiCnt > 0
+      ? `<span style="color:#d97706;font-size:6pt">★要AI ${needsApiCnt}手</span>` : "";
 
-    html += `<tr class="cat-header">
-      <td colspan="${colspan}">
-        <span class="cat-badge ${catCss}">${esc(catLabel)}</span>
-        &nbsp; ${catHands.length}手
-        <span style="float:right;color:${plColor(catPL)}">${fmtBb(catPL)}</span>
-      </td>
-    </tr>`;
+    html += `
+<div class="cat-hdr">
+  <span class="cat-badge ${catCss}">${esc(catLabel)}</span>
+  <span style="color:#666">${catHands.length}手</span>
+  ${apiBadge}
+  <span style="margin-left:auto;color:${plColor(catPL)};font-weight:bold">${fmtBb(catPL)}</span>
+</div>`;
 
     for (const h of catHands) {
-      const clf    = h.bluered_classification;
-      const lastSt = clf?.last_street || "river";
-      const board  = getBoardAtStreet(h, lastSt);
-      const opp    = getOppCards(h);
-      const plNum  = h.hero_result_bb || 0;
-      const plCls  = plNum > 0 ? "pl-pos" : plNum < 0 ? "pl-neg" : "";
-      const rowCls = showApiFlag && clf?.needs_api ? "row-api" : "";
-
-      html += `<tr class="${rowCls}">
-        <td style="text-align:center;color:#888">H${esc(h.hand_number)}</td>
-        <td style="text-align:center;font-weight:bold">${esc(STREET_JP[lastSt] || lastSt)}</td>
-        <td>${cardToHtml((h.hero_cards || []).join(""))}</td>
-        <td>${opp ? cardToHtml(opp) : '<span style="color:#bbb">—</span>'}</td>
-        <td>${cardToHtml(board) || '<span style="color:#bbb">—</span>'}</td>
-        <td style="text-align:right" class="${plCls}">${esc(fmtBb(plNum))}</td>
-        ${showApiFlag ? `<td style="text-align:center">${clf?.needs_api ? '<span class="api-flag">★</span>' : ''}</td>` : ""}
-      </tr>`;
+      html += buildHandCard(h);
     }
   }
-
-  return html;
+  return html || '<p style="color:#aaa;font-size:7pt;padding:4pt">該当なし</p>';
 }
 
 function buildSection2And3Html(hands) {
@@ -396,25 +516,6 @@ function buildSection2And3Html(hands) {
   const redPL  = redHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
   const needsApiCnt = redHands.filter(h => h.bluered_classification?.needs_api).length;
 
-  const blueRows = buildGroupedRows(blueHands, BLUE_CAT_ORDER, false);
-  const redRows  = buildGroupedRows(redHands, RED_CAT_ORDER, true);
-
-  // 列幅: # | St | Hero | 相手 | Board | 損益 [| AI]
-  const colBlue = `<colgroup>
-    <col style="width:8%"><col style="width:7%"><col style="width:16%">
-    <col style="width:16%"><col style="width:32%"><col style="width:21%">
-  </colgroup>`;
-  const colRed = `<colgroup>
-    <col style="width:7%"><col style="width:7%"><col style="width:15%">
-    <col style="width:15%"><col style="width:29%"><col style="width:19%"><col style="width:8%">
-  </colgroup>`;
-
-  const hdrsBlue = ["#", "St", "Hero", "相手", "Board", "損益(bb)"];
-  const hdrsRed  = ["#", "St", "Hero", "相手", "Board", "損益(bb)", "AI"];
-
-  const noData = (n) =>
-    `<tr><td colspan="${n}" style="text-align:center;color:#aaa;padding:4pt">該当なし</td></tr>`;
-
   return `
 <h2 class="section-title">① 青線 / 赤線 ハンド一覧</h2>
 <div class="two-col">
@@ -422,22 +523,14 @@ function buildSection2And3Html(hands) {
     <p class="section-sub">🔵 青線 ${blueHands.length}手 &nbsp;
       実収支: <strong style="color:${plColor(bluePL)}">${fmtBb(bluePL)}</strong>
     </p>
-    <table class="data-table tbl-s">
-      ${colBlue}
-      <thead><tr>${hdrsBlue.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-      <tbody>${blueRows || noData(6)}</tbody>
-    </table>
+    <div class="cat-section">${buildCategorySection(blueHands, BLUE_CAT_ORDER)}</div>
   </div>
   <div class="col-half">
     <p class="section-sub">🔴 赤線 ${redHands.length}手 &nbsp;
       実収支: <strong style="color:${plColor(redPL)}">${fmtBb(redPL)}</strong>
       &nbsp; ★要AI: ${needsApiCnt}
     </p>
-    <table class="data-table tbl-s">
-      ${colRed}
-      <thead><tr>${hdrsRed.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-      <tbody>${redRows || noData(7)}</tbody>
-    </table>
+    <div class="cat-section">${buildCategorySection(redHands, RED_CAT_ORDER)}</div>
   </div>
 </div>`;
 }
