@@ -1642,12 +1642,106 @@ def classify_result_page(
         "fold_unknown":           ("#2e2a14", "#c8a840"),
     }
 
-    def _build_hand_table(filtered_hands, cat_order):
+    def _fmt_actions(actions):
+        """アクションリストを '→' 区切りの HTML 文字列に変換（ポジション名を使用）"""
+        parts = []
+        for a in actions:
+            pos = a.get("position") or a.get("name", "?")
+            act = a.get("action", "")
+            amt = a.get("amount_bb")
+            amt_s = f"&nbsp;{amt}bb" if amt else ""
+            if act == "Fold":
+                parts.append(f'<span style="color:#555">{pos}&nbsp;F</span>')
+            elif act == "Check":
+                parts.append(f'<span style="color:#888">{pos}&nbsp;X</span>')
+            elif act == "Call":
+                parts.append(f'<span style="color:#5ba8ff">{pos}&nbsp;Call{amt_s}</span>')
+            elif act in ("Bet", "Raise"):
+                parts.append(f'<span style="color:#c8a030;font-weight:bold">{pos}&nbsp;{act}{amt_s}</span>')
+            elif act:
+                parts.append(f'<span style="color:#aaa">{pos}&nbsp;{act}</span>')
+        sep = ' <span style="color:#333">›</span> '
+        return sep.join(parts)
+
+    def _build_hand_card(h):
+        """1ハンドの詳細カードHTMLを返す"""
+        clf = h.get("bluered_classification", {})
+        hero_cards = "".join(h.get("hero_cards", []))
+        hero_pos   = h.get("hero_position", "?")
+        is_3bet    = h.get("is_3bet_pot", False)
+        pl         = float(h.get("hero_result_bb", 0))
+        pl_c       = "#4caf93" if pl > 0 else "#e94560" if pl < 0 else "#888"
+        needs_api  = clf.get("needs_api", False)
+
+        badge_3bet = '<span style="background:#2a1a40;color:#b08aff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:bold">3BET</span> ' if is_3bet else ""
+        api_mark   = '<span style="color:#c8a840;font-size:9px">★</span> ' if needs_api else ""
+        card_bg    = "#1c180a" if needs_api else "#0f1828"
+
+        # 相手プレイヤーのカード（ポジション付き）
+        opp_parts = []
+        for p in h.get("players", []):
+            if not p.get("is_hero"):
+                cards = "".join(p.get("hole_cards", []))
+                pos   = p.get("position", "?")
+                if cards:
+                    opp_parts.append(f'<span style="color:#888;font-size:10px">{pos}</span>&nbsp;{_card_html(cards)}')
+                else:
+                    opp_parts.append(f'<span style="color:#555;font-size:10px">{pos}</span>')
+        opp_html = "  ".join(opp_parts) if opp_parts else '<span style="color:#444">—</span>'
+
+        hero_c_html = _card_html(hero_cards) if hero_cards else '<span style="color:#555">—</span>'
+
+        # ストリート別アクション
+        streets = h.get("streets", {})
+        st_lines = []
+
+        pf = streets.get("preflop", [])
+        if pf:
+            acts = _fmt_actions(pf)
+            if acts:
+                st_lines.append(f'<span style="color:#555;font-size:10px">PF</span>&nbsp;{acts}')
+
+        for st_key, st_lbl in [("flop","F"), ("turn","T"), ("river","R")]:
+            s = streets.get(st_key)
+            if not s or not isinstance(s, dict): continue
+            board_cards = [c for c in s.get("board", []) if c and c != "-"]
+            pot         = s.get("pot_bb", 0)
+            actions     = s.get("actions", [])
+            board_part  = f'<span style="font-size:11px">{_card_html(" ".join(board_cards))}</span>' if board_cards else ""
+            pot_part    = f'<span style="color:#444;font-size:10px">({pot}bb)</span>'
+            acts        = _fmt_actions(actions)
+            line = f'<span style="color:#555;font-size:10px">{st_lbl}</span>&nbsp;{board_part}&nbsp;{pot_part}'
+            if acts:
+                line += f'&nbsp;&nbsp;{acts}'
+            st_lines.append(line)
+
+        streets_html = "<br>".join(st_lines) if st_lines else ""
+
+        return (
+            f'<div style="background:{card_bg};border-radius:5px;padding:8px 10px;'
+            f'margin-bottom:5px;border-left:2px solid #1e2535">'
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap">'
+            f'<span style="color:#666;font-size:10px">{api_mark}H{h.get("hand_number","")}</span>'
+            f'{badge_3bet}'
+            f'<span style="font-size:11px;font-weight:bold;color:#ddd">{hero_pos}</span>'
+            f'<span style="color:#666;font-size:10px">(Hero)</span>'
+            f'<span style="font-size:12px">{hero_c_html}</span>'
+            f'<span style="color:#444;font-size:10px">vs</span>'
+            f'<span style="font-size:11px">{opp_html}</span>'
+            f'<span style="margin-left:auto;color:{pl_c};font-weight:bold;font-size:12px">{_fmt_bb(pl)}bb</span>'
+            f'</div>'
+            f'<div style="font-size:11px;color:#aaa;line-height:1.9">{streets_html}</div>'
+            f'</div>'
+        )
+
+    def _build_hand_section(filtered_hands, cat_order):
         html = ""
         for cat in cat_order:
             cat_hands = [h for h in filtered_hands
                          if h.get("bluered_classification", {}).get("category") == cat]
+            # 3BETポット優先、次にラストストリート順、次にハンド番号順
             cat_hands.sort(key=lambda h: (
+                0 if h.get("is_3bet_pot") else 1,
                 ["preflop","flop","turn","river"].index(
                     h.get("bluered_classification", {}).get("last_street", "preflop")
                 ),
@@ -1655,63 +1749,51 @@ def classify_result_page(
             ))
             if not cat_hands: continue
             cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
-            cat_pl = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
-            pl_color = "#4caf93" if cat_pl > 0 else "#e94560" if cat_pl < 0 else "#888"
-            bg, fg = _CAT_COLORS.get(cat, ("#eee", "#333"))
+            cat_pl    = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
+            pl_color  = "#4caf93" if cat_pl > 0 else "#e94560" if cat_pl < 0 else "#888"
+            bg, fg    = _CAT_COLORS.get(cat, ("#222", "#aaa"))
             needs_api_cnt = sum(1 for h in cat_hands if h.get("bluered_classification", {}).get("needs_api"))
-            api_badge = f' <span style="color:#d97706;font-size:10px">★要AI:{needs_api_cnt}</span>' if needs_api_cnt else ""
-            html += f'<tr class="cat-hdr"><td colspan="6"><span style="background:{bg};color:{fg};padding:1px 6px;border-radius:3px;font-size:11px;font-weight:bold">{_esc(cat_label)}</span> {len(cat_hands)}手 <span style="float:right;color:{pl_color};font-weight:bold">{_fmt_bb(cat_pl)}bb</span>{api_badge}</td></tr>\n'
+            api_badge = f' <span style="color:#c8a030;font-size:10px">★要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
+
+            html += (
+                f'<div style="background:{bg};border-radius:4px;padding:5px 10px;'
+                f'margin:10px 0 5px;display:flex;align-items:center;gap:10px">'
+                f'<span style="color:{fg};font-size:11px;font-weight:bold">{_esc(cat_label)}</span>'
+                f'<span style="color:#666;font-size:10px">{len(cat_hands)}手</span>'
+                f'<span style="margin-left:auto;color:{pl_color};font-size:11px;font-weight:bold">{_fmt_bb(cat_pl)}bb</span>'
+                f'{api_badge}</div>\n'
+            )
             for h in cat_hands:
-                clf = h.get("bluered_classification", {})
-                last_st = clf.get("last_street", "river")
-                hero_cards = "".join(h.get("hero_cards", []))
-                opp_c = _opp_cards(h)
-                board = _board_at(h, last_st)
-                pl = float(h.get("hero_result_bb", 0))
-                pl_c = "#4caf93" if pl > 0 else "#e94560" if pl < 0 else "#888"
-                needs_api = clf.get("needs_api")
-                row_bg = "background:#2a2214;" if needs_api else ""
-                api_mark = '<span style="color:#c8a840;font-size:9px">★</span>' if needs_api else ""
-                dash = "<span style='color:#555'>—</span>"
-                opp_html = _card_html(opp_c) if opp_c else dash
-                board_html = _card_html(board) if board else dash
-                html += f'<tr style="{row_bg}"><td style="color:#888;font-size:10px">{api_mark}H{h.get("hand_number","")}</td><td style="text-align:center;font-weight:bold;font-size:11px">{_ST_JP.get(last_st,last_st)}</td><td>{_card_html(hero_cards)}</td><td>{opp_html}</td><td style="font-size:10px">{board_html}</td><td style="text-align:right;color:{pl_c};font-weight:bold">{_fmt_bb(pl)}</td></tr>\n'
+                html += _build_hand_card(h)
         return html
 
     hands_html = ""
     if hands:
         blue_hands = [h for h in hands if h.get("bluered_classification", {}).get("line") == "blue"]
         red_hands  = [h for h in hands if h.get("bluered_classification", {}).get("line") == "red"]
-        blue_pl = sum(float(h.get("hero_result_bb", 0)) for h in blue_hands)
-        red_pl  = sum(float(h.get("hero_result_bb", 0)) for h in red_hands)
-        blue_pl_c = "#4caf93" if blue_pl > 0 else "#e94560" if blue_pl < 0 else "#888"
-        red_pl_c  = "#4caf93" if red_pl  > 0 else "#e94560" if red_pl  < 0 else "#888"
-        blue_rows = _build_hand_table(blue_hands, _BLUE_ORDER)
-        red_rows  = _build_hand_table(red_hands, _RED_ORDER)
-        th = '<th style="background:#2E4057;color:#fff;padding:4px 6px;font-size:11px;text-align:center">'
-        td_hdr = "border:1px solid #334;padding:2px 4px;font-size:11px;vertical-align:middle;"
+        blue_pl    = sum(float(h.get("hero_result_bb", 0)) for h in blue_hands)
+        red_pl     = sum(float(h.get("hero_result_bb", 0)) for h in red_hands)
+        blue_pl_c  = "#4caf93" if blue_pl > 0 else "#e94560" if blue_pl < 0 else "#888"
+        red_pl_c   = "#4caf93" if red_pl  > 0 else "#e94560" if red_pl  < 0 else "#888"
+        blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
+        red_section  = _build_hand_section(red_hands,  _RED_ORDER)
         hands_html = f"""
   <div class="section" id="hand-list-section">
     <div class="section-title">&#x1F4CB; 青線 / 赤線 ハンド一覧
-      <button onclick="document.getElementById('hand-list-body').style.display=document.getElementById('hand-list-body').style.display==='none'?'':'none'" style="float:right;padding:2px 10px;background:transparent;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:11px">折りたたむ</button>
+      <button onclick="var b=document.getElementById('hand-list-body');b.style.display=b.style.display==='none'?'block':'none'" style="float:right;padding:2px 10px;background:transparent;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:11px">折りたたむ</button>
     </div>
     <div id="hand-list-body">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div>
-        <div style="font-size:12px;color:#7ec8e3;font-weight:bold;margin-bottom:6px">&#x1F535; 青線 {len(blue_hands)}手 &nbsp; <span style="color:{blue_pl_c}">{_fmt_bb(blue_pl)}bb</span></div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr>{th}#</th>{th}St</th>{th}Hero</th>{th}相手</th>{th}Board</th>{th}損益</th></tr></thead>
-          <tbody style="color:#ddd">{blue_rows or '<tr><td colspan="6" style="text-align:center;color:#555;padding:8px">該当なし</td></tr>'}</tbody>
-        </table>
+      <div style="font-size:12px;color:#7ec8e3;font-weight:bold;margin-bottom:4px;padding-top:4px">
+        &#x1F535; 青線（ショーダウン）&nbsp; {len(blue_hands)}手 &nbsp;
+        <span style="color:{blue_pl_c}">{_fmt_bb(blue_pl)}bb</span>
       </div>
-      <div>
-        <div style="font-size:12px;color:#e94560;font-weight:bold;margin-bottom:6px">&#x1F534; 赤線 {len(red_hands)}手 &nbsp; <span style="color:{red_pl_c}">{_fmt_bb(red_pl)}bb</span></div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr>{th}#</th>{th}St</th>{th}Hero</th>{th}相手</th>{th}Board</th>{th}損益</th></tr></thead>
-          <tbody style="color:#ddd">{red_rows or '<tr><td colspan="6" style="text-align:center;color:#555;padding:8px">該当なし</td></tr>'}</tbody>
-        </table>
+      {blue_section or '<div style="color:#555;font-size:12px;padding:8px">該当なし</div>'}
+      <div style="border-top:1px solid #1e2535;margin:16px 0 8px"></div>
+      <div style="font-size:12px;color:#e94560;font-weight:bold;margin-bottom:4px">
+        &#x1F534; 赤線（ノーショーダウン）&nbsp; {len(red_hands)}手 &nbsp;
+        <span style="color:{red_pl_c}">{_fmt_bb(red_pl)}bb</span>
       </div>
-    </div>
+      {red_section or '<div style="color:#555;font-size:12px;padding:8px">該当なし</div>'}
     </div>
   </div>"""
 

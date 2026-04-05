@@ -255,7 +255,8 @@ def parse_hand(raw_lines: list[str], specified_hero: str = "") -> dict:
     hand["streets"] = street_data["streets"]
     hand["showdown"] = street_data["showdown"]
     hand["result"] = street_data["result"]
-    hand["went_to_showdown"] = len(street_data["showdown"]) > 0
+    # 2人以上がカードを見せた場合のみ真のショーダウン（1人の任意ショーは除外）
+    hand["went_to_showdown"] = len(street_data["showdown"]) >= 2
 
     # 3BETポット判定
     hand["is_3bet_pot"] = detect_3bet(hand["streets"]["preflop"])
