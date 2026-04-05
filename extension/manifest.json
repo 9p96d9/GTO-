@@ -17,6 +17,7 @@
   "host_permissions": [
     "https://gto-production.up.railway.app/*",
     "https://*.tenfourpoker.com/*",
+    "https://*.tenfour-poker.com/*",
     "https://*.t4poker.com/*"
   ],
 
@@ -38,6 +39,7 @@
     {
       "matches": [
         "https://*.tenfourpoker.com/*",
+        "https://*.tenfour-poker.com/*",
         "https://*.t4poker.com/*"
       ],
       "js": ["content.js"],
