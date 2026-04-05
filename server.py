@@ -308,6 +308,7 @@ async def run_classify_pipeline(job_id: str, txt_path: Path, hero_name: str = ""
         [sys.executable, str(SCRIPTS / "parse.py"), str(txt_path), str(json_path)]
         + (["--hero-name", hero_name] if hero_name else []),
         capture_output=True, text=True, encoding="utf-8", errors="replace", env=BASE_ENV,
+        timeout=120,
     ))
     if r.returncode != 0:
         fail((r.stderr or r.stdout).strip()); return
@@ -1461,7 +1462,7 @@ es.onmessage = function(e) {{
     setPbar(50);
     document.getElementById('msg').textContent = '青線/赤線を分類中...';
 
-  }} else if (d.type === 'classify_done') {{
+  }} else if (d.type === 'classify_done' || d.type === 'done') {{
     markDone(1); markDone(2);
     setPbar(100);
     document.getElementById('msg').textContent = '完了！結果を表示します...';
