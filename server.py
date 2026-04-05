@@ -1650,7 +1650,10 @@ def classify_result_page(
                 needs_api = clf.get("needs_api")
                 row_bg = "background:#2a2214;" if needs_api else ""
                 api_mark = '<span style="color:#c8a840;font-size:9px">★</span>' if needs_api else ""
-                html += f'<tr style="{row_bg}"><td style="color:#888;font-size:10px">{api_mark}H{h.get("hand_number","")}</td><td style="text-align:center;font-weight:bold;font-size:11px">{_ST_JP.get(last_st,last_st)}</td><td>{_card_html(hero_cards)}</td><td>{_card_html(opp_c) if opp_c else "<span style=\'color:#555\'>—</span>"}</td><td style="font-size:10px">{_card_html(board) if board else "<span style=\'color:#555\'>—</span>"}</td><td style="text-align:right;color:{pl_c};font-weight:bold">{_fmt_bb(pl)}</td></tr>\n'
+                dash = "<span style='color:#555'>—</span>"
+                opp_html = _card_html(opp_c) if opp_c else dash
+                board_html = _card_html(board) if board else dash
+                html += f'<tr style="{row_bg}"><td style="color:#888;font-size:10px">{api_mark}H{h.get("hand_number","")}</td><td style="text-align:center;font-weight:bold;font-size:11px">{_ST_JP.get(last_st,last_st)}</td><td>{_card_html(hero_cards)}</td><td>{opp_html}</td><td style="font-size:10px">{board_html}</td><td style="text-align:right;color:{pl_c};font-weight:bold">{_fmt_bb(pl)}</td></tr>\n'
         return html
 
     hands_html = ""
