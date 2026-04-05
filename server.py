@@ -453,6 +453,11 @@ async def run_ai_pipeline(job_id: str, json_path: str, api_key: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    return RedirectResponse("/sessions", status_code=302)
+
+
+@app.get("/upload-form", response_class=HTMLResponse)
+async def upload_form():
     return UPLOAD_PAGE
 
 @app.post("/upload")
@@ -1892,12 +1897,42 @@ body {{
   .actions {{ grid-template-columns: 1fr; }}
   .stat-value {{ font-size: 22px; }}
 }}
+.btn-print {{
+  padding: 8px 16px; background: transparent; color: #aaa;
+  border: 1px solid #444; border-radius: 6px; font-size: 13px;
+  cursor: pointer; transition: border-color .2s, color .2s;
+}}
+.btn-print:hover {{ border-color: #e94560; color: #e94560; }}
+@media print {{
+  @page {{ margin: 15mm; }}
+  body {{ background: #fff !important; color: #000 !important; padding: 0 !important; }}
+  .topbar {{ display: none !important; }}
+  .actions {{ display: none !important; }}
+  * {{ background: #fff !important; color: #000 !important;
+       border-color: #ccc !important; box-shadow: none !important; }}
+  .stat-card, .section, .card {{ border: 1px solid #ddd !important; }}
+  .section-title {{ color: #c0003c !important; }}
+  .stat-value {{ color: #000 !important; }}
+  [style*="color:#4caf93"], [style*="color: #4caf93"] {{ color: #007a4d !important; }}
+  [style*="color:#e94560"], [style*="color: #e94560"] {{ color: #c0003c !important; }}
+  [style*="color:#7ec8e3"] {{ color: #005fa3 !important; }}
+  [style*="color:#5ba8ff"] {{ color: #005fa3 !important; }}
+  [style*="color:#c8a030"] {{ color: #7a5c00 !important; }}
+  [style*="color:#c8a840"] {{ color: #7a5c00 !important; }}
+  [style*="color:#b08aff"] {{ color: #5b00cc !important; }}
+  [style*="color:#6dd49a"] {{ color: #007a4d !important; }}
+  [style*="color:#f47b8a"] {{ color: #c0003c !important; }}
+  [style*="color:#a0cfa0"] {{ color: #007a4d !important; }}
+  [style*="color:#aaa"], [style*="color:#888"], [style*="color:#555"],
+  [style*="color:#666"], [style*="color:#444"] {{ color: #444 !important; }}
+}}
 </style>
 </head>
 <body>
 <div class="topbar">
   <h1>&#x1F0A1; ポーカーGTO — 解析結果</h1>
-  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <a class="btn-back" href="/sessions">&#x2190; 戻る</a>
+  <button class="btn-print" onclick="window.print()">&#x1F5A8; 印刷/PDF</button>
 </div>
 
 <div class="container">
@@ -2061,7 +2096,7 @@ iframe {{ flex: 1; width: 100%; border: none; }}
 <body>
 <div class="toolbar">
   <h1>&#x1F0A1; GTO レポート — {pdf_name}</h1>
-  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <a class="btn-back" href="/sessions">&#x2190; 戻る</a>
   <a class="btn-download" href="/download/{pdf_name}" download="{pdf_name}">&#x2B07; ダウンロード</a>
 </div>
 <iframe src="/pdf/{pdf_name}" type="application/pdf"></iframe>
@@ -2083,7 +2118,7 @@ a {{ color: #e94560; }}
 </style></head><body>
 <h2>&#x274C; エラーが発生しました</h2>
 <pre>{log}</pre>
-<p><a href="/">&#x2190; 戻る</a></p>
+<p><a href="/sessions">&#x2190; 戻る</a></p>
 </body></html>"""
 
 
@@ -2178,7 +2213,7 @@ body{{font-family:'Meiryo',sans-serif;background:#1a1a2e;color:#eee;min-height:1
 <body>
 <div class="topbar">
   <h1>&#x1F0A1; クイック解析 — {_esc(hero)}</h1>
-  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <a class="btn-back" href="/sessions">&#x2190; 戻る</a>
   <button class="btn-pdf" onclick="exportPDF()">&#x1F4C4; PDFとして保存</button>
 </div>
 
