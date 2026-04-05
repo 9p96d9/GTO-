@@ -1,9 +1,22 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 2.0  
-**最終更新:** 2026-04-03  
+**バージョン:** 3.0  
+**最終更新:** 2026-04-06  
 **リポジトリ:** https://github.com/9p96d9/GTO-  
 **本番URL:** https://gto-production.up.railway.app  
+
+---
+
+## 開発フェーズ ステータス
+
+| フェーズ | 内容 | 状態 |
+|---|---|---|
+| Phase 1 | Firebase基盤構築 | ✅ 完了 |
+| Phase 2 | Chrome拡張機能（スクレイプ→Firebase保存） | ✅ 完了 |
+| Phase 3 | セッション一覧・解析フロー | ✅ 完了 |
+| **Phase 4** | **ユーザー機能アップグレード（複数選択解析・テキスト保存）** | ⬜ 未着手 |
+| **Phase 5** | **管理者ダッシュボード** | ⬜ 未着手 |
+| Phase 6 | 仕上げ・UX改善 | ⬜ 未着手 |
 
 ---
 
@@ -69,7 +82,7 @@ GTO-/
 ├── server.py                   # FastAPI サーバー（全エンドポイント・HTMLテンプレート含む）
 ├── Dockerfile                  # Railway/本番用コンテナ定義
 ├── docker-compose.yml          # ローカルDocker用
-├── requirements.txt            # Python依存（fastapi, uvicorn, sse-starlette, treys, google-generativeai, firebase-admin）
+├── requirements.txt            # Python依存
 ├── package.json                # Node.js依存（puppeteer）
 ├── bookmarklet.js              # 旧: T4サイトからハンド履歴を直接送信するブックマークレット（後方互換）
 ├── scripts/
@@ -81,12 +94,11 @@ GTO-/
 │   ├── quick_analyzer.py       # クイック統計計算（API不要・即時）
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ（Firestore CRUD / idToken検証）
 ├── extension/                  # Chrome拡張機能（MV3）
-│   ├── manifest.json           # 拡張機能設定（oauth2 client_id含む）
+│   ├── manifest.json           # 拡張機能設定（oauth2 client_id・key含む）
 │   ├── popup.html / popup.js   # ポップアップUI（ログイン・スクレイプ送信）
 │   ├── background.js           # Service Worker（Firebase Auth管理）
 │   ├── content.js              # T4スクレイプ処理（bookmarklet移植）
-│   ├── icons/                  # アイコン画像（16/48/128px）
-│   └── README.md               # セットアップ手順
+│   └── icons/                  # アイコン画像（16/48/128px）
 ├── static/                     # 静的ファイル（/static/ で配信）
 ├── input/                      # アップロードtxt一時置き場
 │   └── done/                   # 処理済みtxt（処理後自動移動）
@@ -122,47 +134,6 @@ GTO-/
 - 3BETポット判定: プリフロップで Raise が2回以上 → `is_3bet_pot: true`
 - `opponents_summary.json` を更新（同一ファイルの二重登録防止）
 
-**JSONスキーマ（1ハンド）:**
-```json
-{
-  "hand_number": 1,
-  "hand_id": "xxxx",
-  "datetime": "2026-03-13T08:58:00",
-  "game": "6-Max NLH",
-  "blinds": {"sb": 0.5, "bb": 1.0},
-  "players": [
-    {
-      "position": "BTN",
-      "name": "Guest",
-      "is_hero": true,
-      "hole_cards": ["A♠", "K♥"],
-      "result_bb": 5.5
-    }
-  ],
-  "streets": {
-    "preflop": [{"position": "BTN", "name": "Guest", "action": "Raise", "amount_bb": 3.0}],
-    "flop": {"board": ["T♠", "7♥", "2♦"], "pot_bb": 6.0, "actions": [...]},
-    "turn": {"board": ["J♣"], "pot_bb": 12.0, "actions": [...]},
-    "river": {"board": ["5♠"], "pot_bb": 20.0, "actions": [...]}
-  },
-  "showdown": [{"name": "Guest", "hand_name": "トップペア"}],
-  "result": {
-    "winners": [{"name": "Guest", "amount_bb": 22.5}],
-    "rake_bb": 0.5,
-    "allin_ev": {"Guest": 18.0}
-  },
-  "hero_position": "BTN",
-  "hero_cards": ["A♠", "K♥"],
-  "hero_result_bb": 5.5,
-  "is_3bet_pot": false,
-  "went_to_showdown": true,
-  "analyzed": false,
-  "gto_evaluation": "",
-  "has_gto_error": false,
-  "is_good_play": false
-}
-```
-
 ---
 
 ### 3-2. classify.py
@@ -192,91 +163,11 @@ postflopあり:
               └── 判定不能 → fold_unknown                          （赤線, needs_api=true）
 ```
 
-**treysライブラリ:**  
-フォールド時に相手の手札とボードが判明している場合、`treys.Evaluator` で手役を比較してbad_fold/nice_foldを判定。未インストール時はfold_unknownにフォールバック。
-
-**bluered_classification フィールド:**
-```json
-{
-  "line": "blue",
-  "category": "value_or_bluff_success",
-  "category_label": "バリュー/ブラフ成功",
-  "needs_api": false,
-  "showdown": true,
-  "last_street": "river"
-}
-```
-
-**カテゴリ一覧:**
-
-| category | 日本語 | line | needs_api |
-|---|---|---|---|
-| `value_or_bluff_success` | バリュー/ブラフ成功 | blue | false |
-| `bluff_catch` | ブラフキャッチ | blue | false |
-| `bluff_failed` | ブラフ失敗 | blue | false |
-| `call_lost` | コール負け | blue | false |
-| `hero_aggression_won` | アグレッション勝利 | red | true |
-| `bad_fold` | バッドフォールド | red | false |
-| `nice_fold` | ナイスフォールド | red | false |
-| `fold_unknown` | フォールド(要確認) | red | true |
-| `preflop_only` | プリフロップのみ | preflop_only | false |
-
 ---
 
-### 3-3. analyze.py（AIモード専用）
+### 3-3. analyze.py / generate.js / generate_noapilist.js / quick_analyzer.py
 
-**入力:** `data/upload.json`  
-**出力:** 同ファイルに `gto_analysis` / `gto_evaluation` フィールドを追記  
-**処理:** バッチ10ハンド単位でGemini 2.5 Flashに送信、429レートリミット時は5秒待機・最大3回リトライ、`analyzed: true` のハンドはスキップ
-
----
-
-### 3-4. generate.js（AI PDFモード）
-
-**入力:** `data/upload.json`（analyze.py済み）  
-**出力:** `output/GTO_Report_{最古日付}_{最新日付}.pdf`  
-**処理:** HTML生成 → Puppeteer（A4縦・余白10mm）でPDF変換  
-
-**PDF セクション構成:**
-
-| # | 内容 |
-|---|---|
-| 1 | サマリー（総損益・ハンド数・VPIP/PFR等） |
-| 2 | 3BETポット専用分析（カテゴリ順ソート・カテゴリ区切り行あり） |
-| 3 | 単独レイズポット（カテゴリ順ソート・カテゴリ区切り行あり） |
-| 4 | ポジション別成績表 |
-| 5 | 改善すべきプレイ（Gemini生成） |
-| 6 | GTO評価カテゴリ別（❌ミス赤・⚠️改善橙） |
-| 7 | ストレングスハンド分析（Gemini生成） |
-| 8 | 対戦相手プロファイルカード（累積集計・Gemini生成） |
-
-**カテゴリ順ソート（generate.js・generate_noapilist.js 共通）:**  
-青線: `value_or_bluff_success` → `bluff_catch` → `bluff_failed` → `call_lost`  
-赤線: `hero_aggression_won` → `bad_fold` → `nice_fold` → `fold_unknown`  
-同カテゴリ内はストリート（preflop→flop→turn→river）→ハンド番号順
-
----
-
-### 3-5. generate_noapilist.js（NoAPI PDFモード）
-
-**入力:** `data/upload_classified.json`  
-**出力:** `output/NoAPI_Report_{最古日付}_{最新日付}.pdf`  
-**処理:** classify.pyの結果のみでPDF生成（Gemini不要）
-
----
-
-### 3-6. quick_analyzer.py（クイック解析）
-
-**入力:** parse.py出力のJSONデータ（dict）  
-**出力:** 統計データdict（HTTP レスポンスでダッシュボードHTMLに渡す）
-
-**統計項目:**
-- `summary`: total_hands / total_bb / bb_per_100
-- `timeline`: 累積損益タイムライン（ハンドごと）
-- `streets`: ストリート別決着数・ショーダウン数
-- `bet_sizing`: フロップ以降のベットサイジング別（〜33% / 〜66% / 〜100% / オーバーベット）勝率・平均BB
-- `win_types`: 勝利パターン（value / bluff / bluff_catch / other）
-- `combos`: ホールカードのコンボキー別（AA / AKs / AKo など）成績
+（変更なし。v2.0仕様を継続）
 
 ---
 
@@ -308,141 +199,16 @@ postflopあり:
 | GET | `/api/sessions` | ログインユーザーのセッション一覧JSON（Bearer認証） |
 | DELETE | `/api/sessions/{session_id}` | セッション削除（Bearer認証） |
 | POST | `/api/sessions/{session_id}/analyze` | Firestoreのセッションをclassifyパイプラインに流す（Bearer認証） |
-
-### POST /upload フォームパラメータ
-
-| パラメータ | 型 | 説明 |
-|---|---|---|
-| `file` | UploadFile | ハンド履歴txtファイル |
-| `hero_name` | str（省略可） | Hero名を明示指定（省略時は自動検出） |
-
-### /status/{job_id} レスポンス例
-
-```json
-{"step": 1, "status": "running", "pdf": "", "log": "", "mode": "classify", "hero_name": "MyName"}
-{"step": 0, "status": "done", "pdf": "", "log": "", "mode": "classify", "json_path": "...", "classified_path": "..."}
-{"step": 3, "status": "done", "pdf": "NoAPI_Report_2026-03-13_2026-03-13.pdf", "log": "", "mode": "noapi"}
-{"step": 3, "status": "done", "pdf": "GTO_Report_2026-03-13_2026-03-13.pdf", "log": "", "mode": "api"}
-{"step": 0, "status": "error", "pdf": "", "log": "エラー内容..."}
-```
-
-### SSE イベント型一覧
-
-| type | 説明 |
-|---|---|
-| `parse_done` | パース完了（`hands_total` を含む） |
-| `generate_start` | PDF生成開始 |
-| `classify_done` | 分類完了 |
-| `done` | 全処理完了（`pdf` ファイル名を含む） |
-| `error` | エラー発生（`message` を含む） |
-| `batch_done` | Gemini分析1バッチ完了（`done` / `total` を含む） |
+| **Phase 4で追加予定** | | |
+| POST | `/api/sessions/analyze-multi` | 複数セッションを結合してclassifyパイプラインに流す（Bearer認証） |
+| POST | `/api/sessions/download-text` | 複数セッションのraw_textを結合してtxtダウンロード（Bearer認証） |
+| **Phase 5で追加予定** | | |
+| GET | `/admin` | 管理者ダッシュボード（adminロールのみ） |
+| POST | `/api/admin/set-claim` | ユーザーにadminクレームを付与（adminロールのみ） |
 
 ---
 
-## 5. ジョブ管理
-
-`server.py` のメモリ上で管理（再起動でリセット）:
-
-```python
-jobs: dict[str, dict]            # job_id → ジョブ状態
-quick_results: dict[str, dict]   # job_id → quick_analyzer の結果
-classify_results: dict[str, dict] # (現在未使用の予備)
-event_queues: dict[str, asyncio.Queue]  # job_id → SSEキュー
-```
-
-複数ジョブが同時進行可能（threading.Lock で排他制御）。
-
----
-
-## 6. 対戦相手サマリー（opponents_summary.json）
-
-`parse.py` 実行のたびに `data/opponents_summary.json` を更新（同一ファイルの二重登録防止）。
-
-**集計内容（プレイヤーごと）:**
-- `total_hands`: 対戦ハンド数
-- `vpip` / `pfr` / `threebet`: 各レートの小数（0〜1）
-- `hero_winrate`: Heroが勝ったセッション割合
-- `player_type`: LAG / TAG / LP / TP / ルース / タイト / アグレッシブ / パッシブ / バランス
-- `sessions`: 対戦したセッション日付リスト
-
-**このファイルは削除禁止。** セクション8（対戦相手プロファイル）の累積データとして使用。
-
----
-
-## 7. Hero自動検出ロジック
-
-```
-1. --hero-name 指定あり → 大文字小文字無視の完全一致
-2. なし → HERO_NAMES{"Guest"} / HERO_PATTERN(Weq\*+|Guest\d*) でマッチ
-3. 上記でも0件 → 全ハンドで最多登場プレイヤー名を自動採用
-```
-
-`quick_analyzer.py` でも同様のフォールバックを実装（`is_hero` フラグ優先 → 最多登場）。
-
----
-
-## 8. BYOK（Bring Your Own Key）
-
-- `/start_ai/{job_id}` の `api_key` フォームパラメータで送信
-- サーバーに保存しない（メモリ上でのみ使用）
-- 環境変数 `GEMINI_API_KEY` があればデフォルト値として表示
-- `/scrape_upload` はサーバー側の `GEMINI_API_KEY` を使用（ブックマークレット用）
-
----
-
-## 9. 環境変数
-
-| 変数名 | 説明 | 必須 |
-|---|---|---|
-| `GEMINI_API_KEY` | Gemini APIキー | AIモードのみ。BYOKで代替可 |
-| `PORT` | サーバーポート（デフォルト: 5000） | 任意 |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | FirebaseサービスアカウントキーJSON（全体） | Firebase機能を使う場合 |
-| `FIREBASE_API_KEY` | Firebase Web API Key | Firebase機能を使う場合 |
-| `FIREBASE_AUTH_DOMAIN` | `{project-id}.firebaseapp.com` | Firebase機能を使う場合 |
-| `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase機能を使う場合 |
-
-**注:** `FIREBASE_SERVICE_ACCOUNT_JSON` が未設定の場合、Firebase系エンドポイントはすべて503を返す。既存機能への影響はない。
-
----
-
-## 10. デプロイ情報
-
-### 本番環境（Railway）
-- URL: `https://gto-production.up.railway.app`
-- リポジトリ: `https://github.com/9p96d9/GTO-.git`
-- ブランチ: `master`
-- 自動デプロイ: `master` へのpushで自動ビルド・デプロイ
-
-### ローカル実行
-```bash
-cd c:\iino\自作現用\GTO--main
-python server.py
-# → http://localhost:5000
-```
-
-### アップデート手順
-```bash
-git add .
-git commit -m "変更内容"
-git push
-# Railwayが自動でリビルド・デプロイ
-```
-
----
-
-## 11. 注意事項
-
-- `data/` フォルダのJSONは削除しない（opponents_summary.jsonは特に重要）
-- `.env` はGitにコミットしない（`.gitignore` 設定済み）
-- puppeteer（Chromium）が重いためDocker imageは約1GB
-- Railway無料枠はストレージ永続化なし（PDFは即ダウンロード推奨）
-- classifyモード（NoAPI PDF）はGemini不要で高速（数秒〜十数秒）
-- AIモードはGemini APIの呼び出し時間がボトルネック（約2〜3分）
-- treysライブラリ未インストール時はbad_fold/nice_fold判定がfold_unknownにフォールバック
-
----
-
-## 12. Firebase / Firestoreデータ構造
+## 5. Firebase / Firestoreデータ構造
 
 ### Firestoreコレクション設計
 
@@ -456,7 +222,7 @@ users/{uid}/sessions/{sessionId}
   └── result_pdf:  string        # 生成PDFファイル名（空文字 or "NoAPI_Report_*.pdf"）
 ```
 
-### セキュリティルール
+### セキュリティルール（現在）
 
 ```javascript
 rules_version = '2';
@@ -469,14 +235,41 @@ service cloud.firestore.beta {
 }
 ```
 
-### Chrome拡張機能（extension/）
+### セキュリティルール（Phase 5完了後）
+
+```javascript
+rules_version = '2';
+service cloud.firestore.beta {
+  match /databases/{database}/documents {
+    match /users/{uid}/sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // Admin SDKのみ書き込み可
+    }
+  }
+}
+```
+
+---
+
+## 6. Chrome拡張機能
 
 | ファイル | 役割 |
 |---|---|
-| `manifest.json` | MV3設定。`oauth2.client_id` でGoogleログインを設定 |
+| `manifest.json` | MV3設定。`oauth2.client_id`・`key`（ID固定）含む |
 | `background.js` | Service Worker。Firebase Auth（GET_USER / SIGN_IN / GET_ID_TOKEN）を管理 |
 | `popup.html/js` | ポップアップUI。ログイン状態表示・スクレイプ送信ボタン |
 | `content.js` | T4ページで動作。ハンドカードをクリックしてテキストを収集 |
+
+**拡張機能ID（固定）:** `ilkbcfenghigefpfjohppfjodahhoiif`  
+**OAuthクライアントID:** `615725442966-l1k8rgi5m43stim6ellgj8e36s8hfn6l.apps.googleusercontent.com`
+
+**対応ドメイン:**
+- `https://*.tenfourpoker.com/*`
+- `https://*.tenfour-poker.com/*`
+- `https://*.t4poker.com/*`
 
 **Chrome拡張 → サーバー通信フロー:**
 ```
@@ -496,10 +289,151 @@ service cloud.firestore.beta {
 
 ---
 
-## 13. 今後の実装候補（メモ）
+## 7. 環境変数
 
-- Phase 4: 管理者ダッシュボード（/admin）- Firebase Custom Claimsでadminロール管理
-- classify結果のWebビューアでハンドを直接閲覧・編集
-- NoAPI PDFへのクイック統計グラフ埋め込み
-- 複数セッションの累積レポート生成
+| 変数名 | 説明 | 必須 |
+|---|---|---|
+| `GEMINI_API_KEY` | Gemini APIキー | AIモードのみ。BYOKで代替可 |
+| `PORT` | サーバーポート（デフォルト: 5000） | 任意 |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | FirebaseサービスアカウントキーJSON（全体） | Firebase機能を使う場合 |
+| `FIREBASE_API_KEY` | Firebase Web API Key | Firebase機能を使う場合 |
+| `FIREBASE_AUTH_DOMAIN` | `{project-id}.firebaseapp.com` | Firebase機能を使う場合 |
+| `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase機能を使う場合 |
+
+---
+
+## 8. デプロイ情報
+
+### 本番環境（Railway）
+- URL: `https://gto-production.up.railway.app`
+- リポジトリ: `https://github.com/9p96d9/GTO-.git`
+- ブランチ: `master`（mainも同期済み）
+- 自動デプロイ: `master` へのpushで自動ビルド・デプロイ
+
+---
+
+## 9. Phase 4: ユーザー機能アップグレード（未着手）
+
+### 概要
+
+セッション一覧画面（`/sessions`）にチェックボックスを追加し、複数のセッションを選択して以下の操作を可能にする。
+
+### 9-1. 複数セッション結合解析
+
+**UI:**
+- 各セッション行にチェックボックスを追加
+- 「選択したセッションを解析」ボタン（1件以上選択時に有効化）
+
+**動作:**
+1. ユーザーが複数セッションのチェックボックスを選択
+2. 「選択したセッションを解析」ボタンを押す
+3. `POST /api/sessions/analyze-multi` に選択した `session_id[]` を送信
+4. サーバーがFirestoreから各セッションの `raw_text` を取得して結合
+5. 結合テキストを既存の classifyパイプライン（parse → classify）に流す
+6. 結果は `/classify_result/{job_id}` で表示（既存フロー流用）
+
+**サーバー側エンドポイント:**
+```
+POST /api/sessions/analyze-multi
+Header: Authorization: Bearer {idToken}
+Body: { session_ids: ["id1", "id2", ...] }
+
+処理:
+  - idTokenでuid取得
+  - 各session_idのraw_textをFirestoreから取得（本人のデータのみ）
+  - raw_textを改行で結合
+  - INPUT_DIR に結合txtを書き出し
+  - run_classify_pipeline を起動
+  - { job_id, progress_url } を返す
+```
+
+### 9-2. テキストのローカル保存
+
+**UI:**
+- 各セッション行にチェックボックスを追加（9-1と共用）
+- 「選択したテキストをダウンロード」ボタン（1件以上選択時に有効化）
+
+**動作:**
+1. ユーザーが複数セッションのチェックボックスを選択
+2. 「テキストをダウンロード」ボタンを押す
+3. `POST /api/sessions/download-text` に選択した `session_id[]` を送信
+4. サーバーが各 `raw_text` を取得して結合したtxtファイルをレスポンス
+5. ブラウザが自動でローカルに保存（`t4_hands_combined_{日付}.txt`）
+
+**サーバー側エンドポイント:**
+```
+POST /api/sessions/download-text
+Header: Authorization: Bearer {idToken}
+Body: { session_ids: ["id1", "id2", ...] }
+
+処理:
+  - idTokenでuid取得
+  - 各session_idのraw_textをFirestoreから取得（本人のデータのみ）
+  - raw_textを結合
+  - Content-Disposition: attachment; filename="t4_hands_combined_{YYYYMMDD}.txt"
+  - text/plain で返す
+```
+
+### 9-3. セッション一覧UIの変更点
+
+```
+現状:
+  [日付] [ハンド数] [ステータス] [解析] [削除]
+
+変更後:
+  [☐] [日付] [ハンド数] [ステータス] [解析] [削除]
+  
+  ── 一括操作バー（1件以上チェック時に表示）──
+  [ 選択したセッションを解析 ]  [ テキストをダウンロード ]
+```
+
+---
+
+## 10. Phase 5: 管理者ダッシュボード（未着手）
+
+### 概要
+
+特定ユーザーに `admin` ロールを付与し、全ユーザーのデータを閲覧・操作できる管理画面を追加する。
+
+### 10-1. adminロール管理
+
+- Firebase Custom Claims で `admin: true` を付与
+- サーバー側の `verify_id_token()` で `decoded["admin"]` を確認
+- 初期adminは手動でFirebase Admin SDKから設定
+
+### 10-2. 管理者ダッシュボード（GET /admin）
+
+**表示内容:**
+- ユーザー一覧（UID・メール・セッション数・最終アップロード日）
+- 全ユーザーのセッション一覧（ユーザーで絞り込み可）
+- 任意のセッションを解析にかけるボタン
+- ユーザーへのadmin権限付与/剥奪
+
+### 10-3. Firestoreスキーマ追加
+
+```
+admins/{uid}
+  └── granted_at: timestamp
+```
+
+---
+
+## 11. Phase 6: 仕上げ・UX改善（未着手）
+
+- セッション解析ステータスのリアルタイム更新（/sessions画面でSSE）
 - opponents_summary.jsonをFirestoreに移行（Railway再起動でリセットされる問題の解消）
+- PokerGTOサイトTOP画面をセッション一覧に変更
+- 拡張機能からPokerGTOのセッション一覧を直接開くボタン
+
+---
+
+## 12. 注意事項
+
+- `data/` フォルダのJSONは削除しない（opponents_summary.jsonは特に重要）
+- `.env` はGitにコミットしない（`.gitignore` 設定済み）
+- puppeteer（Chromium）が重いためDocker imageは約1GB
+- Railway無料枠はストレージ永続化なし（PDFは即ダウンロード推奨）
+- classifyモード（NoAPI PDF）はGemini不要で高速（数秒〜十数秒）
+- AIモードはGemini APIの呼び出し時間がボトルネック（約2〜3分）
+- Railwayはストレージ永続化なし → JSONデータは将来的にFirestoreに移行推奨
+- サービスアカウントキーJSONはGitにコミットしない（Railway環境変数で管理）
