@@ -708,7 +708,7 @@ async def download_extension():
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fpath in sorted(ext_dir.rglob("*")):
             if fpath.is_file() and fpath.name != "README.md":
-                zf.write(fpath, fpath.relative_to(ext_dir))
+                zf.write(fpath, fpath.relative_to(ext_dir).as_posix())
     buf.seek(0)
     return StreamingResponse(
         buf,
