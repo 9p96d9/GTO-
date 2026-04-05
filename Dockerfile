@@ -23,8 +23,8 @@ RUN npm ci --omit=dev
 # プロジェクトファイルをコピー
 COPY scripts/ ./scripts/
 COPY static/ ./static/
+COPY extension/ ./extension/
 COPY server.py ./
-# extension/ はサーバー側には不要なのでCOPY対象外
 
 # 各種ディレクトリ作成
 RUN mkdir -p input/done output data
