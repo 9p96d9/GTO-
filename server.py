@@ -2693,6 +2693,108 @@ async def api_analyze_session(session_id: str, request: Request, background_task
     return JSONResponse({"job_id": job_id, "progress_url": f"/classify_progress/{job_id}"})
 
 
+@app.post("/api/sessions/analyze-multi")
+async def api_analyze_multi(request: Request, background_tasks: BackgroundTasks):
+    """
+    複数セッションのraw_textを結合してclassifyパイプラインに流す。
+    Header: Authorization: Bearer {idToken}
+    Body: { session_ids: ["id1", "id2", ...] }
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_session, update_session_status
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSONパース失敗"}, status_code=400)
+
+    session_ids = body.get("session_ids", [])
+    if not session_ids:
+        return JSONResponse({"error": "session_idsが空です"}, status_code=400)
+
+    # 各セッションのraw_textを結合
+    combined = []
+    for sid in session_ids:
+        try:
+            session = get_session(uid, sid)
+        except Exception:
+            continue
+        if session and session.get("raw_text"):
+            combined.append(session["raw_text"].strip())
+
+    if not combined:
+        return JSONResponse({"error": "有効なセッションが見つかりません"}, status_code=404)
+
+    raw_text = "\n\n".join(combined)
+    job_id   = uuid.uuid4().hex
+    txt_path = INPUT_DIR / f"multi_{job_id}.txt"
+    txt_path.write_text(raw_text, encoding="utf-8")
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "step": 0, "status": "running", "pdf": "", "log": "",
+            "mode": "classify",
+        }
+
+    background_tasks.add_task(run_classify_pipeline, job_id, txt_path)
+    return JSONResponse({"job_id": job_id, "progress_url": f"/classify_progress/{job_id}"})
+
+
+@app.post("/api/sessions/download-text")
+async def api_download_text(request: Request):
+    """
+    複数セッションのraw_textを結合してtxtファイルとしてダウンロード。
+    Header: Authorization: Bearer {idToken}
+    Body: { session_ids: ["id1", "id2", ...] }
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    from scripts.firebase_utils import is_firebase_enabled, get_session
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSONパース失敗"}, status_code=400)
+
+    session_ids = body.get("session_ids", [])
+    if not session_ids:
+        return JSONResponse({"error": "session_idsが空です"}, status_code=400)
+
+    combined = []
+    for sid in session_ids:
+        try:
+            session = get_session(uid, sid)
+        except Exception:
+            continue
+        if session and session.get("raw_text"):
+            combined.append(session["raw_text"].strip())
+
+    if not combined:
+        return JSONResponse({"error": "有効なセッションが見つかりません"}, status_code=404)
+
+    from datetime import date
+    filename = f"t4_hands_combined_{date.today().strftime('%Y%m%d')}.txt"
+    content  = "\n\n".join(combined).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 # ─── PokerGTO ログイン / セッション一覧 画面 ─────────────────────────────────
 
 @app.get("/login", response_class=HTMLResponse)
@@ -3109,12 +3211,12 @@ h1 { font-size: 20px; color: #e94560; }
 
     el.innerHTML = sessions.map(s => {
       const date = s.uploaded_at ? s.uploaded_at.replace("T", " ").slice(0, 16) : "-";
-      const canAnalyze = s.status === "pending" || s.status === "error";
+      const canAnalyze = s.status === "pending" || s.status === "error" || s.status === "analyzing";
       const isDone = s.status === "done";
 
       const analyzeBtn = canAnalyze
         ? `<button class="btn-analyze" onclick="analyzeSession('${s.id}', this)">解析する</button>`
-        : `<button class="btn-analyze" disabled>${s.status === "analyzing" ? "解析中..." : "解析済"}</button>`;
+        : `<button class="btn-analyze" disabled>解析済</button>`;
 
       const resultBtn = isDone && s.result_pdf
         ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
@@ -3175,17 +3277,55 @@ h1 { font-size: 20px; color: #e94560; }
     }
   };
 
-  // 一括操作ボタン（バックエンド未実装のため現状はアラート）
   document.getElementById("btn-bulk-analyze").addEventListener("click", async () => {
     const ids = [...selectedIds];
     if (!ids.length) return;
-    showAlert("複数セッション結合解析は近日実装予定です（選択中: " + ids.length + "件）");
+    const btn = document.getElementById("btn-bulk-analyze");
+    btn.disabled = true;
+    btn.textContent = "送信中...";
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/sessions/analyze-multi", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ session_ids: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "まとめて解析"; return; }
+      window.location.href = data.progress_url;
+    } catch (e) {
+      showAlert("エラー: " + e.message);
+      btn.disabled = false;
+      btn.textContent = "まとめて解析";
+    }
   });
 
   document.getElementById("btn-bulk-download").addEventListener("click", async () => {
     const ids = [...selectedIds];
     if (!ids.length) return;
-    showAlert("テキストダウンロードは近日実装予定です（選択中: " + ids.length + "件）");
+    const btn = document.getElementById("btn-bulk-download");
+    btn.disabled = true;
+    btn.textContent = "取得中...";
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/sessions/download-text", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ session_ids: ids }),
+      });
+      if (!res.ok) { const d = await res.json(); showAlert(d.error || "取得失敗"); btn.disabled = false; btn.textContent = "テキストを保存"; return; }
+      const blob = await res.blob();
+      const cd   = res.headers.get("Content-Disposition") || "";
+      const fn   = cd.match(/filename=(.+)/)?.[1] || "t4_hands.txt";
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = fn; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      showAlert("エラー: " + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = "テキストを保存";
   });
 
   document.getElementById("btn-bulk-clear").addEventListener("click", () => {
