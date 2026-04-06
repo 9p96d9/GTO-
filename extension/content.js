@@ -91,14 +91,19 @@ async function scrapeHands() {
       const _origWS = window.WebSocket;
       window.WebSocket = function(url, protocols) {
         const ws = protocols ? new _origWS(url, protocols) : new _origWS(url);
+        console.log('[PokerGTO] WebSocket接続:', url);
         ws.addEventListener('message', function(event) {
-          if (typeof event.data !== 'string' || !event.data.startsWith('42')) return;
-          try {
-            const parsed = JSON.parse(event.data.slice(2));
-            if (parsed[0] === 'fastFoldTableState' && parsed[1] && parsed[1].isHandInProgress === false) {
-              window.dispatchEvent(new CustomEvent('t4_hand_complete', { detail: parsed[1] }));
-            }
-          } catch(e) {}
+          if (typeof event.data !== 'string') return;
+          if (event.data.startsWith('42')) {
+            try {
+              const parsed = JSON.parse(event.data.slice(2));
+              console.log('[PokerGTO] Socket.IOイベント:', parsed[0], parsed[1]);
+              if (parsed[0] === 'fastFoldTableState' && parsed[1] && parsed[1].isHandInProgress === false) {
+                console.log('[PokerGTO] ハンド終了検知!', parsed[1]);
+                window.dispatchEvent(new CustomEvent('t4_hand_complete', { detail: parsed[1] }));
+              }
+            } catch(e) {}
+          }
         });
         return ws;
       };
