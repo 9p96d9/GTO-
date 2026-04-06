@@ -104,7 +104,13 @@ async function handleMessage(msg) {
           },
           body: JSON.stringify({ hand_json: msg.hand, captured_at })
         });
-        return await res.json();
+        const result = await res.json();
+
+        // 自動解析チェック: 100手蓄積ごとに自動解析を起動
+        if (result.ok) {
+          await _checkAutoAnalyze(token);
+        }
+        return result;
       } catch(e) {
         return { error: e.message };
       }
@@ -112,6 +118,39 @@ async function handleMessage(msg) {
 
     default:
       return { error: "Unknown message type: " + msg.type };
+  }
+}
+
+// ─── 自動解析: 100手蓄積ごとにバックグラウンドで解析を起動 ──────────────────
+
+const AUTO_ANALYZE_THRESHOLD = 100;
+
+async function _checkAutoAnalyze(token) {
+  try {
+    // chrome.storage.local から現在のカウンターを取得
+    const stored = await chrome.storage.local.get(["handCounter", "lastAutoAt"]);
+    let counter = (stored.handCounter || 0) + 1;
+    await chrome.storage.local.set({ handCounter: counter });
+
+    if (counter < AUTO_ANALYZE_THRESHOLD) return;
+
+    // 閾値到達 → カウンターリセット
+    await chrome.storage.local.set({ handCounter: 0, lastAutoAt: new Date().toISOString(), autoAnalyzePending: true });
+
+    // バックグラウンドで解析API呼び出し
+    const res = await fetch(SERVER_URL + "/api/hands/analyze", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: AUTO_ANALYZE_THRESHOLD }),
+    });
+    const data = await res.json();
+
+    // 結果ページを新タブで開く（進捗ページへ遷移）
+    if (data.progress_url) {
+      chrome.tabs.create({ url: SERVER_URL + data.progress_url });
+    }
+  } catch(e) {
+    console.warn("[PokerGTO] 自動解析エラー:", e.message);
   }
 }
 

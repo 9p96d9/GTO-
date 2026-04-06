@@ -3037,12 +3037,35 @@ async def api_download_text(request: Request):
     )
 
 
+@app.get("/api/hands/stats")
+async def api_hands_stats(request: Request):
+    """
+    ユーザーの蓄積ハンド件数・期間を返す。
+    Header: Authorization: Bearer {idToken}
+    → { count, newest, oldest }
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_hands_stats
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    try:
+        stats = get_hands_stats(uid)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+    return JSONResponse(stats)
+
+
 @app.post("/api/hands/analyze")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
     """
     Firestoreの hands コレクションを取得 → hand_converter → classify パイプラインに流す。
     Header: Authorization: Bearer {idToken}
-    Body (optional): { limit: int（デフォルト500） }
+    Body (optional): { limit: int, since_hours: int }
+      limit: 件数上限（デフォルト500）
+      since_hours: 何時間以内のハンドのみ（0=制限なし）
     → { job_id, progress_url } を返す
     """
     from scripts.firebase_utils import is_firebase_enabled, get_hands
@@ -3059,10 +3082,17 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
         body = await request.json()
     except Exception:
         body = {}
-    limit = int(body.get("limit", 500))
+    limit       = int(body.get("limit", 500))
+    since_hours = int(body.get("since_hours", 0))
+
+    since_iso = ""
+    if since_hours > 0:
+        from datetime import datetime, timezone, timedelta
+        since_dt  = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+        since_iso = since_dt.isoformat()
 
     try:
-        hands_data = get_hands(uid, limit=limit)
+        hands_data = get_hands(uid, limit=limit, since_iso=since_iso)
     except Exception as e:
         return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
 
@@ -3262,7 +3292,7 @@ _SESSIONS_PAGE_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PokerGTO セッション一覧</title>
+<title>PokerGTO — ハンド解析</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -3270,216 +3300,200 @@ body {
   background: #1a1a2e;
   color: #eee;
   min-height: 100vh;
-  padding: 20px;
 }
-.header {
+/* ─── トップバー ─── */
+.topbar {
+  background: #12122a;
+  border-bottom: 1px solid #1e2535;
+  padding: 12px 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  max-width: 900px;
-  margin: 0 auto 24px;
+  gap: 12px;
 }
-h1 { font-size: 20px; color: #e94560; }
-.user-info { font-size: 13px; color: #888; display: flex; align-items: center; gap: 12px; }
+.topbar h1 { font-size: 16px; color: #e94560; flex: 1; }
+.user-email { font-size: 12px; color: #778; }
 .btn-logout {
-  padding: 6px 14px;
-  background: transparent;
-  border: 1px solid #555;
-  border-radius: 6px;
-  color: #aaa;
-  cursor: pointer;
-  font-size: 12px;
-}
-.btn-logout:hover { border-color: #e94560; color: #e94560; }
-.btn-dl-ext {
-  padding: 6px 14px;
-  background: transparent;
-  border: 1px solid #4a7a4a;
-  border-radius: 6px;
-  color: #5cb85c;
-  cursor: pointer;
-  font-size: 12px;
-  text-decoration: none;
-}
-.btn-dl-ext:hover { background: #1a3a1a; }
-.container { max-width: 900px; margin: 0 auto; }
-.loading { text-align: center; color: #888; padding: 60px; }
-.empty { text-align: center; color: #666; padding: 60px; }
-.empty p { margin-bottom: 8px; }
-
-/* 一括操作バー */
-.bulk-bar {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  background: #0f3460;
-  border-radius: 10px;
-  padding: 12px 18px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-.bulk-bar.visible { display: flex; }
-.bulk-count { font-size: 13px; color: #aad4ff; flex: 1; }
-.btn-bulk-analyze {
-  padding: 8px 18px;
-  background: #e94560;
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-bulk-analyze:hover { background: #c73652; }
-.btn-bulk-download {
-  padding: 8px 18px;
-  background: #1a4a30;
-  border: none;
-  border-radius: 8px;
-  color: #5cb85c;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-bulk-download:hover { background: #255a38; }
-.btn-bulk-clear {
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid #445;
-  border-radius: 6px;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-}
-.btn-bulk-clear:hover { border-color: #aaa; color: #aaa; }
-
-.session-card {
-  background: #16213e;
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  transition: background 0.15s;
-}
-.session-card.selected { background: #1a2e50; outline: 1px solid #0f3460; }
-.cb-wrap {
-  display: flex;
-  align-items: center;
-  padding-right: 4px;
-}
-.cb-wrap input[type=checkbox] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #e94560;
-}
-.session-info { flex: 1; }
-.session-date { font-size: 13px; color: #888; margin-bottom: 4px; }
-.session-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.session-meta { font-size: 12px; color: #666; }
-.badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.badge-pending   { background: #333; color: #888; }
-.badge-analyzing { background: #1a3a5c; color: #5bc0de; }
-.badge-done      { background: #1a3a1a; color: #5cb85c; }
-.badge-error     { background: #3a1a1a; color: #e94560; }
-.actions { display: flex; gap: 8px; align-items: center; }
-.btn-analyze {
-  padding: 8px 18px;
-  background: #e94560;
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-analyze:hover { background: #c73652; }
-.btn-analyze:disabled { background: #555; cursor: not-allowed; }
-.btn-result {
-  padding: 8px 18px;
-  background: #0f3460;
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-result:hover { background: #1a4a80; }
-.btn-delete {
-  padding: 6px 12px;
+  padding: 5px 12px;
   background: transparent;
   border: 1px solid #444;
   border-radius: 6px;
-  color: #888;
-  font-size: 12px;
+  color: #889;
   cursor: pointer;
+  font-size: 11px;
 }
-.btn-delete:hover { border-color: #e94560; color: #e94560; }
-.btn-realtime-analyze {
-  padding: 7px 14px;
-  background: #1a5c2a;
-  border: 1px solid #2d8a40;
-  border-radius: 8px;
-  color: #5cb85c;
-  font-size: 12px;
+.btn-logout:hover { border-color: #e94560; color: #e94560; }
+
+/* ─── メインコンテナ ─── */
+.container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
+
+/* ─── ハンド数カード ─── */
+.stats-card {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+.stats-loading { color: #778; font-size: 14px; }
+.stats-count {
+  font-size: 64px;
+  font-weight: 700;
+  color: #e94560;
+  line-height: 1.1;
+  letter-spacing: -2px;
+}
+.stats-unit { font-size: 20px; color: #9ab; margin-left: 4px; font-weight: 400; }
+.stats-range { font-size: 12px; color: #778; margin-top: 6px; }
+.stats-live {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: #4caf93;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ─── 解析パネル ─── */
+.analyze-panel {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 24px 28px;
+  margin-bottom: 16px;
+}
+.panel-title {
+  font-size: 13px;
+  color: #9ab;
   font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
 }
-.btn-realtime-analyze:hover { background: #1e6e32; }
-.btn-realtime-analyze:disabled { background: #333; color: #666; cursor: not-allowed; border-color: #444; }
+
+.select-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.select-label {
+  font-size: 11px;
+  color: #778;
+  margin-bottom: 5px;
+}
+select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #0f1828;
+  border: 1px solid #2a3550;
+  border-radius: 8px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23778'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+select:focus { outline: none; border-color: #e94560; }
+
+.btn-analyze-main {
+  width: 100%;
+  padding: 16px;
+  background: #e94560;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-analyze-main:hover { background: #c73652; }
+.btn-analyze-main:active { transform: scale(0.98); }
+.btn-analyze-main:disabled { background: #3a2030; color: #666; cursor: not-allowed; }
+
+/* ─── サブリンク ─── */
+.sub-links {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.sub-link {
+  font-size: 12px;
+  color: #556;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.sub-link:hover { color: #9ab; }
+
+/* ─── アラート ─── */
 .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
 .alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
 </style>
 </head>
 <body>
-<div class="header">
+<div class="topbar">
   <h1>🃏 PokerGTO</h1>
-  <div class="user-info">
-    <a href="/download-extension" class="btn-dl-ext" title="Chrome拡張機能をダウンロード">⬇ 拡張機能ZIP</a>
-    <button class="btn-realtime-analyze" id="btn-realtime-analyze" title="自動取得したリアルタイムハンドを解析">⚡ リアルタイム解析</button>
-    <span id="user-email"></span>
-    <button class="btn-logout" id="btn-logout">ログアウト</button>
-  </div>
+  <span class="user-email" id="user-email"></span>
+  <button class="btn-logout" id="btn-logout">ログアウト</button>
 </div>
+
 <div class="container">
   <div id="alert-area"></div>
 
-  <!-- 一括操作バー -->
-  <div class="bulk-bar" id="bulk-bar">
-    <span class="bulk-count" id="bulk-count">0件選択中</span>
-    <button class="btn-bulk-analyze" id="btn-bulk-analyze">まとめて解析</button>
-    <button class="btn-bulk-download" id="btn-bulk-download">テキストを保存</button>
-    <button class="btn-bulk-clear" id="btn-bulk-clear">選択解除</button>
+  <!-- ハンド数カード -->
+  <div class="stats-card" id="stats-card">
+    <div class="stats-loading">蓄積ハンド数を確認中...</div>
   </div>
 
-  <div id="content" class="loading">読み込み中...</div>
+  <!-- 解析パネル -->
+  <div class="analyze-panel">
+    <div class="panel-title">解析範囲を選択</div>
+    <div class="select-group">
+      <div>
+        <div class="select-label">件数</div>
+        <select id="sel-limit">
+          <option value="50">直近 50 手</option>
+          <option value="100" selected>直近 100 手</option>
+          <option value="200">直近 200 手</option>
+          <option value="500">直近 500 手</option>
+          <option value="9999">全て</option>
+        </select>
+      </div>
+      <div>
+        <div class="select-label">期間</div>
+        <select id="sel-period">
+          <option value="0" selected>全期間</option>
+          <option value="1">直近 1 時間</option>
+          <option value="6">直近 6 時間</option>
+          <option value="24">直近 24 時間</option>
+          <option value="168">直近 7 日</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn-analyze-main" id="btn-analyze" disabled>⚡ 解析する</button>
+  </div>
+
+  <div class="sub-links">
+    <a class="sub-link" href="/download-extension">⬇ 拡張機能ZIP</a>
+    <a class="sub-link" href="/legacy">手動アップロード（旧版）</a>
+    <a class="sub-link" href="/">トップ</a>
+  </div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  import { getAuth, signOut, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const cfg  = await fetch("/api/firebase-config").then(r => r.json());
   const app  = initializeApp(cfg);
   const auth = getAuth(app);
-
   let currentUser = null;
-  let selectedIds = new Set();
 
   function showAlert(msg) {
     document.getElementById("alert-area").innerHTML =
@@ -3491,214 +3505,75 @@ h1 { font-size: 20px; color: #e94560; }
     return currentUser.getIdToken();
   }
 
-  async function loadSessions() {
-    document.getElementById("content").innerHTML = '<div class="loading">読み込み中...</div>';
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
+  }
+
+  async function loadStats() {
+    const card = document.getElementById("stats-card");
+    const btn  = document.getElementById("btn-analyze");
     try {
       const token = await getIdToken();
-      const res = await fetch("/api/sessions", {
+      const res = await fetch("/api/hands/stats", {
         headers: { "Authorization": "Bearer " + token }
       });
       const data = await res.json();
-      if (!res.ok) { showAlert(data.error || "取得失敗"); return; }
-      renderSessions(data.sessions || []);
-    } catch (e) {
-      showAlert("セッション取得失敗: " + e.message);
-    }
-  }
+      if (!res.ok) throw new Error(data.error || "取得失敗");
 
-  function statusBadge(status) {
-    const map = {
-      pending:   ["pending", "未解析"],
-      analyzing: ["analyzing", "解析中..."],
-      done:      ["done", "完了"],
-      error:     ["error", "エラー"],
-    };
-    const [cls, label] = map[status] || ["pending", status];
-    return `<span class="badge badge-${cls}">${label}</span>`;
-  }
+      const count = data.count || 0;
+      const rangeStr = (data.oldest && data.newest && data.oldest !== data.newest)
+        ? `${fmtDate(data.oldest)} 〜 ${fmtDate(data.newest)}`
+        : data.newest ? fmtDate(data.newest) : "—";
 
-  function updateBulkBar() {
-    const bar = document.getElementById("bulk-bar");
-    const count = document.getElementById("bulk-count");
-    if (selectedIds.size > 0) {
-      bar.classList.add("visible");
-      count.textContent = `${selectedIds.size}件選択中`;
-    } else {
-      bar.classList.remove("visible");
-    }
-  }
-
-  function toggleSelect(sessionId) {
-    const card = document.getElementById(`card-${sessionId}`);
-    const cb = document.getElementById(`cb-${sessionId}`);
-    if (selectedIds.has(sessionId)) {
-      selectedIds.delete(sessionId);
-      card.classList.remove("selected");
-      cb.checked = false;
-    } else {
-      selectedIds.add(sessionId);
-      card.classList.add("selected");
-      cb.checked = true;
-    }
-    updateBulkBar();
-  }
-
-  function renderSessions(sessions) {
-    const el = document.getElementById("content");
-    if (!sessions.length) {
-      el.innerHTML = `<div class="empty">
-        <p>セッションがありません</p>
-        <p style="font-size:12px">Chrome拡張機能を使ってT4からハンドログを送信してください</p>
-      </div>`;
-      return;
-    }
-
-    el.innerHTML = sessions.map(s => {
-      const date = s.uploaded_at ? s.uploaded_at.replace("T", " ").slice(0, 16) : "-";
-      const canAnalyze = s.status === "pending" || s.status === "error" || s.status === "analyzing";
-      const isDone = s.status === "done";
-
-      const analyzeBtn = canAnalyze
-        ? `<button class="btn-analyze" onclick="analyzeSession('${s.id}', this)">解析する</button>`
-        : `<button class="btn-analyze" disabled>解析済</button>`;
-
-      const resultBtn = isDone && s.job_id
-        ? `<button class="btn-result" onclick="window.location.href='/classify_result/${s.job_id}'">結果を見る</button>`
-        : isDone && s.result_pdf
-          ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
-          : "";
-
-      return `<div class="session-card" id="card-${s.id}" onclick="toggleSelect('${s.id}')">
-        <div class="cb-wrap" onclick="event.stopPropagation()">
-          <input type="checkbox" id="cb-${s.id}" onclick="toggleSelect('${s.id}')">
+      card.innerHTML = `
+        <div style="font-size:12px;color:#778;margin-bottom:8px">
+          <span class="stats-live"></span>自動取得中
         </div>
-        <div class="session-info">
-          <div class="session-date">${date}</div>
-          <div class="session-title">${s.filename || "upload.txt"}</div>
-          <div class="session-meta">${s.hand_count || 0} ハンド　${statusBadge(s.status)}</div>
+        <div>
+          <span class="stats-count">${count.toLocaleString()}</span>
+          <span class="stats-unit">手</span>
         </div>
-        <div class="actions" onclick="event.stopPropagation()">
-          ${resultBtn}
-          ${analyzeBtn}
-          <button class="btn-delete" onclick="deleteSession('${s.id}', this)">削除</button>
-        </div>
-      </div>`;
-    }).join("");
+        <div class="stats-range">${rangeStr}</div>
+      `;
+
+      // 件数ドロップダウンに「全て（N手）」を更新
+      const selLimit = document.getElementById("sel-limit");
+      const allOpt = selLimit.querySelector('option[value="9999"]');
+      if (allOpt) allOpt.textContent = `全て（${count.toLocaleString()}手）`;
+
+      if (count > 0) btn.disabled = false;
+      else {
+        btn.disabled = true;
+        card.innerHTML += `<div style="font-size:12px;color:#778;margin-top:12px">
+          T4でプレイしながら拡張機能を動かすと自動でハンドが蓄積されます
+        </div>`;
+      }
+    } catch (e) {
+      card.innerHTML = `<div class="stats-loading">取得失敗: ${e.message}</div>`;
+    }
   }
 
-  window.analyzeSession = async (sessionId, btn) => {
+  document.getElementById("btn-analyze").addEventListener("click", async () => {
+    const btn       = document.getElementById("btn-analyze");
+    const limit     = parseInt(document.getElementById("sel-limit").value);
+    const sinceHours = parseInt(document.getElementById("sel-period").value);
     btn.disabled = true;
-    btn.textContent = "送信中...";
-    try {
-      const token = await getIdToken();
-      const res = await fetch(`/api/sessions/${sessionId}/analyze`, {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token }
-      });
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; return; }
-      window.location.href = data.progress_url;
-    } catch (e) {
-      showAlert("エラー: " + e.message);
-      btn.disabled = false;
-    }
-  };
-
-  window.deleteSession = async (sessionId, btn) => {
-    if (!confirm("このセッションを削除しますか？")) return;
-    btn.disabled = true;
-    try {
-      const token = await getIdToken();
-      const res = await fetch(`/api/sessions/${sessionId}`, {
-        method: "DELETE",
-        headers: { "Authorization": "Bearer " + token }
-      });
-      if (!res.ok) { showAlert("削除失敗"); btn.disabled = false; return; }
-      selectedIds.delete(sessionId);
-      updateBulkBar();
-      document.getElementById(`card-${sessionId}`)?.remove();
-    } catch (e) {
-      showAlert("削除エラー: " + e.message);
-      btn.disabled = false;
-    }
-  };
-
-  document.getElementById("btn-bulk-analyze").addEventListener("click", async () => {
-    const ids = [...selectedIds];
-    if (!ids.length) return;
-    const btn = document.getElementById("btn-bulk-analyze");
-    btn.disabled = true;
-    btn.textContent = "送信中...";
-    try {
-      const token = await getIdToken();
-      const res = await fetch("/api/sessions/analyze-multi", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: ids }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "まとめて解析"; return; }
-      window.location.href = data.progress_url;
-    } catch (e) {
-      showAlert("エラー: " + e.message);
-      btn.disabled = false;
-      btn.textContent = "まとめて解析";
-    }
-  });
-
-  document.getElementById("btn-bulk-download").addEventListener("click", async () => {
-    const ids = [...selectedIds];
-    if (!ids.length) return;
-    const btn = document.getElementById("btn-bulk-download");
-    btn.disabled = true;
-    btn.textContent = "取得中...";
-    try {
-      const token = await getIdToken();
-      const res = await fetch("/api/sessions/download-text", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: ids }),
-      });
-      if (!res.ok) { const d = await res.json(); showAlert(d.error || "取得失敗"); btn.disabled = false; btn.textContent = "テキストを保存"; return; }
-      const blob = await res.blob();
-      const cd   = res.headers.get("Content-Disposition") || "";
-      const fn   = cd.match(/filename=(.+)/)?.[1] || "t4_hands.txt";
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url; a.download = fn; a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      showAlert("エラー: " + e.message);
-    }
-    btn.disabled = false;
-    btn.textContent = "テキストを保存";
-  });
-
-  document.getElementById("btn-bulk-clear").addEventListener("click", () => {
-    selectedIds.clear();
-    document.querySelectorAll(".session-card").forEach(c => c.classList.remove("selected"));
-    document.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
-    updateBulkBar();
-  });
-
-  document.getElementById("btn-realtime-analyze").addEventListener("click", async () => {
-    const btn = document.getElementById("btn-realtime-analyze");
-    btn.disabled = true;
-    btn.textContent = "解析中...";
+    btn.textContent = "解析を開始中...";
     try {
       const token = await getIdToken();
       const res = await fetch("/api/hands/analyze", {
         method: "POST",
         headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ limit, since_hours: sinceHours }),
       });
       const data = await res.json();
-      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "⚡ リアルタイム解析"; return; }
+      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "⚡ 解析する"; return; }
       window.location.href = data.progress_url;
     } catch (e) {
       showAlert("エラー: " + e.message);
       btn.disabled = false;
-      btn.textContent = "⚡ リアルタイム解析";
+      btn.textContent = "⚡ 解析する";
     }
   });
 
@@ -3708,13 +3583,10 @@ h1 { font-size: 20px; color: #e94560; }
   });
 
   onAuthStateChanged(auth, user => {
-    if (!user) {
-      window.location.href = "/login";
-      return;
-    }
+    if (!user) { window.location.href = "/login"; return; }
     currentUser = user;
     document.getElementById("user-email").textContent = user.email || user.displayName || "";
-    loadSessions();
+    loadStats();
   });
 </script>
 </body>

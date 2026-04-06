@@ -10,12 +10,11 @@ body {
   font-family: 'Segoe UI', 'Meiryo', sans-serif;
   background: #1a1a2e;
   color: #eee;
-  width: 320px;
-  min-height: 160px;
+  width: 300px;
   padding: 20px;
 }
-h1 { font-size: 17px; color: #e94560; margin-bottom: 4px; }
-.sub { font-size: 11px; color: #666; margin-bottom: 20px; }
+h1 { font-size: 16px; color: #e94560; margin-bottom: 3px; }
+.sub { font-size: 11px; color: #556; margin-bottom: 18px; }
 
 /* ─── ログイン前 ─── */
 #view-login { display: block; }
@@ -43,26 +42,50 @@ h1 { font-size: 17px; color: #e94560; margin-bottom: 4px; }
 .user-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #1e2535;
 }
-.user-email { font-size: 11px; color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-dot {
+  width: 7px; height: 7px;
+  background: #4caf93;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.user-email { font-size: 11px; color: #778; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-logout {
   background: transparent;
-  border: 1px solid #444;
+  border: 1px solid #333;
   border-radius: 5px;
-  color: #888;
+  color: #556;
   font-size: 10px;
-  padding: 3px 8px;
+  padding: 3px 7px;
   cursor: pointer;
   flex-shrink: 0;
-  margin-left: 8px;
 }
 .btn-logout:hover { border-color: #e94560; color: #e94560; }
 
-.btn-scrape {
+/* ─── 蓄積ハンド数 ─── */
+.hand-count-row {
+  text-align: center;
+  margin-bottom: 18px;
+}
+.hand-count-num {
+  font-size: 42px;
+  font-weight: 700;
+  color: #e94560;
+  line-height: 1;
+}
+.hand-count-unit { font-size: 15px; color: #9ab; margin-left: 2px; }
+.hand-count-label { font-size: 11px; color: #556; margin-top: 3px; }
+
+/* ─── メインボタン ─── */
+.btn-open {
   width: 100%;
-  padding: 13px;
+  padding: 14px;
   background: #e94560;
   border: none;
   border-radius: 10px;
@@ -73,53 +96,37 @@ h1 { font-size: 17px; color: #e94560; margin-bottom: 4px; }
   transition: background 0.15s;
   margin-bottom: 10px;
 }
-.btn-scrape:hover { background: #c73652; }
-.btn-scrape:disabled { background: #555; cursor: not-allowed; }
-
-.btn-open-site {
-  width: 100%;
-  padding: 8px;
-  background: transparent;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #aaa;
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.btn-open-site:hover { border-color: #888; color: #eee; }
+.btn-open:hover { background: #c73652; }
 
 /* ─── ステータス ─── */
 .status {
-  margin-top: 12px;
-  font-size: 12px;
-  color: #888;
-  min-height: 18px;
-  line-height: 1.5;
+  font-size: 11px;
+  color: #556;
+  text-align: center;
+  min-height: 16px;
 }
 .status.error { color: #e94560; }
 .status.success { color: #4caf93; }
 
-/* ─── プログレスバー ─── */
-.progress-wrap {
+/* ─── 自動解析バッジ ─── */
+.auto-badge {
   display: none;
-  background: #0f0f1a;
-  border-radius: 4px;
-  height: 5px;
-  margin-top: 8px;
-  overflow: hidden;
+  align-items: center;
+  gap: 6px;
+  background: #1a3a1a;
+  border: 1px solid #2d6a2d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #5cb85c;
 }
-.progress-bar {
-  height: 100%;
-  background: #e94560;
-  width: 0%;
-  transition: width 0.3s;
-}
+.auto-badge.visible { display: flex; }
 </style>
 </head>
 <body>
 <h1>🃏 PokerGTO</h1>
-<p class="sub">T4ハンドログ → PokerGTO自動送信</p>
+<p class="sub">T4ハンドログを自動取得中</p>
 
 <!-- ログイン前 -->
 <div id="view-login">
@@ -133,15 +140,24 @@ h1 { font-size: 17px; color: #e94560; margin-bottom: 4px; }
 <!-- ログイン後 -->
 <div id="view-main">
   <div class="user-row">
+    <div class="live-dot"></div>
     <span class="user-email" id="user-email"></span>
     <button class="btn-logout" id="btn-logout">ログアウト</button>
   </div>
-  <button class="btn-scrape" id="btn-scrape">▶ ハンドログを送信</button>
-  <button class="btn-open-site" id="btn-open-site">PokerGTOサイトを開く</button>
-  <div class="progress-wrap" id="progress-wrap">
-    <div class="progress-bar" id="progress-bar"></div>
+
+  <!-- 蓄積ハンド数 -->
+  <div class="hand-count-row" id="hand-count-row">
+    <div style="font-size:12px;color:#556">読み込み中...</div>
   </div>
-  <p class="status" id="scrape-status"></p>
+
+  <!-- 自動解析通知 -->
+  <div class="auto-badge" id="auto-badge">
+    <span>⚡</span>
+    <span id="auto-badge-text">100手蓄積 → 自動解析を実行中</span>
+  </div>
+
+  <button class="btn-open" id="btn-open-site">📊 PokerGTOを開く</button>
+  <p class="status" id="main-status"></p>
 </div>
 
 <script src="popup.js"></script>

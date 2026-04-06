@@ -139,17 +139,17 @@ def delete_session(uid: str, session_id: str):
     db.collection("users").document(uid).collection("sessions").document(session_id).delete()
 
 
-def get_hands(uid: str, limit: int = 500) -> list[dict]:
+def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
     """
     Firestore users/{uid}/hands を captured_at 降順で取得する。
+    since_iso: この ISO 文字列以降のハンドのみ取得（例: "2026-04-05T00:00:00"）
     各 dict に hand_id フィールドを追加して返す。
     """
     db = get_db()
-    hands_ref = (
-        db.collection("users").document(uid).collection("hands")
-        .order_by("captured_at", direction="DESCENDING")
-        .limit(limit)
-    )
+    ref = db.collection("users").document(uid).collection("hands")
+    if since_iso:
+        ref = ref.where("captured_at", ">=", since_iso)
+    hands_ref = ref.order_by("captured_at", direction="DESCENDING").limit(limit)
     docs = hands_ref.stream()
     result = []
     for doc in docs:
@@ -159,6 +159,29 @@ def get_hands(uid: str, limit: int = 500) -> list[dict]:
             d["saved_at"] = d["saved_at"].isoformat()
         result.append(d)
     return result
+
+
+def get_hands_stats(uid: str) -> dict:
+    """
+    Firestore users/{uid}/hands の件数・最古/最新の captured_at を返す。
+    大量ドキュメントでも集計クエリなしでメタデータのみ取得（先頭1件・末尾1件）。
+    """
+    db = get_db()
+    col = db.collection("users").document(uid).collection("hands")
+
+    # 最新1件（降順）
+    newest_docs = list(col.order_by("captured_at", direction="DESCENDING").limit(1).stream())
+    # 最古1件（昇順）
+    oldest_docs = list(col.order_by("captured_at", direction="ASCENDING").limit(1).stream())
+
+    if not newest_docs:
+        return {"count": 0, "newest": None, "oldest": None}
+
+    # 件数は全件 stream で count（数百件程度想定なのでOK）
+    count = sum(1 for _ in col.stream())
+    newest = newest_docs[0].to_dict().get("captured_at", "")
+    oldest = oldest_docs[0].to_dict().get("captured_at", "") if oldest_docs else newest
+    return {"count": count, "newest": newest, "oldest": oldest}
 
 
 def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
