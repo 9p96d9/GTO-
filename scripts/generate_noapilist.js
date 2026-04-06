@@ -70,14 +70,14 @@ function fmtActionsHtml(actions) {
     const pos = a.position || a.name || "?";
     const act = a.action || "";
     const amt = a.amount_bb != null ? ` ${a.amount_bb}bb` : "";
-    if (act === "Fold")       parts.push(`<span style="color:#aaa">${esc(pos)} F</span>`);
-    else if (act === "Check") parts.push(`<span style="color:#888">${esc(pos)} X</span>`);
-    else if (act === "Call")  parts.push(`<span style="color:#0055CC">${esc(pos)} Call${esc(amt)}</span>`);
+    if (act === "Fold")       parts.push(`<span style="color:#777">${esc(pos)} F</span>`);
+    else if (act === "Check") parts.push(`<span style="color:#555">${esc(pos)} X</span>`);
+    else if (act === "Call")  parts.push(`<span style="color:#0044AA">${esc(pos)} Call${esc(amt)}</span>`);
     else if (act === "Bet" || act === "Raise")
-      parts.push(`<span style="color:#a06000;font-weight:bold">${esc(pos)} ${esc(act)}${esc(amt)}</span>`);
-    else if (act)             parts.push(`<span style="color:#666">${esc(pos)} ${esc(act)}</span>`);
+      parts.push(`<span style="color:#884400;font-weight:bold">${esc(pos)} ${esc(act)}${esc(amt)}</span>`);
+    else if (act)             parts.push(`<span style="color:#444">${esc(pos)} ${esc(act)}</span>`);
   }
-  return parts.join(' <span style="color:#bbb">›</span> ');
+  return parts.join(' <span style="color:#999">›</span> ');
 }
 
 /** ストリート別アクションフロー HTML（PDF用コンパクト） */
@@ -87,16 +87,16 @@ function buildActionFlowHtml(hand) {
 
   const pf = streets.preflop || [];
   const pfHtml = fmtActionsHtml(pf);
-  if (pfHtml) lines.push(`<span style="color:#999;font-size:5.5pt">PF</span> ${pfHtml}`);
+  if (pfHtml) lines.push(`<span style="color:#444;font-size:5.5pt;font-weight:bold">PF</span> ${pfHtml}`);
 
   for (const [key, lbl] of [["flop","F"],["turn","T"],["river","R"]]) {
     const s = streets[key];
     if (!s || typeof s !== "object") continue;
     const boardCards = (s.board || []).filter(c => c && c !== "-");
     const boardHtml  = boardCards.length ? cardToHtml(boardCards.join(" ")) : "";
-    const potHtml    = s.pot_bb ? `<span style="color:#bbb;font-size:5pt">(${s.pot_bb}bb)</span>` : "";
+    const potHtml    = s.pot_bb ? `<span style="color:#666;font-size:5pt">(${s.pot_bb}bb)</span>` : "";
     const actsHtml   = fmtActionsHtml(s.actions || []);
-    let line = `<span style="color:#999;font-size:5.5pt">${lbl}</span>`;
+    let line = `<span style="color:#444;font-size:5.5pt;font-weight:bold">${lbl}</span>`;
     if (boardHtml) line += ` ${boardHtml}`;
     if (potHtml)   line += ` ${potHtml}`;
     if (actsHtml)  line += ` ${actsHtml}`;
@@ -318,17 +318,33 @@ body {
 
 /* アクションフロー行 */
 .action-flow {
-  font-size: 5.5pt; color: #555; line-height: 1.7;
-  padding: 1pt 4pt 2pt 4pt;
-  background: #f8f9fc;
-  border-bottom: 1px solid #e0e0e0;
+  font-size: 5.5pt; color: #333; line-height: 1.8;
+  padding: 1.5pt 4pt 2.5pt 4pt;
+  background: #f2f4f8;
+  border-bottom: 1px solid #cdd;
 }
 .opp-pos {
-  font-size: 5pt; color: #999; margin-right: 1pt;
+  font-size: 5pt; color: #555; margin-right: 1pt; font-weight: bold;
 }
 .hand-main td {
   border-bottom: none !important;
 }
+
+/* 全ハンド一覧 */
+.all-tbl { font-size: 6pt; margin-bottom: 4mm; }
+.all-tbl th {
+  background: #2E4057; color: #fff;
+  padding: 1.5pt 3pt; font-weight: 700; border: 1px solid #1e2e40;
+  white-space: nowrap; text-align: left;
+}
+.all-tbl td { padding: 1.5pt 3pt; border: 1px solid #ccc; vertical-align: middle; }
+.all-tbl tr:nth-child(even) td { background: #f5f6f8; }
+.badge-blue   { background:#ddeeff; color:#003399; font-weight:bold; padding:0 3px; border-radius:2px; }
+.badge-red    { background:#ffdddd; color:#990000; font-weight:bold; padding:0 3px; border-radius:2px; }
+.badge-pf     { background:#f0f0f0; color:#666;    padding:0 3px; border-radius:2px; }
+.badge-3b     { background:#ede0ff; color:#5b00d6; font-weight:bold; padding:0 3px; border-radius:2px; font-size:4.5pt; }
+.all-pos      { color:#333; font-weight:bold; }
+.all-opp-pos  { color:#555; font-weight:bold; }
 `;
 }
 
@@ -490,7 +506,7 @@ function buildSection2And3Html(hands) {
   const noData = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:4pt">該当なし</td></tr>`;
 
   return `
-<h2 class="section-title">① 青線 / 赤線 ハンド一覧</h2>
+<h2 class="section-title">① 青線 / 赤線 ハンド詳細</h2>
 <div class="two-col">
   <div class="col-half">
     <p class="section-sub">🔵 青線 ${blueHands.length}手 &nbsp;
@@ -516,7 +532,69 @@ function buildSection2And3Html(hands) {
 </div>`;
 }
 
-// ─── セクション3: プリフロップ別成績 ──────────────────────────────────────────
+// ─── セクション3: 全ハンド一覧 ───────────────────────────────────────────────
+
+function buildAllHandsSection(hands) {
+  const LINE_BADGE = {
+    blue:         `<span class="badge-blue">青</span>`,
+    red:          `<span class="badge-red">赤</span>`,
+    preflop_only: `<span class="badge-pf">PF</span>`,
+  };
+
+  const rows = hands.map(h => {
+    const clf    = h.bluered_classification || {};
+    const line   = clf.line || "preflop_only";
+    const plNum  = h.hero_result_bb || 0;
+    const plCls  = plNum > 0 ? "pl-pos" : plNum < 0 ? "pl-neg" : "";
+    const badge  = LINE_BADGE[line] || `<span class="badge-pf">${esc(line)}</span>`;
+    const badge3 = h.is_3bet_pot ? ` <span class="badge-3b">3BET</span>` : "";
+
+    // ヒーローのカード
+    const heroCards = (h.hero_cards || []).join("");
+    const heroPos   = h.hero_position || "?";
+
+    // 対戦相手（ポジション + カード）
+    const oppHtml = (h.players || [])
+      .filter(p => !p.is_hero)
+      .map(p => {
+        const cards = (p.hole_cards || []).join("");
+        const pos   = p.position || "?";
+        return `<span class="all-opp-pos">${esc(pos)}</span>&nbsp;${cards ? cardToHtml(cards) : '<span style="color:#aaa">—</span>'}`;
+      }).join("&ensp;") || '<span style="color:#aaa">—</span>';
+
+    // PFアクション（簡略）
+    const pfActs = fmtActionsHtml(h.streets?.preflop || []);
+
+    return `<tr>
+      <td style="text-align:center;white-space:nowrap">${badge}${badge3} H${esc(h.hand_number)}</td>
+      <td style="white-space:nowrap">
+        <span class="all-pos">${esc(heroPos)}</span>&nbsp;<span style="color:#666;font-size:5pt">(H)</span>&nbsp;${cardToHtml(heroCards) || '<span style="color:#aaa">—</span>'}
+        &ensp;<span style="color:#aaa">vs</span>&ensp;${oppHtml}
+      </td>
+      <td>${pfActs || '<span style="color:#aaa">—</span>'}</td>
+      <td style="text-align:right;white-space:nowrap" class="${plCls}">${fmtBb(plNum)}</td>
+    </tr>`;
+  }).join("");
+
+  const noData = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:4pt">データなし</td></tr>`;
+
+  return `
+<h2 class="section-title">② 全ハンド一覧（${hands.length}手）</h2>
+<table class="all-tbl data-table">
+  <colgroup>
+    <col style="width:9%"><col style="width:52%"><col style="width:27%"><col style="width:12%">
+  </colgroup>
+  <thead><tr>
+    <th>分類 / H#</th>
+    <th>ポジション / ホールカード</th>
+    <th>PFアクション</th>
+    <th style="text-align:right">損益(bb)</th>
+  </tr></thead>
+  <tbody>${rows || noData}</tbody>
+</table>`;
+}
+
+// ─── セクション4: プリフロップ別成績 ──────────────────────────────────────────
 
 function buildSection3Html(hands) {
   const posStats = calcPositionStats(hands);
@@ -540,7 +618,7 @@ function buildSection3Html(hands) {
   }).join("");
 
   return `
-<h2 class="section-title">② プリフロップ別成績</h2>
+<h2 class="section-title">③ プリフロップ別成績</h2>
 <table class="data-table pos-table">
   <colgroup>${ws.map(w => `<col style="width:${w}">`).join("")}</colgroup>
   <thead><tr>${hdrs.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
@@ -616,9 +694,12 @@ async function main() {
   const minDate = dates.length ? dates.reduce((a, b) => a < b ? a : b) : today;
   const maxDate = dates.length ? dates.reduce((a, b) => a > b ? a : b) : today;
 
+  const allSorted = hands.slice().sort((a, b) => (a.hand_number || 0) - (b.hand_number || 0));
+
   const html = buildFullHtml([
     buildSection1Html(hands, minDate, maxDate),
     buildSection2And3Html(hands),
+    buildAllHandsSection(allSorted),
     buildSection3Html(hands),
   ]);
 
