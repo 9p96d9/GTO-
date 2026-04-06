@@ -1,6 +1,6 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 3.1  
+**バージョン:** 3.2  
 **最終更新:** 2026-04-06  
 **リポジトリ:** https://github.com/9p96d9/GTO-  
 **本番URL:** https://gto-production.up.railway.app  
@@ -17,44 +17,67 @@
 | Phase 4 | ユーザー機能アップグレード（複数選択解析・テキスト保存） | ✅ 完了 |
 | **Phase 5** | **管理者ダッシュボード** | ⬜ 未着手 |
 | Phase 6 | 仕上げ・UX改善 | ⬜ 未着手 |
-| **Phase 7** | **リアルタイムハンドログ自動取得** | 🔄 POC完了・パイプライン未着手 |
+| **Phase 7** | **リアルタイムハンドログ自動取得** | ✅ 完了 |
 
 ---
 
 ## 1. システム概要
 
-T4ポーカーサイトのハンド履歴テキストをアップロードするだけで、GTO観点の分析を行うWebアプリケーション。
+T4ポーカーサイトのハンドログをリアルタイム自動取得し、GTO観点の分析を行うWebアプリケーション。Chrome拡張機能でプレイ中にWebSocket通信を傍受し自動でFirestoreへ蓄積、ボタン1つでWeb画面に結果を表示する。
 
 ### モード一覧
 
 | モード | 説明 | Gemini API |
 |---|---|---|
-| **classifyモード（デフォルト）** | アップロード → parse → classify → Web結果画面 → 選択肢提示 | 不要 |
-| **NoAPI PDF** | 分類結果からAPIなしでPDFを生成 | 不要 |
-| **AI PDF** | 分類結果にGemini分析を追加してPDFを生成 | 必要（BYOK） |
+| **リアルタイム解析（メイン）** | 拡張機能自動取得 → hand_converter → classify → Web結果画面 | 不要 |
+| **classifyモード（レガシー）** | テキストアップロード → parse → classify → Web結果画面 | 不要 |
+| **NoAPI PDF** | 分類結果からAPIなしでPDFを生成（Web結果画面からオプション） | 不要 |
+| **AI PDF** | 分類結果にGemini分析を追加してPDFを生成（Web結果画面からオプション） | 必要（BYOK） |
 | **クイック解析** | 統計ダッシュボードのみ（PDFなし、即時） | 不要 |
 
-### フロー図（classifyモードがメイン）
+### 画面構成
+
+| URL | 内容 |
+|---|---|
+| `/` | ランディングページ（拡張機能ダウンロード・4ステップ利用案内） |
+| `/sessions` | セッション一覧（ログイン必須）・リアルタイム解析ボタン |
+| `/classify_result/{job_id}` | 解析結果WebUI（全プレイヤーのホールカード・アクションフロー表示）|
+| `/legacy` | 旧テキストアップロード解析（後方互換） |
+
+### フロー図（リアルタイム解析がメイン）
 
 ```
-[ブラウザ: ファイルアップロード + hero_name（任意）]
-         │ POST /upload
-         ▼
-[server.py] → run_classify_pipeline（バックグラウンド）
-         │
-         ├── Step1: parse.py        → data/upload.json
-         ├── Step2: classify.py     → data/upload_classified.json
-         │
-         └── /classify_result/{job_id} に遷移（Web結果画面）
-                    │
-          ┌─────────┴──────────┐
-          │                    │
-  POST /generate_pdf       POST /start_ai
-          │                    │
-   run_pdf_pipeline       run_ai_pipeline
-   (NoAPI PDF)            (Gemini + AI PDF)
-          │                    │
-  NoAPI_Report_*.pdf    GTO_Report_*.pdf
+[T4プレイ中]
+    │ Chrome拡張（interceptor.js: MAIN world）がWebSocket傍受
+    │ ハンド終了時: content.js → background.js → POST /api/hands/realtime
+    ▼
+Firestore: users/{uid}/hands/{handId}
+
+[セッション画面: ⚡ リアルタイム解析ボタン]
+    │ POST /api/hands/analyze
+    ▼
+[server.py] → run_classify_pipeline_from_json（バックグラウンド）
+    │
+    ├── hand_converter.py  → data/realtime_*.json（parse.py互換形式に変換）
+    ├── classify.py        → data/realtime_*_classified.json
+    │
+    └── /classify_result/{job_id} に遷移（Web結果画面）
+               │
+     ┌─────────┴──────────┐
+     │                    │
+POST /generate_pdf    POST /start_ai
+（オプション）        （オプション）
+     │                    │
+NoAPI_Report_*.pdf   GTO_Report_*.pdf
+```
+
+### レガシーフロー（/legacy）
+
+```
+[ブラウザ: テキストファイルアップロード]
+    │ POST /upload
+    ▼
+run_classify_pipeline（parse.py → classify.py）→ /classify_result/{job_id}
 ```
 
 ---
@@ -89,16 +112,18 @@ GTO-/
 ├── scripts/
 │   ├── parse.py                # ハンド履歴パーサー（txt → JSON）
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
+│   ├── hand_converter.py       # fastFoldTableState JSON → parse.py互換JSON変換（Phase 7）
 │   ├── analyze.py              # Gemini GTO分析（JSON → JSON + gto_analysis）
 │   ├── generate.js             # AI PDFレポート生成（puppeteer）
 │   ├── generate_noapilist.js   # NoAPI PDFレポート生成（puppeteer）
 │   ├── quick_analyzer.py       # クイック統計計算（API不要・即時）
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ（Firestore CRUD / idToken検証）
-├── extension/                  # Chrome拡張機能（MV3）
+├── extension/                  # Chrome拡張機能（MV3）v2.1.0
 │   ├── manifest.json           # 拡張機能設定（oauth2 client_id・key含む）
 │   ├── popup.html / popup.js   # ポップアップUI（ログイン・スクレイプ送信）
-│   ├── background.js           # Service Worker（Firebase Auth管理）
-│   ├── content.js              # T4スクレイプ処理（bookmarklet移植）
+│   ├── background.js           # Service Worker（Firebase Auth管理・HAND_COMPLETE受信）
+│   ├── interceptor.js          # WebSocket傍受（MAIN world）Socket.IOイベント検知（Phase 7）
+│   ├── content.js              # CustomEventをbackground.jsに転送（ISOLATED world）
 │   └── icons/                  # アイコン画像（16/48/128px）
 ├── static/                     # 静的ファイル（/static/ で配信）
 ├── input/                      # アップロードtxt一時置き場
@@ -176,12 +201,13 @@ postflopあり:
 
 | メソッド | パス | 説明 |
 |---|---|---|
-| GET | `/` | アップロード画面 |
-| POST | `/upload` | ファイル受信 → classifyパイプライン開始 |
+| GET | `/` | ランディングページ（拡張機能ダウンロード・利用案内） |
+| GET | `/legacy` | 旧テキストアップロード画面（後方互換） |
+| POST | `/upload` | テキストファイル受信 → classifyパイプライン開始（/legacyから） |
 | GET | `/classify_progress/{job_id}` | 分類進捗画面（SSE接続） |
-| GET | `/classify_result/{job_id}` | 分類結果Web画面（PDF選択画面） |
-| POST | `/generate_pdf/{job_id}` | NoAPI PDFを生成 |
-| POST | `/start_ai/{job_id}` | AI分析+AI PDFを生成（api_key フォームパラメータ） |
+| GET | `/classify_result/{job_id}` | 分類結果Web画面（ホールカード・アクションフロー表示） |
+| POST | `/generate_pdf/{job_id}` | NoAPI PDFを生成（オプション） |
+| POST | `/start_ai/{job_id}` | AI分析+AI PDFを生成（api_key フォームパラメータ、オプション） |
 | GET | `/progress/{job_id}` | PDF生成進捗画面（SSE接続） |
 | GET | `/stream/{job_id}` | SSEイベントストリーム |
 | GET | `/status/{job_id}` | ジョブ状態JSON |
@@ -194,15 +220,18 @@ postflopあり:
 | POST | `/scrape_upload` | ブックマークレットからJSON直接POST（サーバーAPIキー使用） |
 | **Firebase連携（要 FIREBASE_SERVICE_ACCOUNT_JSON）** | | |
 | GET | `/login` | Googleログイン画面（Firebase Auth） |
-| GET | `/sessions` | セッション一覧画面（ログイン必須） |
+| GET | `/sessions` | セッション一覧画面（ログイン必須）・リアルタイム解析ボタン |
 | GET | `/api/firebase-config` | フロントエンド向けFirebase public設定を返す |
+| GET | `/api/extension.zip` | 拡張機能ZIPダウンロード |
 | POST | `/api/upload-from-extension` | Chrome拡張機能からセッション保存（Bearer認証） |
 | GET | `/api/sessions` | ログインユーザーのセッション一覧JSON（Bearer認証） |
 | DELETE | `/api/sessions/{session_id}` | セッション削除（Bearer認証） |
 | POST | `/api/sessions/{session_id}/analyze` | Firestoreのセッションをclassifyパイプラインに流す（Bearer認証） |
-| **Phase 4で追加予定** | | |
 | POST | `/api/sessions/analyze-multi` | 複数セッションを結合してclassifyパイプラインに流す（Bearer認証） |
 | POST | `/api/sessions/download-text` | 複数セッションのraw_textを結合してtxtダウンロード（Bearer認証） |
+| **Phase 7: リアルタイム** | | |
+| POST | `/api/hands/realtime` | 拡張機能からハンド1件を即時保存（Bearer認証） |
+| POST | `/api/hands/analyze` | Firestoreの全handsを取得→変換→classifyパイプライン実行（Bearer認証） |
 | **Phase 5で追加予定** | | |
 | GET | `/admin` | 管理者ダッシュボード（adminロールのみ） |
 | POST | `/api/admin/set-claim` | ユーザーにadminクレームを付与（adminロールのみ） |
@@ -215,12 +244,25 @@ postflopあり:
 
 ```
 users/{uid}/sessions/{sessionId}
-  ├── raw_text:    string        # T4ハンドログ全文
+  ├── raw_text:    string        # T4ハンドログ全文（レガシー手動アップロード用）
   ├── filename:    string        # 元ファイル名（例: t4_hands_20260403.txt）
   ├── hand_count:  number        # ハンド数
   ├── uploaded_at: timestamp     # アップロード日時（UTC）
   ├── status:      string        # "pending" | "analyzing" | "done" | "error"
-  └── result_pdf:  string        # 生成PDFファイル名（空文字 or "NoAPI_Report_*.pdf"）
+  ├── result_pdf:  string        # 生成PDFファイル名（旧フロー用、基本は空）
+  └── job_id:      string        # classify_result WebページのjobId（/classify_result/{job_id}で参照）
+
+users/{uid}/hands/{handId}       # Phase 7: リアルタイム自動取得
+  ├── hand_json:    object        # fastFoldTableStateの生データ
+  │     ├── tableId:         string
+  │     ├── actionHistory:   string[]
+  │     ├── handResults:     object[]  # 全プレイヤー情報・ホールカード含む
+  │     ├── seats:           object[]
+  │     ├── communityCards:  string[]
+  │     ├── mySeatIndex:     number
+  │     └── isHandInProgress: boolean
+  ├── captured_at:  string        # ISO8601（拡張機能側の時刻）
+  └── saved_at:     timestamp     # Firestore保存日時（UTC）
 ```
 
 ### セキュリティルール（現在）
@@ -259,10 +301,11 @@ service cloud.firestore.beta {
 
 | ファイル | 役割 |
 |---|---|
-| `manifest.json` | MV3設定。`oauth2.client_id`・`key`（ID固定）含む |
-| `background.js` | Service Worker。Firebase Auth（GET_USER / SIGN_IN / GET_ID_TOKEN）を管理 |
-| `popup.html/js` | ポップアップUI。ログイン状態表示・スクレイプ送信ボタン |
-| `content.js` | T4ページで動作。ハンドカードをクリックしてテキストを収集 |
+| `manifest.json` | MV3設定 v2.1.0。`oauth2.client_id`・`key`（ID固定）。2つのcontent_scripts（MAIN/ISOLATED） |
+| `background.js` | Service Worker。Firebase Auth管理 + `HAND_COMPLETE`メッセージ受信→サーバーPOST |
+| `popup.html/js` | ポップアップUI。ログイン状態表示・手動スクレイプ送信ボタン |
+| `interceptor.js` | **Phase 7新規**。`world: "MAIN"`でWebSocket傍受。Socket.IOイベントを検知しCustomEvent発火 |
+| `content.js` | `t4_hand_complete` CustomEventを受け取りbackground.jsに転送（ISOLATED world） |
 
 **拡張機能ID（固定）:** `ilkbcfenghigefpfjohppfjodahhoiif`  
 **OAuthクライアントID:** `615725442966-l1k8rgi5m43stim6ellgj8e36s8hfn6l.apps.googleusercontent.com`
@@ -272,20 +315,29 @@ service cloud.firestore.beta {
 - `https://*.tenfour-poker.com/*`
 - `https://*.t4poker.com/*`
 
-**Chrome拡張 → サーバー通信フロー:**
+**リアルタイム自動取得フロー（Phase 7 - メイン）:**
+```
+[T4プレイ中]
+  interceptor.js（MAIN world）: window.WebSocket をオーバーライド
+       ↓ fastFoldTableState（isHandInProgress=false）または
+         fastFoldTableRemoved（フォールド離脱）を検知
+  CustomEvent: t4_hand_complete
+       ↓
+  content.js（ISOLATED）: chrome.runtime.sendMessage({ type: 'HAND_COMPLETE' })
+       ↓
+  background.js: POST /api/hands/realtime（Bearer: idToken）
+       ↓
+  server.py → Firestore: users/{uid}/hands/{tableId}_{captured_at}
+```
+
+**手動スクレイプフロー（レガシー）:**
 ```
 [T4ブックマーク一覧]
   content.js: ハンドカードをクリック → テキスト収集
+       ↓ popup.js経由で POST /api/upload-from-extension
        ↓
-  popup.js: idToken取得（background.js経由）
-       ↓
-  POST /api/upload-from-extension  （Bearer: idToken）
-       ↓
-  server.py: idTokenをFirebase Admin SDKで検証 → Firestoreに保存
-       ↓
-  /sessions に遷移 → 解析ボタンをクリック
-       ↓
-  POST /api/sessions/{id}/analyze → 既存classifyパイプライン起動
+  Firestore: users/{uid}/sessions/{sessionId}
+       ↓ /sessions → 解析ボタン → run_classify_pipeline
 ```
 
 ---
@@ -308,8 +360,8 @@ service cloud.firestore.beta {
 ### 本番環境（Railway）
 - URL: `https://gto-production.up.railway.app`
 - リポジトリ: `https://github.com/9p96d9/GTO-.git`
-- ブランチ: `master`（mainも同期済み）
-- 自動デプロイ: `master` へのpushで自動ビルド・デプロイ
+- ブランチ: `main`（masterブランチは削除済み）
+- 自動デプロイ: `main` へのpushで自動ビルド・デプロイ
 
 ---
 
@@ -428,14 +480,14 @@ admins/{uid}
 
 ---
 
-## 12. Phase 7: リアルタイムハンドログ自動取得（🔄 POC完了）
+## 12. Phase 7: リアルタイムハンドログ自動取得（✅ 完了）
 
 ### 概要
 
 プレイ中にSocket.IO通信を傍受し、ハンド終了を自動検知してFirestoreへ即時保存する。
-ユーザーはプレイするだけでログが自動蓄積され、手動スクレイプ操作が不要になる。
+ユーザーはプレイするだけでログが自動蓄積され、「⚡ リアルタイム解析」ボタン1つでWeb結果画面を表示できる。
 
-### 12-1. 実装済み内容（2026-04-06 検証済み）
+### 12-1. 実装済み内容（2026-04-06 全パイプライン動作確認済み）
 
 | 項目 | 内容 |
 |---|---|
@@ -444,43 +496,66 @@ admins/{uid}
 | 傍受方法 | `world: "MAIN"` Content Script（`interceptor.js`）で `window.WebSocket` をオーバーライド |
 | CSP対応 | `document.createElement('script')` は T4サイトのCSPでブロックされるため `world: "MAIN"` で解決 |
 | ハンド終了検知 | `fastFoldTableState` イベント + `isHandInProgress: false` |
-| Fast Fold対応 | `fastFoldTableRemoved`（`reason: 'folded'`）発火時に最後の状態を保存 |
+| Fast Fold対応 | `fastFoldTableRemoved` 発火時に `_lastTableState[tableId]` を保存 |
 | 重複防止 | `actionHistory` のJSON文字列をtableIdごとにメモリキャッシュして比較 |
+| ホールカード | `handResults[].hand` に全プレイヤーのカードが含まれる（showdown不問） |
 | 保存先 | Firestore `users/{uid}/hands/{tableId}_{captured_at}` |
 | 即時POST | ハンド1件終了ごとに即時POST（ブラウザクラッシュ時のロス防止） |
+| 解析パイプライン | `/api/hands/analyze` → hand_converter → classify → Web結果画面 |
 
 ### 12-2. 実装ファイル
 
 | ファイル | 変更内容 |
 |---|---|
 | `extension/interceptor.js` | WebSocket傍受・イベント検知（新規、`world: "MAIN"`） |
-| `extension/content.js` | CustomEventを受け取りbackground.jsに転送 |
-| `extension/background.js` | `HAND_COMPLETE`メッセージを受け取りPOST |
-| `extension/manifest.json` | interceptor.js（MAIN world）・content.js（ISOLATED）の2段構成 |
-| `scripts/firebase_utils.py` | `save_hand()` 追加 |
-| `server.py` | `POST /api/hands/realtime` エンドポイント追加 |
+| `extension/content.js` | CustomEventを受け取りbackground.jsに転送（ISOLATED world） |
+| `extension/background.js` | `HAND_COMPLETE`メッセージを受け取り `POST /api/hands/realtime` |
+| `extension/manifest.json` | v2.1.0。interceptor.js（MAIN world）・content.js（ISOLATED）の2段構成 |
+| `scripts/firebase_utils.py` | `save_hand()`, `get_hands()` 追加。`update_session_status()` に `job_id` 追加 |
+| `scripts/hand_converter.py` | fastFoldTableState → parse.py互換JSON変換（新規） |
+| `server.py` | `POST /api/hands/realtime`, `POST /api/hands/analyze`, `run_classify_pipeline_from_json()` 追加 |
 
-### 12-3. Firestoreスキーマ（追加）
+### 12-3. hand_converter.py の処理
+
+`fastFoldTableState`（Firestoreの`hand_json`）を`parse.py`出力形式に変換する。
 
 ```
-users/{uid}/hands/{handId}
-  ├── hand_json:    object   # fastFoldTableStateの生データ
-  │     ├── tableId:         string
-  │     ├── actionHistory:   string[]
-  │     ├── handResults:     object[]
-  │     ├── seats:           object[]  # ホールカード含む（showdown時）
-  │     ├── communityCards:  object[]
-  │     ├── isHandInProgress: boolean
-  │     └── ...
-  ├── captured_at:  string   # ISO8601（拡張機能側の時刻）
-  └── saved_at:     timestamp
+fastFoldTableState
+  ├── handResults[].hand[]     → players[].hole_cards（カード変換: "As" → "A♠"）
+  ├── handResults[].position   → players[].position
+  ├── handResults[].profit     → players[].result_bb
+  ├── mySeatIndex              → players[].is_hero
+  ├── actionHistory[]          → streets（preflop/flop/turn/river）
+  ├── communityCards[]         → streets.{flop,turn,river}.board
+  └── seats[].isFolded         → went_to_showdown 判定
 ```
 
-### 12-4. 未着手（次フェーズ）
+**3BETポット判定:** プリフロップのRaiseが2回以上  
+**ショーダウン判定:** `isHandInProgress=false` かつ `seats[i].isFolded=false` が2席以上
 
-- `hands` コレクションのデータを parse.py 互換フォーマットに変換するパイプライン
-- `hands` を集約してセッション単位で解析にかける機能
-- ホールカード取得の検証（showdownハンドで `seats` に含まれるか確認済みが必要）
+### 12-4. リアルタイム解析パイプライン
+
+```
+POST /api/hands/analyze（Bearer認証）
+  ↓
+get_hands(uid, limit=500)  ← Firestore users/{uid}/hands
+  ↓
+convert_hands_batch()      ← hand_converter.py
+  ↓ data/realtime_{job_id}.json
+run_classify_pipeline_from_json()  ← parse.pyスキップ
+  ↓ classify.py
+  ↓ data/realtime_{job_id}_classified.json
+/classify_result/{job_id}  ← 全プレイヤーのホールカード・アクションフロー表示
+```
+
+### 12-5. 結果表示（classify_result Web画面）
+
+- 全プレイヤーのホールカードを表示（リアルタイムハンドは全員分取得可能）
+- アクションフロー: `PF UTG F › HJ Raise 2.5bb › ...` 形式
+- 青線（ショーダウン）/ 赤線（ノーショーダウン）分類
+- カテゴリ別集計（バリュー成功・ブラフ失敗・ナイスフォールド等）
+- オールインEV差表示
+- PDFレポート生成はオプション（ページ下部ボタンから）
 
 ---
 
@@ -490,7 +565,9 @@ users/{uid}/hands/{handId}
 - `.env` はGitにコミットしない（`.gitignore` 設定済み）
 - puppeteer（Chromium）が重いためDocker imageは約1GB
 - Railway無料枠はストレージ永続化なし（PDFは即ダウンロード推奨）
-- classifyモード（NoAPI PDF）はGemini不要で高速（数秒〜十数秒）
+- classifyモード（Web結果画面）はGemini不要で高速（数秒〜十数秒）
 - AIモードはGemini APIの呼び出し時間がボトルネック（約2〜3分）
 - Railwayはストレージ永続化なし → JSONデータは将来的にFirestoreに移行推奨
 - サービスアカウントキーJSONはGitにコミットしない（Railway環境変数で管理）
+- リアルタイムハンド（`hands`コレクション）は解析のたびに全件取得（将来的に解析済みフラグ管理が必要）
+- `classify_result/{job_id}` はサーバー再起動でメモリが消えるためアクセス不能になる（将来的にFirestoreへの結果保存が必要）
