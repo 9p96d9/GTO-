@@ -82,41 +82,12 @@ async function scrapeHands() {
   };
 }
 
-// ─── リアルタイムWebSocket傍受（Phase 7） ──────────────────────────────────────
+// ─── リアルタイムハンド受信（Phase 7） ───────────────────────────────────────
+// interceptor.js（MAIN world）からの CustomEvent を受け取り background.js に転送する
 
-(function injectWebSocketInterceptor() {
-  const script = document.createElement('script');
-  script.textContent = `
-    (function() {
-      const _origWS = window.WebSocket;
-      window.WebSocket = function(url, protocols) {
-        const ws = protocols ? new _origWS(url, protocols) : new _origWS(url);
-        console.log('[PokerGTO] WebSocket接続:', url);
-        ws.addEventListener('message', function(event) {
-          if (typeof event.data !== 'string') return;
-          if (event.data.startsWith('42')) {
-            try {
-              const parsed = JSON.parse(event.data.slice(2));
-              console.log('[PokerGTO] Socket.IOイベント:', parsed[0], parsed[1]);
-              if (parsed[0] === 'fastFoldTableState' && parsed[1] && parsed[1].isHandInProgress === false) {
-                console.log('[PokerGTO] ハンド終了検知!', parsed[1]);
-                window.dispatchEvent(new CustomEvent('t4_hand_complete', { detail: parsed[1] }));
-              }
-            } catch(e) {}
-          }
-        });
-        return ws;
-      };
-      Object.assign(window.WebSocket, _origWS);
-    })();
-  `;
-  document.documentElement.appendChild(script);
-  script.remove();
-
-  window.addEventListener('t4_hand_complete', function(e) {
-    chrome.runtime.sendMessage({ type: 'HAND_COMPLETE', hand: e.detail });
-  });
-})();
+window.addEventListener('t4_hand_complete', function (e) {
+  chrome.runtime.sendMessage({ type: 'HAND_COMPLETE', hand: e.detail });
+});
 
 // ─── メッセージリスナー ──────────────────────────────────────────────────────
 

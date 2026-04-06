@@ -118,8 +118,8 @@ def get_session(uid: str, session_id: str) -> dict | None:
     return d
 
 
-def update_session_status(uid: str, session_id: str, status: str, result_pdf: str = ""):
-    """セッションのステータスとPDFファイル名を更新する"""
+def update_session_status(uid: str, session_id: str, status: str, result_pdf: str = "", job_id: str = ""):
+    """セッションのステータス・PDFファイル名・job_id を更新する"""
     db = get_db()
     doc_ref = (
         db.collection("users").document(uid)
@@ -128,6 +128,8 @@ def update_session_status(uid: str, session_id: str, status: str, result_pdf: st
     update = {"status": status}
     if result_pdf:
         update["result_pdf"] = result_pdf
+    if job_id:
+        update["job_id"] = job_id
     doc_ref.update(update)
 
 

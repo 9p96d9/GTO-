@@ -383,6 +383,16 @@ async def run_classify_pipeline(job_id: str, txt_path: Path, hero_name: str = ""
         jobs[job_id]["status"] = "done"
         jobs[job_id]["json_path"] = str(json_path)
         jobs[job_id]["classified_path"] = str(classified_path)
+        fb_uid = jobs[job_id].get("firebase_uid", "")
+        fb_sid = jobs[job_id].get("firebase_session_id", "")
+
+    # Firestore セッションステータスを更新（セッション解析の場合のみ）
+    if fb_uid and fb_sid:
+        try:
+            from scripts.firebase_utils import update_session_status
+            update_session_status(fb_uid, fb_sid, "done", job_id=job_id)
+        except Exception as e:
+            print(f"[job:{job_id[:8]}] Firestore status update failed: {e}")
 
     push({"type": "classify_done"})
     loop.call_soon_threadsafe(q.put_nowait, None)
@@ -3488,9 +3498,11 @@ h1 { font-size: 20px; color: #e94560; }
         ? `<button class="btn-analyze" onclick="analyzeSession('${s.id}', this)">解析する</button>`
         : `<button class="btn-analyze" disabled>解析済</button>`;
 
-      const resultBtn = isDone && s.result_pdf
-        ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
-        : "";
+      const resultBtn = isDone && s.job_id
+        ? `<button class="btn-result" onclick="window.location.href='/classify_result/${s.job_id}'">結果を見る</button>`
+        : isDone && s.result_pdf
+          ? `<button class="btn-result" onclick="window.open('/report/${s.result_pdf}','_blank')">結果を見る</button>`
+          : "";
 
       return `<div class="session-card" id="card-${s.id}" onclick="toggleSelect('${s.id}')">
         <div class="cb-wrap" onclick="event.stopPropagation()">
