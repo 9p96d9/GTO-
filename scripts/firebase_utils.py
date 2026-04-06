@@ -137,6 +137,25 @@ def delete_session(uid: str, session_id: str):
     db.collection("users").document(uid).collection("sessions").document(session_id).delete()
 
 
+def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
+    """
+    Firestore users/{uid}/hands/{handId} にリアルタイムハンドを保存する。
+    handId = tableId_captured_at（重複防止）
+    """
+    db = get_db()
+    table_id = hand_json.get("tableId", "unknown")
+    safe_ts = captured_at.replace(":", "").replace(".", "").replace("-", "")
+    hand_id = f"{table_id}_{safe_ts}"
+
+    doc_ref = db.collection("users").document(uid).collection("hands").document(hand_id)
+    doc_ref.set({
+        "hand_json":   hand_json,
+        "captured_at": captured_at,
+        "saved_at":    datetime.now(timezone.utc),
+    })
+    return hand_id
+
+
 def is_firebase_enabled() -> bool:
     """FIREBASE_SERVICE_ACCOUNT_JSON が設定されているか確認（起動チェック用）"""
     return bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip())

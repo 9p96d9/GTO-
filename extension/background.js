@@ -90,6 +90,26 @@ async function handleMessage(msg) {
       }
     }
 
+    // リアルタイムハンド取得（Phase 7）
+    case "HAND_COMPLETE": {
+      if (!_user) return { ok: false, reason: "未ログイン" };
+      try {
+        const token = await _user.getIdToken(false);
+        const captured_at = new Date().toISOString();
+        const res = await fetch(SERVER_URL + "/api/hands/realtime", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ hand_json: msg.hand, captured_at })
+        });
+        return await res.json();
+      } catch(e) {
+        return { error: e.message };
+      }
+    }
+
     default:
       return { error: "Unknown message type: " + msg.type };
   }

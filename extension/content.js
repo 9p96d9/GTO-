@@ -82,6 +82,37 @@ async function scrapeHands() {
   };
 }
 
+// ─── リアルタイムWebSocket傍受（Phase 7） ──────────────────────────────────────
+
+(function injectWebSocketInterceptor() {
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      const _origWS = window.WebSocket;
+      window.WebSocket = function(url, protocols) {
+        const ws = protocols ? new _origWS(url, protocols) : new _origWS(url);
+        ws.addEventListener('message', function(event) {
+          if (typeof event.data !== 'string' || !event.data.startsWith('42')) return;
+          try {
+            const parsed = JSON.parse(event.data.slice(2));
+            if (parsed[0] === 'fastFoldTableState' && parsed[1] && parsed[1].isHandInProgress === false) {
+              window.dispatchEvent(new CustomEvent('t4_hand_complete', { detail: parsed[1] }));
+            }
+          } catch(e) {}
+        });
+        return ws;
+      };
+      Object.assign(window.WebSocket, _origWS);
+    })();
+  `;
+  document.documentElement.appendChild(script);
+  script.remove();
+
+  window.addEventListener('t4_hand_complete', function(e) {
+    chrome.runtime.sendMessage({ type: 'HAND_COMPLETE', hand: e.detail });
+  });
+})();
+
 // ─── メッセージリスナー ──────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

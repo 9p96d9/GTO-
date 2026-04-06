@@ -2795,6 +2795,42 @@ async def api_download_text(request: Request):
     )
 
 
+@app.post("/api/hands/realtime")
+async def api_hands_realtime(request: Request):
+    """
+    Chrome拡張機能からのリアルタイムハンド受信（Phase 7）。
+    Header: Authorization: Bearer {idToken}
+    Body: { hand_json: {...fastFoldTableState}, captured_at: "ISO文字列" }
+    → Firestore users/{uid}/hands/{handId} に保存
+    """
+    from scripts.firebase_utils import is_firebase_enabled, save_hand
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSONパース失敗"}, status_code=400)
+
+    hand_json   = body.get("hand_json")
+    captured_at = body.get("captured_at", "")
+
+    if not hand_json:
+        return JSONResponse({"error": "hand_json が空です"}, status_code=400)
+
+    try:
+        hand_id = save_hand(uid, hand_json, captured_at)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore保存失敗: {e}"}, status_code=500)
+
+    return JSONResponse({"ok": True, "hand_id": hand_id})
+
+
 # ─── PokerGTO ログイン / セッション一覧 画面 ─────────────────────────────────
 
 @app.get("/login", response_class=HTMLResponse)
