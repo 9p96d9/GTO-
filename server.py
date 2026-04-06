@@ -278,6 +278,54 @@ async def run_noapi_pipeline(job_id: str, txt_path: Path):
     print(f"[job:{job_id[:8]}] 完了: {pdf_files[0].name}")
 
 
+async def run_classify_pipeline_from_json(job_id: str, json_path: Path):
+    """parse済みJSONから直接 classify → Web結果画面（parse.pyをスキップ）"""
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    event_queues[job_id] = q
+
+    def push(data: dict):
+        loop.call_soon_threadsafe(q.put_nowait, data)
+
+    def fail(msg):
+        with jobs_lock:
+            jobs[job_id]["status"] = "error"
+            jobs[job_id]["log"] = msg
+        push({"type": "error", "message": msg[:300]})
+        loop.call_soon_threadsafe(q.put_nowait, None)
+
+    # Step 1 はスキップ（変換済みJSON）
+    with jobs_lock:
+        jobs[job_id]["step"] = 1
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            hands_total = len(json.load(f).get("hands", []))
+    except Exception:
+        hands_total = 0
+    push({"type": "parse_done", "hands_total": hands_total})
+
+    # Step 2: 分類
+    with jobs_lock:
+        jobs[job_id]["step"] = 2
+    classified_path = DATA_DIR / (json_path.stem + "_classified.json")
+
+    r = await loop.run_in_executor(None, lambda: subprocess.run(
+        [sys.executable, str(SCRIPTS / "classify.py"), str(json_path), str(classified_path)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=BASE_ENV,
+    ))
+    if r.returncode != 0:
+        fail((r.stderr or r.stdout).strip()); return
+
+    with jobs_lock:
+        jobs[job_id]["status"] = "done"
+        jobs[job_id]["json_path"] = str(json_path)
+        jobs[job_id]["classified_path"] = str(classified_path)
+
+    push({"type": "classify_done"})
+    loop.call_soon_threadsafe(q.put_nowait, None)
+    print(f"[job:{job_id[:8]}] hands分類完了: {classified_path.name}")
+
+
 async def run_classify_pipeline(job_id: str, txt_path: Path, hero_name: str = ""):
     """parse → classify → Web結果画面（PDF生成なし）"""
     loop = asyncio.get_running_loop()
@@ -2793,6 +2841,58 @@ async def api_download_text(request: Request):
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@app.post("/api/hands/analyze")
+async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
+    """
+    Firestoreの hands コレクションを取得 → hand_converter → classify パイプラインに流す。
+    Header: Authorization: Bearer {idToken}
+    Body (optional): { limit: int（デフォルト500） }
+    → { job_id, progress_url } を返す
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_hands
+    from scripts.hand_converter import convert_hands_batch
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    limit = int(body.get("limit", 500))
+
+    try:
+        hands_data = get_hands(uid, limit=limit)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+
+    if not hands_data:
+        return JSONResponse({"error": "保存済みハンドがありません"}, status_code=404)
+
+    # hand_json → parse.py 互換 JSON に変換
+    try:
+        parsed_data = convert_hands_batch(hands_data)
+    except Exception as e:
+        return JSONResponse({"error": f"変換失敗: {e}"}, status_code=500)
+
+    # parse済みJSONを DATA_DIR に保存して classify パイプラインへ
+    job_id = uuid.uuid4().hex
+    json_path = DATA_DIR / f"{job_id}.json"
+    json_path.write_text(json.dumps(parsed_data, ensure_ascii=False), encoding="utf-8")
+
+    with jobs_lock:
+        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "classify", "hero_name": ""}
+
+    background_tasks.add_task(run_classify_pipeline_from_json, job_id, json_path)
+
+    progress_url = f"/classify_progress/{job_id}"
+    return JSONResponse({"job_id": job_id, "progress_url": progress_url})
 
 
 @app.post("/api/hands/realtime")

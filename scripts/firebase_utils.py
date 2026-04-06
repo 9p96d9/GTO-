@@ -137,6 +137,28 @@ def delete_session(uid: str, session_id: str):
     db.collection("users").document(uid).collection("sessions").document(session_id).delete()
 
 
+def get_hands(uid: str, limit: int = 500) -> list[dict]:
+    """
+    Firestore users/{uid}/hands を captured_at 降順で取得する。
+    各 dict に hand_id フィールドを追加して返す。
+    """
+    db = get_db()
+    hands_ref = (
+        db.collection("users").document(uid).collection("hands")
+        .order_by("captured_at", direction="DESCENDING")
+        .limit(limit)
+    )
+    docs = hands_ref.stream()
+    result = []
+    for doc in docs:
+        d = doc.to_dict()
+        d["hand_id"] = doc.id
+        if hasattr(d.get("saved_at"), "isoformat"):
+            d["saved_at"] = d["saved_at"].isoformat()
+        result.append(d)
+    return result
+
+
 def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
     """
     Firestore users/{uid}/hands/{handId} にリアルタイムハンドを保存する。
