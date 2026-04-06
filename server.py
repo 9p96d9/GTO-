@@ -3234,6 +3234,19 @@ h1 { font-size: 20px; color: #e94560; }
   cursor: pointer;
 }
 .btn-delete:hover { border-color: #e94560; color: #e94560; }
+.btn-realtime-analyze {
+  padding: 7px 14px;
+  background: #1a5c2a;
+  border: 1px solid #2d8a40;
+  border-radius: 8px;
+  color: #5cb85c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-realtime-analyze:hover { background: #1e6e32; }
+.btn-realtime-analyze:disabled { background: #333; color: #666; cursor: not-allowed; border-color: #444; }
 .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
 .alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
 </style>
@@ -3243,6 +3256,7 @@ h1 { font-size: 20px; color: #e94560; }
   <h1>🃏 PokerGTO</h1>
   <div class="user-info">
     <a href="/download-extension" class="btn-dl-ext" title="Chrome拡張機能をダウンロード">⬇ 拡張機能ZIP</a>
+    <button class="btn-realtime-analyze" id="btn-realtime-analyze" title="自動取得したリアルタイムハンドを解析">⚡ リアルタイム解析</button>
     <span id="user-email"></span>
     <button class="btn-logout" id="btn-logout">ログアウト</button>
   </div>
@@ -3469,6 +3483,27 @@ h1 { font-size: 20px; color: #e94560; }
     document.querySelectorAll(".session-card").forEach(c => c.classList.remove("selected"));
     document.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
     updateBulkBar();
+  });
+
+  document.getElementById("btn-realtime-analyze").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-realtime-analyze");
+    btn.disabled = true;
+    btn.textContent = "解析中...";
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/hands/analyze", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "⚡ リアルタイム解析"; return; }
+      window.location.href = data.progress_url;
+    } catch (e) {
+      showAlert("エラー: " + e.message);
+      btn.disabled = false;
+      btn.textContent = "⚡ リアルタイム解析";
+    }
   });
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
