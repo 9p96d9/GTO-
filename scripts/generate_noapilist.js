@@ -55,6 +55,57 @@ function getOppCards(hand) {
   return (opp.hole_cards || []).join("");
 }
 
+/** 全対戦相手のカードをポジション付きで返す [{pos, cards}] */
+function getAllOppCards(hand) {
+  return (hand.players || [])
+    .filter(p => !p.is_hero)
+    .map(p => ({ pos: p.position || "?", cards: (p.hole_cards || []).join("") }));
+}
+
+/** アクション配列 → "POS A" 形式の短縮HTML（PDF用テキスト） */
+function fmtActionsHtml(actions) {
+  if (!actions || !actions.length) return "";
+  const parts = [];
+  for (const a of actions) {
+    const pos = a.position || a.name || "?";
+    const act = a.action || "";
+    const amt = a.amount_bb != null ? ` ${a.amount_bb}bb` : "";
+    if (act === "Fold")       parts.push(`<span style="color:#aaa">${esc(pos)} F</span>`);
+    else if (act === "Check") parts.push(`<span style="color:#888">${esc(pos)} X</span>`);
+    else if (act === "Call")  parts.push(`<span style="color:#0055CC">${esc(pos)} Call${esc(amt)}</span>`);
+    else if (act === "Bet" || act === "Raise")
+      parts.push(`<span style="color:#a06000;font-weight:bold">${esc(pos)} ${esc(act)}${esc(amt)}</span>`);
+    else if (act)             parts.push(`<span style="color:#666">${esc(pos)} ${esc(act)}</span>`);
+  }
+  return parts.join(' <span style="color:#bbb">›</span> ');
+}
+
+/** ストリート別アクションフロー HTML（PDF用コンパクト） */
+function buildActionFlowHtml(hand) {
+  const streets = hand.streets || {};
+  const lines = [];
+
+  const pf = streets.preflop || [];
+  const pfHtml = fmtActionsHtml(pf);
+  if (pfHtml) lines.push(`<span style="color:#999;font-size:5.5pt">PF</span> ${pfHtml}`);
+
+  for (const [key, lbl] of [["flop","F"],["turn","T"],["river","R"]]) {
+    const s = streets[key];
+    if (!s || typeof s !== "object") continue;
+    const boardCards = (s.board || []).filter(c => c && c !== "-");
+    const boardHtml  = boardCards.length ? cardToHtml(boardCards.join(" ")) : "";
+    const potHtml    = s.pot_bb ? `<span style="color:#bbb;font-size:5pt">(${s.pot_bb}bb)</span>` : "";
+    const actsHtml   = fmtActionsHtml(s.actions || []);
+    let line = `<span style="color:#999;font-size:5.5pt">${lbl}</span>`;
+    if (boardHtml) line += ` ${boardHtml}`;
+    if (potHtml)   line += ` ${potHtml}`;
+    if (actsHtml)  line += ` ${actsHtml}`;
+    lines.push(line);
+  }
+
+  return lines.join("<br>");
+}
+
 /** allin_ev からheroのEVを返す。オールインなし or データなし → null */
 function getHeroEV(hand) {
   const name = getHeroName(hand);
@@ -264,6 +315,20 @@ body {
 .pos-table { font-size: 7.5pt; }
 .pos-table th { font-size: 7pt; }
 .pos-table td { font-size: 7pt; padding: 2pt 3pt; }
+
+/* アクションフロー行 */
+.action-flow {
+  font-size: 5.5pt; color: #555; line-height: 1.7;
+  padding: 1pt 4pt 2pt 4pt;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e0e0e0;
+}
+.opp-pos {
+  font-size: 5pt; color: #999; margin-right: 1pt;
+}
+.hand-main td {
+  border-bottom: none !important;
+}
 `;
 }
 
@@ -336,14 +401,16 @@ function buildSection1Html(hands, minDate, maxDate) {
  * @param {Array} catOrder      - カテゴリの表示順
  * @param {boolean} showApiFlag - 要AIフラグ列を表示するか
  */
-function buildGroupedRows(filteredHands, catOrder, showApiFlag) {
-  const colspan = showApiFlag ? 7 : 6;
+function buildGroupedRows(filteredHands, catOrder) {
+  const COLSPAN = 4;
   let html = "";
 
   for (const cat of catOrder) {
     const catHands = filteredHands
       .filter(h => h.bluered_classification?.category === cat)
       .sort((a, b) => {
+        // 3BETポット優先 → ストリート順 → ハンド番号順
+        if (a.is_3bet_pot !== b.is_3bet_pot) return a.is_3bet_pot ? -1 : 1;
         const ai = STREET_ORDER.indexOf(a.bluered_classification?.last_street || "preflop");
         const bi = STREET_ORDER.indexOf(b.bluered_classification?.last_street || "preflop");
         return ai !== bi ? ai - bi : (a.hand_number || 0) - (b.hand_number || 0);
@@ -351,13 +418,13 @@ function buildGroupedRows(filteredHands, catOrder, showApiFlag) {
 
     if (!catHands.length) continue;
 
-    const clf0      = catHands[0].bluered_classification;
-    const catLabel  = clf0.category_label || cat;
-    const catPL     = catHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
-    const catCss    = CAT_CSS[cat] || "";
+    const clf0     = catHands[0].bluered_classification;
+    const catLabel = clf0.category_label || cat;
+    const catPL    = catHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
+    const catCss   = CAT_CSS[cat] || "";
 
     html += `<tr class="cat-header">
-      <td colspan="${colspan}">
+      <td colspan="${COLSPAN}">
         <span class="cat-badge ${catCss}">${esc(catLabel)}</span>
         &nbsp; ${catHands.length}手
         <span style="float:right;color:${plColor(catPL)}">${fmtBb(catPL)}</span>
@@ -366,21 +433,36 @@ function buildGroupedRows(filteredHands, catOrder, showApiFlag) {
 
     for (const h of catHands) {
       const clf    = h.bluered_classification;
-      const lastSt = clf?.last_street || "river";
-      const board  = getBoardAtStreet(h, lastSt);
-      const opp    = getOppCards(h);
       const plNum  = h.hero_result_bb || 0;
       const plCls  = plNum > 0 ? "pl-pos" : plNum < 0 ? "pl-neg" : "";
-      const rowCls = showApiFlag && clf?.needs_api ? "row-api" : "";
+      const rowBg  = clf?.needs_api ? "row-api" : "";
+      const badge3 = h.is_3bet_pot ? `<span class="cat-badge" style="background:#ede0ff;color:#5b00d6;font-size:5pt">3BET</span> ` : "";
+      const apiMark = clf?.needs_api ? `<span class="api-flag">★</span> ` : "";
 
-      html += `<tr class="${rowCls}">
-        <td style="text-align:center;color:#888">H${esc(h.hand_number)}</td>
-        <td style="text-align:center;font-weight:bold">${esc(STREET_JP[lastSt] || lastSt)}</td>
-        <td>${cardToHtml((h.hero_cards || []).join(""))}</td>
-        <td>${opp ? cardToHtml(opp) : '<span style="color:#bbb">—</span>'}</td>
-        <td>${cardToHtml(board) || '<span style="color:#bbb">—</span>'}</td>
-        <td style="text-align:right" class="${plCls}">${esc(fmtBb(plNum))}</td>
-        ${showApiFlag ? `<td style="text-align:center">${clf?.needs_api ? '<span class="api-flag">★</span>' : ''}</td>` : ""}
+      // 相手全員のカード（ポジション付き）
+      const oppCards = getAllOppCards(h);
+      const oppHtml  = oppCards.map(({ pos, cards }) =>
+        `<span class="opp-pos">${esc(pos)}</span>${cards ? cardToHtml(cards) : '<span style="color:#bbb">—</span>'}`
+      ).join("&ensp;");
+
+      // アクションフロー
+      const flowHtml = buildActionFlowHtml(h);
+
+      html += `<tr class="hand-main ${rowBg}">
+        <td style="text-align:center;color:#888;white-space:nowrap">${apiMark}H${esc(h.hand_number)}</td>
+        <td>
+          ${badge3}<strong>${esc(h.hero_position || "?")}</strong>
+          <span style="color:#888;font-size:5.5pt">(Hero)</span>
+          ${cardToHtml((h.hero_cards || []).join("")) || '<span style="color:#bbb">—</span>'}
+          &ensp;<span style="color:#bbb;font-size:6pt">vs</span>&ensp;
+          ${oppHtml || '<span style="color:#bbb">—</span>'}
+        </td>
+        <td></td>
+        <td style="text-align:right;white-space:nowrap" class="${plCls}">${esc(fmtBb(plNum))}</td>
+      </tr>
+      <tr class="${rowBg}">
+        <td></td>
+        <td colspan="3" class="action-flow">${flowHtml}</td>
       </tr>`;
     }
   }
@@ -396,24 +478,16 @@ function buildSection2And3Html(hands) {
   const redPL  = redHands.reduce((s, h) => s + (h.hero_result_bb || 0), 0);
   const needsApiCnt = redHands.filter(h => h.bluered_classification?.needs_api).length;
 
-  const blueRows = buildGroupedRows(blueHands, BLUE_CAT_ORDER, false);
-  const redRows  = buildGroupedRows(redHands, RED_CAT_ORDER, true);
+  const blueRows = buildGroupedRows(blueHands, BLUE_CAT_ORDER);
+  const redRows  = buildGroupedRows(redHands,  RED_CAT_ORDER);
 
-  // 列幅: # | St | Hero | 相手 | Board | 損益 [| AI]
-  const colBlue = `<colgroup>
-    <col style="width:8%"><col style="width:7%"><col style="width:16%">
-    <col style="width:16%"><col style="width:32%"><col style="width:21%">
+  // 列幅: # | ホールカード + 相手 | (空) | 損益
+  const colgroup = `<colgroup>
+    <col style="width:7%"><col style="width:70%"><col style="width:1%"><col style="width:22%">
   </colgroup>`;
-  const colRed = `<colgroup>
-    <col style="width:7%"><col style="width:7%"><col style="width:15%">
-    <col style="width:15%"><col style="width:29%"><col style="width:19%"><col style="width:8%">
-  </colgroup>`;
+  const hdrs = ["#", "Hero / 対戦相手", "", "損益(bb)"];
 
-  const hdrsBlue = ["#", "St", "Hero", "相手", "Board", "損益(bb)"];
-  const hdrsRed  = ["#", "St", "Hero", "相手", "Board", "損益(bb)", "AI"];
-
-  const noData = (n) =>
-    `<tr><td colspan="${n}" style="text-align:center;color:#aaa;padding:4pt">該当なし</td></tr>`;
+  const noData = `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:4pt">該当なし</td></tr>`;
 
   return `
 <h2 class="section-title">① 青線 / 赤線 ハンド一覧</h2>
@@ -423,9 +497,9 @@ function buildSection2And3Html(hands) {
       実収支: <strong style="color:${plColor(bluePL)}">${fmtBb(bluePL)}</strong>
     </p>
     <table class="data-table tbl-s">
-      ${colBlue}
-      <thead><tr>${hdrsBlue.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-      <tbody>${blueRows || noData(6)}</tbody>
+      ${colgroup}
+      <thead><tr>${hdrs.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>${blueRows || noData}</tbody>
     </table>
   </div>
   <div class="col-half">
@@ -434,9 +508,9 @@ function buildSection2And3Html(hands) {
       &nbsp; ★要AI: ${needsApiCnt}
     </p>
     <table class="data-table tbl-s">
-      ${colRed}
-      <thead><tr>${hdrsRed.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-      <tbody>${redRows || noData(7)}</tbody>
+      ${colgroup}
+      <thead><tr>${hdrs.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>${redRows || noData}</tbody>
     </table>
   </div>
 </div>`;
