@@ -501,6 +501,11 @@ async def run_ai_pipeline(job_id: str, json_path: str, api_key: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    return LANDING_PAGE
+
+@app.get("/legacy", response_class=HTMLResponse)
+async def legacy():
+    """旧: ファイルアップロード手動解析"""
     return UPLOAD_PAGE
 
 @app.post("/upload")
@@ -810,6 +815,121 @@ def _esc(s: str) -> str:
 # .env にキーがあればデフォルト値として埋め込む（BYOK: 空欄でも手入力可）
 _DEFAULT_KEY = os.environ.get("GEMINI_API_KEY", "")
 _KEY_PLACEHOLDER = "AIza... (Gemini APIキーを入力)"
+
+LANDING_PAGE = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO - リアルタイムGTO分析</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+.hero { text-align: center; padding: 80px 24px 60px; }
+.hero-icon { font-size: 56px; margin-bottom: 16px; }
+.hero h1 { font-size: 42px; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 12px; }
+.hero h1 span { color: #e94560; }
+.hero p { font-size: 17px; color: #aaa; max-width: 520px; margin: 0 auto 40px; line-height: 1.7; }
+.btn-primary {
+  display: inline-block; padding: 16px 40px;
+  background: #e94560; color: #fff;
+  border-radius: 12px; font-size: 17px; font-weight: 700;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn-primary:hover { background: #c73652; transform: translateY(-1px); }
+.btn-secondary {
+  display: inline-block; padding: 14px 32px;
+  background: transparent; color: #e0e0e0;
+  border: 1.5px solid #444; border-radius: 12px;
+  font-size: 15px; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  margin-left: 12px;
+}
+.btn-secondary:hover { border-color: #e94560; color: #e94560; }
+
+.steps { max-width: 800px; margin: 0 auto; padding: 0 24px 80px; }
+.steps h2 { text-align: center; font-size: 22px; color: #fff; margin-bottom: 40px; font-weight: 700; }
+.step-list { display: flex; flex-direction: column; gap: 20px; }
+.step {
+  display: flex; align-items: flex-start; gap: 20px;
+  background: #10172a; border: 1px solid #1e2a45;
+  border-radius: 14px; padding: 24px;
+}
+.step-num {
+  width: 40px; height: 40px; min-width: 40px;
+  background: #e94560; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800; color: #fff;
+}
+.step-body h3 { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.step-body p { font-size: 14px; color: #999; line-height: 1.6; }
+.step-body a { color: #e94560; text-decoration: none; }
+.step-body a:hover { text-decoration: underline; }
+
+.footer-links {
+  text-align: center; padding: 32px 24px;
+  border-top: 1px solid #1e2a45;
+  font-size: 13px; color: #666;
+}
+.footer-links a { color: #666; text-decoration: none; margin: 0 12px; }
+.footer-links a:hover { color: #aaa; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-icon">🃏</div>
+  <h1>Poker<span>GTO</span></h1>
+  <p>Chrome拡張機能をインストールするだけで、T4のハンドを自動収集。プレイ後すぐにGTO分析レポートを生成できます。</p>
+  <a href="/download-extension" class="btn-primary">⬇ 拡張機能をダウンロード</a>
+  <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
+</div>
+
+<div class="steps">
+  <h2>使い方</h2>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>拡張機能をインストール</h3>
+        <p>上の「拡張機能をダウンロード」からZIPを取得し、解凍後に Chrome の拡張機能管理ページ（<code>chrome://extensions</code>）で「パッケージ化されていない拡張機能を読み込む」から追加してください。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Googleアカウントでログイン</h3>
+        <p>拡張機能のポップアップを開いてGoogleログインを行います。PokerGTOアカウントと紐づけることでハンドログがクラウドに保存されます。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>T4でプレイするだけ</h3>
+        <p>拡張機能を入れた状態で <a href="https://tenfour-poker.com" target="_blank">tenfour-poker.com</a> にアクセスしてプレイすれば、ハンドが自動でクラウドに保存されます。手動操作は一切不要です。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>セッション画面で解析</h3>
+        <p><a href="/sessions">セッション一覧</a> を開いて「⚡ リアルタイム解析」ボタンを押すと、蓄積されたハンドをGTO観点で分類・分析してレポートを生成します。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-links">
+  <a href="/sessions">セッション一覧</a>
+  <a href="/legacy">手動アップロード解析（旧版）</a>
+  <a href="/login">ログイン</a>
+</div>
+
+</body>
+</html>"""
+
 
 UPLOAD_PAGE = f"""<!DOCTYPE html>
 <html lang="ja">
