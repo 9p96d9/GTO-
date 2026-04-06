@@ -42,6 +42,16 @@
         "https://*.tenfour-poker.com/*",
         "https://*.t4poker.com/*"
       ],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.tenfourpoker.com/*",
+        "https://*.tenfour-poker.com/*",
+        "https://*.t4poker.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_start"
     }

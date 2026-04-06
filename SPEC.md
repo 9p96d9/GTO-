@@ -1,6 +1,6 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 3.0  
+**バージョン:** 3.1  
 **最終更新:** 2026-04-06  
 **リポジトリ:** https://github.com/9p96d9/GTO-  
 **本番URL:** https://gto-production.up.railway.app  
@@ -14,9 +14,10 @@
 | Phase 1 | Firebase基盤構築 | ✅ 完了 |
 | Phase 2 | Chrome拡張機能（スクレイプ→Firebase保存） | ✅ 完了 |
 | Phase 3 | セッション一覧・解析フロー | ✅ 完了 |
-| **Phase 4** | **ユーザー機能アップグレード（複数選択解析・テキスト保存）** | ⬜ 未着手 |
+| Phase 4 | ユーザー機能アップグレード（複数選択解析・テキスト保存） | ✅ 完了 |
 | **Phase 5** | **管理者ダッシュボード** | ⬜ 未着手 |
 | Phase 6 | 仕上げ・UX改善 | ⬜ 未着手 |
+| **Phase 7** | **リアルタイムハンドログ自動取得** | 🔄 POC完了・パイプライン未着手 |
 
 ---
 
@@ -312,7 +313,7 @@ service cloud.firestore.beta {
 
 ---
 
-## 9. Phase 4: ユーザー機能アップグレード（未着手）
+## 9. Phase 4: ユーザー機能アップグレード（✅ 完了）
 
 ### 概要
 
@@ -427,7 +428,63 @@ admins/{uid}
 
 ---
 
-## 12. 注意事項
+## 12. Phase 7: リアルタイムハンドログ自動取得（🔄 POC完了）
+
+### 概要
+
+プレイ中にSocket.IO通信を傍受し、ハンド終了を自動検知してFirestoreへ即時保存する。
+ユーザーはプレイするだけでログが自動蓄積され、手動スクレイプ操作が不要になる。
+
+### 12-1. 実装済み内容（2026-04-06 検証済み）
+
+| 項目 | 内容 |
+|---|---|
+| 通信方式 | Socket.IO（`wss://game.tenfour-poker.com/socket.io/?EIO=4&transport=websocket`） |
+| データ形式 | 平文JSON（難読化・暗号化なし） |
+| 傍受方法 | `world: "MAIN"` Content Script（`interceptor.js`）で `window.WebSocket` をオーバーライド |
+| CSP対応 | `document.createElement('script')` は T4サイトのCSPでブロックされるため `world: "MAIN"` で解決 |
+| ハンド終了検知 | `fastFoldTableState` イベント + `isHandInProgress: false` |
+| Fast Fold対応 | `fastFoldTableRemoved`（`reason: 'folded'`）発火時に最後の状態を保存 |
+| 重複防止 | `actionHistory` のJSON文字列をtableIdごとにメモリキャッシュして比較 |
+| 保存先 | Firestore `users/{uid}/hands/{tableId}_{captured_at}` |
+| 即時POST | ハンド1件終了ごとに即時POST（ブラウザクラッシュ時のロス防止） |
+
+### 12-2. 実装ファイル
+
+| ファイル | 変更内容 |
+|---|---|
+| `extension/interceptor.js` | WebSocket傍受・イベント検知（新規、`world: "MAIN"`） |
+| `extension/content.js` | CustomEventを受け取りbackground.jsに転送 |
+| `extension/background.js` | `HAND_COMPLETE`メッセージを受け取りPOST |
+| `extension/manifest.json` | interceptor.js（MAIN world）・content.js（ISOLATED）の2段構成 |
+| `scripts/firebase_utils.py` | `save_hand()` 追加 |
+| `server.py` | `POST /api/hands/realtime` エンドポイント追加 |
+
+### 12-3. Firestoreスキーマ（追加）
+
+```
+users/{uid}/hands/{handId}
+  ├── hand_json:    object   # fastFoldTableStateの生データ
+  │     ├── tableId:         string
+  │     ├── actionHistory:   string[]
+  │     ├── handResults:     object[]
+  │     ├── seats:           object[]  # ホールカード含む（showdown時）
+  │     ├── communityCards:  object[]
+  │     ├── isHandInProgress: boolean
+  │     └── ...
+  ├── captured_at:  string   # ISO8601（拡張機能側の時刻）
+  └── saved_at:     timestamp
+```
+
+### 12-4. 未着手（次フェーズ）
+
+- `hands` コレクションのデータを parse.py 互換フォーマットに変換するパイプライン
+- `hands` を集約してセッション単位で解析にかける機能
+- ホールカード取得の検証（showdownハンドで `seats` に含まれるか確認済みが必要）
+
+---
+
+## 13. 注意事項
 
 - `data/` フォルダのJSONは削除しない（opponents_summary.jsonは特に重要）
 - `.env` はGitにコミットしない（`.gitignore` 設定済み）
