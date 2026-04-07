@@ -3109,6 +3109,51 @@ async def api_hands_debug(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/hands/pipeline-test")
+async def api_hands_pipeline_test(request: Request):
+    """
+    フェッチ→変換の件数だけ確認するテスト。実際の解析は行わない。
+    → { fetched, converted, dropped, sample_errors }
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_hands
+    from scripts.hand_converter import convert_hands_batch
+    import sys
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    try:
+        hands_data = get_hands(uid, limit=9999)
+    except Exception as e:
+        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+
+    fetched = len(hands_data)
+    errors = []
+    converted_list = []
+    for i, item in enumerate(hands_data, 1):
+        try:
+            from scripts.hand_converter import convert_hand_json
+            h = convert_hand_json(item.get("hand_json", {}), item.get("captured_at", ""), i)
+            converted_list.append(h)
+        except Exception as e:
+            errors.append({"hand_id": item.get("hand_id", "?"), "error": str(e)})
+
+    converted = len(converted_list)
+    # 変換済みのうち preflop_only かどうか確認（ストリート有無チェック）
+    has_postflop = sum(1 for h in converted_list if h.get("streets", {}).get("flop") is not None)
+
+    return JSONResponse({
+        "fetched": fetched,
+        "converted": converted,
+        "dropped_in_convert": fetched - converted,
+        "has_postflop": has_postflop,
+        "preflop_only_in_convert": converted - has_postflop,
+        "sample_errors": errors[:5],
+    })
+
+
 @app.post("/api/hands/analyze")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
     """
@@ -3562,10 +3607,19 @@ select:focus { outline: none; border-color: #e94560; }
     return currentUser.getIdToken();
   }
 
-  // 診断用グローバル関数（コンソールから window.debugHands() で呼べる）
+  // 診断用グローバル関数（コンソールから呼べる）
   window.debugHands = async function() {
     const token = await getIdToken();
     const d = await fetch("/api/hands/debug", {
+      headers: { "Authorization": "Bearer " + token }
+    }).then(r => r.json());
+    console.table(d);
+    return d;
+  };
+  window.pipelineTest = async function() {
+    console.log("パイプラインテスト中（時間がかかります）...");
+    const token = await getIdToken();
+    const d = await fetch("/api/hands/pipeline-test", {
       headers: { "Authorization": "Bearer " + token }
     }).then(r => r.json());
     console.table(d);
