@@ -3562,6 +3562,16 @@ select:focus { outline: none; border-color: #e94560; }
     return currentUser.getIdToken();
   }
 
+  // 診断用グローバル関数（コンソールから window.debugHands() で呼べる）
+  window.debugHands = async function() {
+    const token = await getIdToken();
+    const d = await fetch("/api/hands/debug", {
+      headers: { "Authorization": "Bearer " + token }
+    }).then(r => r.json());
+    console.table(d);
+    return d;
+  };
+
   function fmtDate(iso) {
     if (!iso) return "—";
     return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
