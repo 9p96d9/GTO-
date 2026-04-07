@@ -148,10 +148,10 @@ def parse_action_history(action_history: list, pos_to_name: dict) -> dict:
 def convert_hand_json(hand_json: dict, captured_at: str, hand_index: int = 1) -> dict:
     """fastFoldTableState → parse.py 出力形式の dict に変換する"""
 
-    hand_results = hand_json.get("handResults", [])
-    seats = hand_json.get("seats", [])
+    hand_results = hand_json.get("handResults") or []
+    seats = hand_json.get("seats") or []
     my_seat_index = hand_json.get("mySeatIndex", -1)
-    community_cards_raw = hand_json.get("communityCards", [])
+    community_cards_raw = hand_json.get("communityCards") or []
 
     # position → playerName マッピング（actionHistory パース用）
     pos_to_name = {r.get("position", ""): r.get("playerName", "") for r in hand_results}
@@ -181,7 +181,7 @@ def convert_hand_json(hand_json: dict, captured_at: str, hand_index: int = 1) ->
         })
 
     # actionHistory パース
-    action_history = hand_json.get("actionHistory", [])
+    action_history = hand_json.get("actionHistory") or []
     parsed = parse_action_history(action_history, pos_to_name)
     streets = parsed["streets"]
     result = parsed["result"]
