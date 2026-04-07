@@ -3058,6 +3058,57 @@ async def api_hands_stats(request: Request):
     return JSONResponse(stats)
 
 
+@app.get("/api/hands/debug")
+async def api_hands_debug(request: Request):
+    """
+    Firestoreのhandsコレクションの診断情報を返す。
+    stream_count: col.stream()で取得した全件数
+    saved_at_count: order_by("saved_at")で取得した件数（インデックス依存）
+    captured_at_count: order_by("captured_at")で取得した件数（インデックス依存）
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_db
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    try:
+        db = get_db()
+        col = db.collection("users").document(uid).collection("hands")
+        # 全件 stream（インデックス不要）
+        stream_count = sum(1 for _ in col.stream())
+        # saved_at 順（Firestore Timestamp、常に存在するはず）
+        try:
+            saved_at_count = sum(1 for _ in col.order_by("saved_at").limit(9999).stream())
+        except Exception as e:
+            saved_at_count = f"ERROR: {e}"
+        # captured_at 順（文字列、欠落している可能性あり）
+        try:
+            captured_at_count = sum(1 for _ in col.order_by("captured_at").limit(9999).stream())
+        except Exception as e:
+            captured_at_count = f"ERROR: {e}"
+        # saved_at なしのドキュメント数
+        try:
+            no_saved_at = sum(1 for d in col.stream() if "saved_at" not in d.to_dict())
+        except Exception as e:
+            no_saved_at = f"ERROR: {e}"
+        # captured_at なしのドキュメント数
+        try:
+            no_captured_at = sum(1 for d in col.stream() if "captured_at" not in d.to_dict())
+        except Exception as e:
+            no_captured_at = f"ERROR: {e}"
+        return JSONResponse({
+            "stream_count": stream_count,
+            "saved_at_count": saved_at_count,
+            "captured_at_count": captured_at_count,
+            "missing_saved_at": no_saved_at,
+            "missing_captured_at": no_captured_at,
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/hands/analyze")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
     """
@@ -3096,6 +3147,9 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
     except Exception as e:
         return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
 
+    fetched_count = len(hands_data)
+    print(f"[analyze] uid={uid[:8]}... fetched={fetched_count} limit={limit} since_iso={since_iso!r}")
+
     if not hands_data:
         return JSONResponse({"error": "保存済みハンドがありません"}, status_code=404)
 
@@ -3104,6 +3158,9 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
         parsed_data = convert_hands_batch(hands_data)
     except Exception as e:
         return JSONResponse({"error": f"変換失敗: {e}"}, status_code=500)
+
+    converted_count = len(parsed_data.get("hands", []))
+    print(f"[analyze] converted={converted_count} (dropped={fetched_count - converted_count})")
 
     # parse済みJSONを DATA_DIR に保存して classify パイプラインへ
     job_id = uuid.uuid4().hex

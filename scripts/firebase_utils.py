@@ -141,15 +141,19 @@ def delete_session(uid: str, session_id: str):
 
 def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
     """
-    Firestore users/{uid}/hands を captured_at 降順で取得する。
+    Firestore users/{uid}/hands を saved_at 降順で取得する。
+    saved_at は Firestore Timestamp として常に存在するため全ドキュメントが対象となる。
     since_iso: この ISO 文字列以降のハンドのみ取得（例: "2026-04-05T00:00:00"）
     各 dict に hand_id フィールドを追加して返す。
     """
     db = get_db()
     ref = db.collection("users").document(uid).collection("hands")
     if since_iso:
-        ref = ref.where("captured_at", ">=", since_iso)
-    hands_ref = ref.order_by("captured_at", direction="DESCENDING").limit(limit)
+        since_dt = datetime.fromisoformat(since_iso)
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
+        ref = ref.where("saved_at", ">=", since_dt)
+    hands_ref = ref.order_by("saved_at", direction="DESCENDING").limit(limit)
     docs = hands_ref.stream()
     result = []
     for doc in docs:
