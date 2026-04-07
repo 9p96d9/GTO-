@@ -141,27 +141,39 @@ def delete_session(uid: str, session_id: str):
 
 def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
     """
-    Firestore users/{uid}/hands を saved_at 降順で取得する。
-    saved_at は Firestore Timestamp として常に存在するため全ドキュメントが対象となる。
+    Firestore users/{uid}/hands を全件取得してPythonで降順ソート・件数制限する。
+    Firestoreのインデックスに依存しないため captured_at / saved_at の欠落ドキュメントも全て対象。
     since_iso: この ISO 文字列以降のハンドのみ取得（例: "2026-04-05T00:00:00"）
     各 dict に hand_id フィールドを追加して返す。
     """
     db = get_db()
-    ref = db.collection("users").document(uid).collection("hands")
-    if since_iso:
-        since_dt = datetime.fromisoformat(since_iso)
-        if since_dt.tzinfo is None:
-            since_dt = since_dt.replace(tzinfo=timezone.utc)
-        ref = ref.where("saved_at", ">=", since_dt)
-    hands_ref = ref.order_by("saved_at", direction="DESCENDING").limit(limit)
-    docs = hands_ref.stream()
+    col = db.collection("users").document(uid).collection("hands")
+
+    docs = col.stream()
     result = []
     for doc in docs:
         d = doc.to_dict()
         d["hand_id"] = doc.id
+        # Firestore Timestamp → ISO文字列に変換
         if hasattr(d.get("saved_at"), "isoformat"):
             d["saved_at"] = d["saved_at"].isoformat()
         result.append(d)
+
+    # since_iso フィルタ（Pythonで処理）
+    if since_iso:
+        result = [d for d in result if d.get("captured_at", "") >= since_iso
+                  or d.get("saved_at", "") >= since_iso]
+
+    # saved_at → captured_at の順で降順ソート（Pythonで処理）
+    def _sort_key(d: dict) -> str:
+        return d.get("saved_at") or d.get("captured_at") or ""
+
+    result.sort(key=_sort_key, reverse=True)
+
+    # 件数制限（9999は「全て」を意味するため上限なし）
+    if 0 < limit < 9999:
+        result = result[:limit]
+
     return result
 
 
