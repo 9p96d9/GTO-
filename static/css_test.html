@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>CSS テスト - PokerGTO 解析結果</title>
+<style>
+/* ═══════════════════════════════════════════════
+   ベース: 白背景・黒文字（Word文書スタイル）
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', 'Meiryo', 'Yu Gothic', sans-serif;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.page-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  background: #fff;
+  min-height: 100vh;
+  box-shadow: 0 0 20px rgba(0,0,0,0.08);
+}
+
+/* ─── ヘッダー ─── */
+.page-header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.page-header h1 { font-size: 17px; font-weight: 700; color: #fff; }
+.btn-back {
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid #556;
+  border-radius: 5px;
+  color: #aab;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* ─── サマリーバー ─── */
+.summary-bar {
+  background: #fff;
+  border-bottom: 2px solid #e8e8e8;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.summary-item { text-align: center; }
+.summary-num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #1a1a1a;
+}
+.summary-num.blue { color: #1a6abf; }
+.summary-num.red  { color: #c0392b; }
+.summary-num.gray { color: #666; }
+.summary-label { font-size: 10px; color: #555; margin-top: 2px; }
+.summary-sep { width: 1px; height: 40px; background: #e0e0e0; }
+.summary-ev {
+  margin-left: auto;
+  font-size: 12px;
+  color: #333;
+}
+
+/* ─── コンテンツエリア ─── */
+.content { padding: 0 20px 40px; }
+
+/* ─── セクション ─── */
+.section {
+  margin-top: 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.section-header {
+  background: #f0f0f0;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #ddd;
+}
+.section-header:hover { background: #e8e8e8; }
+.section-header .toggle-btn {
+  margin-left: auto;
+  font-size: 11px;
+  color: #555;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.section-body { padding: 12px 14px; }
+
+/* ─── カテゴリ内訳 ─── */
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
+}
+.cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+.cat-label { font-size: 11px; font-weight: 600; }
+.cat-count { font-size: 14px; font-weight: 800; }
+.cat-item.cat-blue { background: #e8f4fd; border-color: #b8d9f5; }
+.cat-item.cat-blue .cat-label { color: #1a6abf; }
+.cat-item.cat-blue .cat-count { color: #1a6abf; }
+.cat-item.cat-red  { background: #fdecea; border-color: #f5b8b5; }
+.cat-item.cat-red  .cat-label { color: #c0392b; }
+.cat-item.cat-red  .cat-count { color: #c0392b; }
+.cat-item.cat-gray { background: #f5f5f5; border-color: #ddd; }
+.cat-item.cat-gray .cat-label { color: #666; }
+.cat-item.cat-gray .cat-count { color: #666; }
+.cat-item.cat-warn { background: #fdf9e8; border-color: #e8d8a0; }
+.cat-item.cat-warn .cat-label { color: #8a6500; }
+.cat-item.cat-warn .cat-count { color: #8a6500; }
+
+/* ─── スート4色（ドイツ式） ─── */
+.s { color: #1a1a1a; }   /* ♠ 黒 */
+.h { color: #d32f2f; }   /* ♥ 赤 */
+.d { color: #1565c0; }   /* ♦ 青 */
+.c { color: #2e7d32; }   /* ♣ 緑 */
+
+/* ─── ライン見出し（青線・赤線） ─── */
+.line-header {
+  padding: 10px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid #eee;
+}
+.line-title { font-size: 14px; font-weight: 800; }
+.line-title.blue { color: #1a6abf; }
+.line-title.red  { color: #c0392b; }
+.line-count { font-size: 12px; color: #444; }
+.line-pl { margin-left: auto; font-size: 13px; font-weight: 700; }
+.line-pl.pos { color: #2e7d32; }
+.line-pl.neg { color: #c0392b; }
+
+/* ─── カテゴリ小見出し ─── */
+.cat-subheader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 10px 0 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cat-subheader.blue { background: #dbeafe; color: #1a6abf; border-left: 3px solid #1a6abf; }
+.cat-subheader.red  { background: #fee2e2; color: #c0392b; border-left: 3px solid #c0392b; }
+.cat-subheader.warn { background: #fef9c3; color: #8a6500; border-left: 3px solid #ca8a04; }
+.cat-subheader .cat-sub-pl { margin-left: auto; }
+.ai-badge { font-size: 9px; background: #fef9c3; color: #8a6500; border: 1px solid #e8d070; border-radius: 3px; padding: 1px 5px; }
+
+/* ─── ハンドカード ─── */
+.hand-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.hand-card.needs-ai { border-color: #e8d070; background: #fffef0; }
+.hand-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-bottom: 1px solid #eeeeee;
+  flex-wrap: wrap;
+}
+.hand-card.needs-ai .hand-card-head { background: #fffce8; }
+.hand-num { font-size: 10px; color: #666; font-weight: 600; }
+.badge-3bet { font-size: 9px; background: #ede9fe; color: #5b21b6; border-radius: 3px; padding: 1px 5px; font-weight: 800; }
+.badge-ai   { font-size: 9px; color: #ca8a04; font-weight: 800; }
+.hero-pos { font-size: 12px; font-weight: 800; color: #1a1a1a; }
+.hero-label { font-size: 9px; color: #666; }
+.hero-cards { font-size: 14px; font-weight: 700; }
+.vs-label { font-size: 10px; color: #777; }
+.opp-cards { font-size: 11px; }
+.opp-pos { font-size: 9px; color: #666; }
+.hand-pl { margin-left: auto; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.hand-pl.pos { color: #2e7d32; }
+.hand-pl.neg { color: #c0392b; }
+.hand-pl.zero { color: #999; }
+
+/* ─── アクションライン ─── */
+.hand-card-body { padding: 6px 10px 8px; font-size: 11px; line-height: 2; }
+.street-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.street-label { font-size: 9px; font-weight: 800; color: #666; min-width: 16px; }
+.board-cards { font-size: 11px; }
+.pot-label { font-size: 10px; color: #888; }
+.act-fold  { color: #888; }
+.act-check { color: #444; }
+.act-call  { color: #1a6abf; }
+.act-bet   { color: #ca8a04; font-weight: 700; }
+.act-raise { color: #c0392b; font-weight: 700; }
+.act-sep   { color: #aaa; }
+
+/* ─── 全ハンド一覧テーブル ─── */
+.all-hands-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.all-hands-table th {
+  background: #f0f0f0;
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 10px;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+  position: sticky;
+  top: 0;
+}
+.all-hands-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+.all-hands-table tr:hover td { background: #fafafa; }
+.badge-line-blue { font-size: 9px; background: #dbeafe; color: #1a6abf; border-radius: 2px; padding: 1px 4px; font-weight: 700; }
+.badge-line-red  { font-size: 9px; background: #fee2e2; color: #c0392b; border-radius: 2px; padding: 1px 4px; font-weight: 700; }
+.badge-line-pf   { font-size: 9px; background: #f5f5f5; color: #999; border-radius: 2px; padding: 1px 4px; }
+
+/* ─── アコーディオン ─── */
+.accordion-body { display: block; }
+.accordion-body.collapsed { display: none; }
+
+/* ─── タブ ─── */
+.tab-bar {
+  display: flex;
+  border-bottom: 2px solid #ddd;
+  padding: 0 20px;
+  margin-top: 16px;
+}
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+.tab-btn.active { color: #1a1a2e; border-bottom-color: #1a1a2e; }
+.tab-btn:hover { color: #333; }
+.tab-panel { display: none; padding: 16px 20px; }
+.tab-panel.active { display: block; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- ヘッダー -->
+<div class="page-header">
+  <a class="btn-back" href="#">← 戻る</a>
+  <h1>🃏 PokerGTO — 解析結果</h1>
+</div>
+
+<!-- サマリーバー -->
+<div class="summary-bar">
+  <div class="summary-item">
+    <div class="summary-num">345</div>
+    <div class="summary-label">総ハンド数</div>
+  </div>
+  <div class="summary-sep"></div>
+  <div class="summary-item">
+    <div class="summary-num blue">35</div>
+    <div class="summary-label">🔵 青線</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-num red">76</div>
+    <div class="summary-label">🔴 赤線</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-num gray">234</div>
+    <div class="summary-label">PFのみ</div>
+  </div>
+  <div class="summary-sep"></div>
+  <div class="summary-item">
+    <div class="summary-num" style="color:#c0392b">-36.76</div>
+    <div class="summary-label">合計損益(bb)</div>
+  </div>
+  <div class="summary-ev">
+    🎲 All-in EV差 <strong>+12.5bb</strong>（運が悪かった）
+  </div>
+</div>
+
+<!-- タブ -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('tab-hands')">青赤線</button>
+  <button class="tab-btn" onclick="switchTab('tab-position')">ポジション別</button>
+  <button class="tab-btn" onclick="switchTab('tab-chart')">チップ推移</button>
+</div>
+
+<!-- ═══ タブ①: 青赤線 ═══ -->
+<div class="tab-panel active" id="tab-hands">
+<div class="content">
+
+<!-- カテゴリ内訳 -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('cat-body')">
+    📊 ハンド分類内訳
+    <span class="toggle-btn">▲</span>
+  </div>
+  <div class="section-body accordion-body" id="cat-body">
+    <div class="cat-grid">
+      <div class="cat-item cat-blue"><span class="cat-label">バリュー/ブラフ成功</span><span class="cat-count">11</span></div>
+      <div class="cat-item cat-blue"><span class="cat-label">ブラフキャッチ</span><span class="cat-count">6</span></div>
+      <div class="cat-item cat-red"><span class="cat-label">ブラフ失敗</span><span class="cat-count">8</span></div>
+      <div class="cat-item cat-red"><span class="cat-label">コール負け</span><span class="cat-count">10</span></div>
+      <div class="cat-item cat-red"><span class="cat-label">アグレッション勝利</span><span class="cat-count">35</span></div>
+      <div class="cat-item cat-red"><span class="cat-label">バッドフォールド</span><span class="cat-count">23</span></div>
+      <div class="cat-item cat-gray"><span class="cat-label">ナイスフォールド</span><span class="cat-count">16</span></div>
+      <div class="cat-item cat-warn"><span class="cat-label">フォールド(要確認)</span><span class="cat-count">2</span></div>
+      <div class="cat-item cat-gray"><span class="cat-label">プリフロップのみ</span><span class="cat-count">234</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 青線 / 赤線 ハンド一覧 -->
+<div class="section" style="margin-top:16px">
+  <div class="section-header" onclick="toggleSection('hand-list-body')">
+    📋 青線 / 赤線 ハンド一覧
+    <span class="toggle-btn">▲</span>
+  </div>
+  <div class="accordion-body" id="hand-list-body">
+
+    <!-- ══ 青線セクション ══ -->
+    <div class="line-header">
+      <span class="line-title blue">🔵 青線（ショーダウン）</span>
+      <span class="line-count">35手</span>
+      <span class="line-pl pos">+5.77bb</span>
+    </div>
+
+    <!-- バリュー/ブラフ成功 -->
+    <div style="padding:0 10px">
+      <div class="cat-subheader blue">
+        バリュー/ブラフ成功 <span style="font-weight:400;color:#555">11手</span>
+        <span class="cat-sub-pl pos">+218.93bb</span>
+      </div>
+
+      <!-- H253 -->
+      <div class="hand-card">
+        <div class="hand-card-head">
+          <span class="hand-num">H253</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">HJ</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="h">Q♥</span><span class="c">Q♣</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">CO</span> <span class="s">3♠</span><span class="d">A♦</span>
+            &ensp;<span class="opp-pos">BTN</span> <span class="d">2♦</span><span class="h">7♥</span>
+            &ensp;<span class="opp-pos">SB</span> <span class="h">4♥</span><span class="s">9♣</span>
+            &ensp;<span class="opp-pos">BB</span> <span class="d">5♦</span><span class="s">6♠</span>
+            &ensp;<span class="opp-pos">UTG</span> <span class="s">J♠</span><span class="d">K♦</span>
+          </span>
+          <span class="hand-pl pos">+36.37bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-bet">UTG Raise 2.5bb</span> <span class="act-sep">›</span> <span class="act-bet">HJ Raise 8.75bb</span> <span class="act-sep">›</span> <span class="act-fold">CO F</span> <span class="act-sep">›</span> <span class="act-fold">BTN F</span> <span class="act-sep">›</span> <span class="act-fold">SB F</span> <span class="act-sep">›</span> <span class="act-fold">BB F</span> <span class="act-sep">›</span> <span class="act-call">UTG Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="c">6♣</span> <span class="d">J♦</span> <span class="h">T♥</span></span>
+            <span class="pot-label">(19.0bb)</span>
+            <span><span class="act-check">UTG X</span> <span class="act-sep">›</span> <span class="act-bet">HJ Bet 6.33bb</span> <span class="act-sep">›</span> <span class="act-call">UTG Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">T</span>
+            <span class="board-cards"><span class="h">6♥</span></span>
+            <span class="pot-label">(31.66bb)</span>
+            <span><span class="act-check">UTG X</span> <span class="act-sep">›</span> <span class="act-bet">HJ Bet 23.75bb</span> <span class="act-sep">›</span> <span class="act-call">UTG Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">R</span>
+            <span class="board-cards"><span class="h">9♥</span></span>
+            <span class="pot-label">(79.16bb)</span>
+            <span><span class="act-check">UTG X</span> <span class="act-sep">›</span> <span class="act-check">HJ X</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- H811 -->
+      <div class="hand-card">
+        <div class="hand-card-head">
+          <span class="hand-num">H811</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">BB</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="d">K♦</span><span class="s">K♠</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">CO</span> <span class="s">J♦</span><span class="d">Q♦</span>
+            &ensp;<span class="opp-pos">BTN</span> <span class="h">T♥</span><span class="h">Q♥</span>
+          </span>
+          <span class="hand-pl pos">+87.05bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-fold">UTG F</span> <span class="act-sep">›</span> <span class="act-fold">HJ F</span> <span class="act-sep">›</span> <span class="act-bet">CO Raise 2.5bb</span> <span class="act-sep">›</span> <span class="act-call">BTN Call</span> <span class="act-sep">›</span> <span class="act-fold">SB F</span> <span class="act-sep">›</span> <span class="act-bet">BB Raise 10.0bb</span> <span class="act-sep">›</span> <span class="act-call">CO Call</span> <span class="act-sep">›</span> <span class="act-call">BTN Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="s">9♣</span> <span class="s">T♠</span> <span class="s">4♠</span></span>
+            <span class="pot-label">(30.5bb)</span>
+            <span><span class="act-bet">BB Bet 22.88bb</span> <span class="act-sep">›</span> <span class="act-call">CO Call</span> <span class="act-sep">›</span> <span class="act-call">BTN Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">T</span>
+            <span class="board-cards"><span class="h">J♥</span></span>
+            <span class="pot-label">(99.14bb)</span>
+            <span><span class="act-check">BB X</span> <span class="act-sep">›</span> <span class="act-check">CO X</span> <span class="act-sep">›</span> <span class="act-check">BTN X</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">R</span>
+            <span class="board-cards"><span class="d">5♦</span></span>
+            <span class="pot-label">(99.14bb)</span>
+            <span><span class="act-bet">BB Bet 24.79bb</span> <span class="act-sep">›</span> <span class="act-call">CO Call</span> <span class="act-sep">›</span> <span class="act-fold">BTN F</span></span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /バリュー -->
+
+    <!-- ブラフキャッチ -->
+    <div style="padding:0 10px">
+      <div class="cat-subheader blue">
+        ブラフキャッチ <span style="font-weight:400;color:#555">6手</span>
+        <span class="cat-sub-pl pos">+147.14bb</span>
+      </div>
+      <!-- H1089 -->
+      <div class="hand-card">
+        <div class="hand-card-head">
+          <span class="hand-num">H1089</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">BB</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="c">7♣</span><span class="c">8♣</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">HJ</span> <span class="d">2♣</span><span class="d">K♣</span>
+          </span>
+          <span class="hand-pl pos">+98.50bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-bet">HJ Raise 2.0bb</span> <span class="act-sep">›</span> <span class="act-bet">BB Raise 7.0bb</span> <span class="act-sep">›</span> <span class="act-call">HJ Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="h">9♥</span> <span class="c">T♣</span> <span class="c">J♣</span></span>
+            <span class="pot-label">(16.5bb)</span>
+            <span><span class="act-bet">BB Bet 8.25bb</span> <span class="act-sep">›</span> <span class="act-call">HJ Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">T</span>
+            <span class="board-cards"><span class="s">T♠</span></span>
+            <span class="pot-label">(33.0bb)</span>
+            <span><span class="act-bet">BB Bet 24.75bb</span> <span class="act-sep">›</span> <span class="act-bet">HJ Raise 61.88bb</span> <span class="act-sep">›</span> <span class="act-call">HJ Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">R</span>
+            <span class="board-cards"><span class="d">T♦</span></span>
+            <span class="pot-label">(202.5bb)</span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /ブラフキャッチ -->
+
+    <!-- ══ 赤線セクション ══ -->
+    <div class="line-header" style="border-top:2px solid #eee; margin-top:8px">
+      <span class="line-title red">🔴 赤線（ノーショーダウン）</span>
+      <span class="line-count">76手</span>
+      <span class="line-pl neg">-42.53bb</span>
+    </div>
+
+    <!-- アグレッション勝利 -->
+    <div style="padding:0 10px">
+      <div class="cat-subheader red">
+        アグレッション勝利 <span style="font-weight:400;color:#555">35手</span>
+        <span class="cat-sub-pl pos">+311.70bb</span>
+        <span class="ai-badge">★ 要AI 35手</span>
+      </div>
+
+      <!-- H419 -->
+      <div class="hand-card needs-ai">
+        <div class="hand-card-head">
+          <span class="badge-ai">★</span>
+          <span class="hand-num">H419</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">SB</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="c">J♣</span><span class="h">J♥</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">HJ</span> <span class="d">3♦</span><span class="d">6♦</span>
+          </span>
+          <span class="hand-pl pos">+10.40bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-bet">HJ Raise 3.0bb</span> <span class="act-sep">›</span> <span class="act-bet">SB Raise 10.5bb</span> <span class="act-sep">›</span> <span class="act-fold">BB F</span> <span class="act-sep">›</span> <span class="act-call">HJ Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="c">4♣</span> <span class="s">J♠</span> <span class="c">7♣</span></span>
+            <span class="pot-label">(22.0bb)</span>
+            <span><span class="act-bet">SB Bet 16.5bb</span> <span class="act-sep">›</span> <span class="act-fold">HJ F</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- H832 -->
+      <div class="hand-card needs-ai">
+        <div class="hand-card-head">
+          <span class="badge-ai">★</span>
+          <span class="hand-num">H832</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">UTG</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="h">A♥</span><span class="c">Q♣</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">CO</span> <span class="h">Q♥</span><span class="s">K♠</span>
+          </span>
+          <span class="hand-pl pos">+13.12bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-bet">UTG Raise 2.5bb</span> <span class="act-sep">›</span> <span class="act-bet">CO Raise 7.5bb</span> <span class="act-sep">›</span> <span class="act-call">UTG Call</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="h">7♥</span> <span class="d">A♦</span> <span class="s">A♠</span></span>
+            <span class="pot-label">(16.5bb)</span>
+            <span><span class="act-check">UTG X</span> <span class="act-sep">›</span> <span class="act-bet">CO Bet 5.5bb</span> <span class="act-sep">›</span> <span class="act-bet">UTG Raise 22.0bb</span> <span class="act-sep">›</span> <span class="act-fold">CO F</span></span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /アグレッション -->
+
+    <!-- バッドフォールド -->
+    <div style="padding:0 10px">
+      <div class="cat-subheader red">
+        バッドフォールド <span style="font-weight:400;color:#555">23手</span>
+        <span class="cat-sub-pl neg">-194.92bb</span>
+      </div>
+      <div class="hand-card">
+        <div class="hand-card-head">
+          <span class="hand-num">H932</span>
+          <span class="badge-3bet">3BET</span>
+          <span class="hero-pos">SB</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="d">J♦</span><span class="s">A♠</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">BTN</span> <span class="s">Q♠</span><span class="h">K♥</span>
+          </span>
+          <span class="hand-pl neg">-7.50bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">PF</span>
+            <span><span class="act-bet">HJ Raise 2.0bb</span> <span class="act-sep">›</span> <span class="act-bet">BTN Raise 7.5bb</span> <span class="act-sep">›</span> <span class="act-call">SB Call</span> <span class="act-sep">›</span> <span class="act-bet">BB Raise 13.0bb</span> <span class="act-sep">›</span> <span class="act-call">BTN Call</span> <span class="act-sep">›</span> <span class="act-fold">SB F</span></span>
+          </div>
+          <div class="street-line">
+            <span class="street-label">F</span>
+            <span class="board-cards"><span class="c">7♣</span> <span class="c">J♣</span> <span class="s">7♠</span></span>
+            <span class="pot-label">(35.5bb)</span>
+            <span><span class="act-bet">BB Bet 17.75bb</span> <span class="act-sep">›</span> <span class="act-fold">BTN F</span></span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /バッドフォールド -->
+
+    <!-- フォールド(要確認) -->
+    <div style="padding:0 10px">
+      <div class="cat-subheader warn">
+        フォールド(要確認) <span style="font-weight:400;color:#8a6500">2手</span>
+        <span class="cat-sub-pl" style="margin-left:auto;color:#8a6500">-2.50bb</span>
+        <span class="ai-badge">★ 要AI 2手</span>
+      </div>
+      <div class="hand-card needs-ai">
+        <div class="hand-card-head">
+          <span class="badge-ai">★</span>
+          <span class="hand-num">H200</span>
+          <span class="hero-pos">BB</span>
+          <span class="hero-label">(Hero)</span>
+          <span class="hero-cards"><span class="c">3♣</span><span class="h">3♥</span></span>
+          <span class="vs-label">vs</span>
+          <span class="opp-cards">
+            <span class="opp-pos">SB</span> <span class="d">J♦</span><span class="s">J♠</span>
+          </span>
+          <span class="hand-pl neg">-2.00bb</span>
+        </div>
+        <div class="hand-card-body">
+          <div class="street-line">
+            <span class="street-label">R</span>
+            <span class="board-cards"><span class="s">8♠</span></span>
+            <span class="pot-label">(4.0bb)</span>
+            <span><span class="act-bet">SB Bet 3.0bb</span> <span class="act-sep">›</span> <span class="act-fold">BB F</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /hand-list-body -->
+</div><!-- /section -->
+
+<!-- 全ハンド一覧（抜粋） -->
+<div class="section" style="margin-top:16px">
+  <div class="section-header" onclick="toggleSection('all-hands-body')">
+    🗂 全ハンド一覧（345手）
+    <span class="toggle-btn">▼</span>
+  </div>
+  <div class="accordion-body collapsed" id="all-hands-body">
+    <div class="section-body" style="overflow-x:auto">
+      <table class="all-hands-table">
+        <thead>
+          <tr>
+            <th>分類 / H#</th>
+            <th>ポジション / ホールカード</th>
+            <th>PFアクション</th>
+            <th style="text-align:right">損益(bb)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge-line-red">赤</span> H6</td>
+            <td><span style="font-weight:700">CO (H)</span> <span class="d">5♦</span><span class="s">5♠</span> <span style="color:#bbb;font-size:10px">vs</span> UTG <span class="h">2♥</span><span class="d">K♦</span> HJ <span class="s">K♠</span><span class="d">Q♦</span></td>
+            <td><span class="act-fold">UTG F</span> <span class="act-sep">›</span> <span class="act-call">HJ Call</span> <span class="act-sep">›</span> <span class="act-call">CO Call</span></td>
+            <td style="text-align:right;color:#c0392b;font-weight:700">-2.75bb</td>
+          </tr>
+          <tr>
+            <td><span class="badge-line-pf">PF</span> H7</td>
+            <td><span style="font-weight:700">BB (H)</span> <span class="h">A♥</span><span class="h">9♥</span> <span style="color:#bbb;font-size:10px">vs</span> SB <span class="d">4♦</span><span class="s">4♣</span></td>
+            <td><span class="act-bet">SB Raise 5.0bb</span> <span class="act-sep">›</span> <span class="act-bet">BB Raise 17.5bb</span> <span class="act-sep">›</span> <span class="act-fold">SB F</span></td>
+            <td style="text-align:right;color:#2e7d32;font-weight:700">+5.00bb</td>
+          </tr>
+          <tr>
+            <td><span class="badge-line-blue">青</span> H253</td>
+            <td><span style="font-weight:700">HJ (H)</span> <span class="h">Q♥</span><span class="c">Q♣</span> <span style="color:#bbb;font-size:10px">vs</span> UTG <span class="s">J♠</span><span class="d">K♦</span></td>
+            <td><span class="act-bet">UTG Raise 2.5bb</span> <span class="act-sep">›</span> <span class="act-bet">HJ Raise 8.75bb</span> <span class="act-sep">›</span> <span class="act-call">UTG Call</span></td>
+            <td style="text-align:right;color:#2e7d32;font-weight:700">+36.37bb</td>
+          </tr>
+          <tr>
+            <td><span class="badge-line-pf">PF</span> H8</td>
+            <td><span style="font-weight:700">CO (H)</span> <span class="s">9♠</span><span class="s">A♠</span></td>
+            <td><span class="act-fold">UTG F</span> <span class="act-sep">›</span> <span class="act-bet">CO Raise 2.5bb</span> <span class="act-sep">›</span> <span class="act-fold">BB F</span></td>
+            <td style="text-align:right;color:#2e7d32;font-weight:700">+1.50bb</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /tab-hands -->
+
+<!-- ═══ タブ②: ポジション別（プレースホルダー） ═══ -->
+<div class="tab-panel" id="tab-position">
+  <div style="padding:40px;text-align:center;color:#aaa">
+    （ポジション別統計は実装予定）
+  </div>
+</div>
+
+<!-- ═══ タブ③: チップ推移（プレースホルダー） ═══ -->
+<div class="tab-panel" id="tab-chart">
+  <div style="padding:40px;text-align:center;color:#aaa">
+    （チップ推移グラフは実装予定）
+  </div>
+</div>
+
+</div><!-- /page-wrap -->
+
+<script>
+function toggleSection(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('collapsed');
+  // ボタンのテキスト更新
+  const btn = el.previousElementSibling.querySelector('.toggle-btn');
+  if (btn) btn.textContent = el.classList.contains('collapsed') ? '▼' : '▲';
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

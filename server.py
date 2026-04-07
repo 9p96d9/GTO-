@@ -1723,22 +1723,22 @@ def classify_result_page(
     import re as _re
     _DEFAULT_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-    # カテゴリ行HTML
+    # カテゴリ行HTML（白背景グリッドスタイル）
     cat_rows = ""
-    cat_colors = {
-        "バリュー/ブラフ成功": "#4caf93",
-        "ブラフキャッチ": "#7ec8e3",
-        "アグレッション勝利": "#4caf93",
-        "ブラフ失敗": "#e94560",
-        "コール負け": "#e94560",
-        "バッドフォールド": "#e94560",
-        "ナイスフォールド": "#aaa",
-        "フォールド(要確認)": "#888",
-        "プリフロップのみ": "#555",
+    _CAT_CLS_MAP = {
+        "バリュー/ブラフ成功": "cat-blue",
+        "ブラフキャッチ": "cat-blue",
+        "アグレッション勝利": "cat-blue",
+        "ブラフ失敗": "cat-red",
+        "コール負け": "cat-red",
+        "バッドフォールド": "cat-red",
+        "ナイスフォールド": "cat-gray",
+        "フォールド(要確認)": "cat-warn",
+        "プリフロップのみ": "cat-gray",
     }
     for label, count in sorted(categories.items(), key=lambda x: -x[1]):
-        color = cat_colors.get(label, "#aaa")
-        cat_rows += f'<div class="cat-row"><span class="cat-label" style="color:{color}">{_esc(label)}</span><span class="cat-count">{count}</span></div>\n'
+        cc = _CAT_CLS_MAP.get(label, "cat-gray")
+        cat_rows += f'<div class="cat-item {cc}"><span class="cat-label">{_esc(label)}</span><span class="cat-count">{count}</span></div>\n'
 
     # オールインEV差HTML（Heroのみ表示）
     ev_html = ""
@@ -1759,19 +1759,17 @@ def classify_result_page(
             ev_color = "#4caf93"
             ev_verdict = "運が良かった（EV より実収支が良い）"
             ev_detail = f"Heroはオールインで期待値より {abs(diff):.2f}bb 多く得た"
+        ev_color_txt = "#c0392b" if diff > 0 else "#2e7d32"
         ev_html = f"""
-  <div class="section" style="padding:10px 16px">
-    <div style="display:flex;align-items:center;gap:14px">
-      <span style="font-size:11px;color:#888">&#x1F3B2; All-in EV差</span>
-      <span style="font-size:22px;font-weight:bold;color:{ev_color}">{sign}{diff:.2f}bb</span>
-      <span style="font-size:12px;color:{ev_color};font-weight:bold">{_esc(ev_verdict)}</span>
-      <span style="font-size:11px;color:#666">{_esc(ev_detail)}（{ev_count}手）</span>
-    </div>
+  <div class="summary-ev" style="padding:8px 20px;background:#fff;border-bottom:1px solid #e8e8e8;font-size:12px;color:#333">
+    &#x1F3B2; All-in EV差 <strong style="color:{ev_color_txt}">{sign}{diff:.2f}bb</strong>
+    <span style="color:#555">（{_esc(ev_verdict)}）</span>
+    <span style="color:#888;font-size:11px">{_esc(ev_detail)}（{ev_count}手）</span>
   </div>"""
 
     # ─── 青線/赤線 ハンド一覧 ──────────────────────────────────────────────
-    # ダーク背景向けスートカラー（♠黒→グレー、♣濃緑→明緑）
-    _SUIT_COLORS = {'♠': '#c0c0c0', '♥': '#ff6b6b', '♦': '#5ba8ff', '♣': '#55cc55'}
+    # 4色スート（ドイツ式）
+    _SUIT_COLORS = {'♠': '#1a1a1a', '♥': '#d32f2f', '♦': '#1565c0', '♣': '#2e7d32'}
     def _card_html(s):
         if not s: return ""
         def _r(m):
@@ -1808,16 +1806,16 @@ def classify_result_page(
     _BLUE_ORDER = ["value_or_bluff_success", "bluff_catch", "bluff_failed", "call_lost"]
     _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
 
-    # ダーク背景向けカテゴリバッジ色（暗めのbg + 明るいfg）
-    _CAT_COLORS = {
-        "value_or_bluff_success": ("#1a3d2a", "#6dd49a"),
-        "bluff_catch":            ("#1a2d40", "#7ec8e3"),
-        "bluff_failed":           ("#3d1a22", "#f47b8a"),
-        "call_lost":              ("#3d1a22", "#f47b8a"),
-        "hero_aggression_won":    ("#1a3d2a", "#6dd49a"),
-        "bad_fold":               ("#3d1a22", "#f47b8a"),
-        "nice_fold":              ("#1e3020", "#a0cfa0"),
-        "fold_unknown":           ("#2e2a14", "#c8a840"),
+    # 白背景向けカテゴリサブヘッダークラス
+    _CAT_CLASS = {
+        "value_or_bluff_success": "blue",
+        "bluff_catch":            "blue",
+        "bluff_failed":           "red",
+        "call_lost":              "red",
+        "hero_aggression_won":    "red",
+        "bad_fold":               "red",
+        "nice_fold":              "",
+        "fold_unknown":           "warn",
     }
 
     def _fmt_actions(actions):
@@ -1829,31 +1827,33 @@ def classify_result_page(
             amt = a.get("amount_bb")
             amt_s = f"&nbsp;{amt}bb" if amt else ""
             if act == "Fold":
-                parts.append(f'<span style="color:#778">{pos}&nbsp;F</span>')
+                parts.append(f'<span class="act-fold">{pos}&nbsp;F</span>')
             elif act == "Check":
-                parts.append(f'<span style="color:#9ab">{pos}&nbsp;X</span>')
+                parts.append(f'<span class="act-check">{pos}&nbsp;X</span>')
             elif act == "Call":
-                parts.append(f'<span style="color:#5ba8ff">{pos}&nbsp;Call{amt_s}</span>')
-            elif act in ("Bet", "Raise"):
-                parts.append(f'<span style="color:#e8b840;font-weight:bold">{pos}&nbsp;{act}{amt_s}</span>')
+                parts.append(f'<span class="act-call">{pos}&nbsp;Call{amt_s}</span>')
+            elif act == "Raise":
+                parts.append(f'<span class="act-raise">{pos}&nbsp;Raise{amt_s}</span>')
+            elif act == "Bet":
+                parts.append(f'<span class="act-bet">{pos}&nbsp;Bet{amt_s}</span>')
             elif act:
-                parts.append(f'<span style="color:#bbb">{pos}&nbsp;{act}</span>')
-        sep = ' <span style="color:#556">›</span> '
+                parts.append(f'<span>{pos}&nbsp;{act}</span>')
+        sep = ' <span class="act-sep">›</span> '
         return sep.join(parts)
 
     def _build_hand_card(h):
-        """1ハンドの詳細カードHTMLを返す"""
+        """1ハンドの詳細カードHTMLを返す（白背景スタイル）"""
         clf = h.get("bluered_classification", {})
         hero_cards = "".join(h.get("hero_cards", []))
         hero_pos   = h.get("hero_position", "?")
         is_3bet    = h.get("is_3bet_pot", False)
         pl         = float(h.get("hero_result_bb", 0))
-        pl_c       = "#4caf93" if pl > 0 else "#e94560" if pl < 0 else "#888"
+        pl_cls     = "pos" if pl > 0 else "neg" if pl < 0 else "zero"
         needs_api  = clf.get("needs_api", False)
 
-        badge_3bet = '<span style="background:#2a1a40;color:#b08aff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:bold">3BET</span> ' if is_3bet else ""
-        api_mark   = '<span style="color:#c8a840;font-size:9px">★</span> ' if needs_api else ""
-        card_bg    = "#1c180a" if needs_api else "#0f1828"
+        badge_3bet = '<span class="badge-3bet">3BET</span> ' if is_3bet else ""
+        badge_ai   = '<span class="badge-ai">★</span> ' if needs_api else ""
+        card_cls   = "hand-card needs-ai" if needs_api else "hand-card"
 
         # 相手プレイヤーのカード（ポジション付き）
         opp_parts = []
@@ -1862,12 +1862,12 @@ def classify_result_page(
                 cards = "".join(p.get("hole_cards", []))
                 pos   = p.get("position", "?")
                 if cards:
-                    opp_parts.append(f'<span style="color:#9ab;font-size:10px">{pos}</span>&nbsp;{_card_html(cards)}')
+                    opp_parts.append(f'<span class="opp-pos">{pos}</span>&nbsp;{_card_html(cards)}')
                 else:
-                    opp_parts.append(f'<span style="color:#778;font-size:10px">{pos}</span>')
-        opp_html = "  ".join(opp_parts) if opp_parts else '<span style="color:#667">—</span>'
+                    opp_parts.append(f'<span class="opp-pos">{pos}</span>')
+        opp_html = "&ensp;".join(opp_parts) if opp_parts else "—"
 
-        hero_c_html = _card_html(hero_cards) if hero_cards else '<span style="color:#778">—</span>'
+        hero_c_html = _card_html(hero_cards) if hero_cards else "—"
 
         # ストリート別アクション
         streets = h.get("streets", {})
@@ -1877,7 +1877,11 @@ def classify_result_page(
         if pf:
             acts = _fmt_actions(pf)
             if acts:
-                st_lines.append(f'<span style="color:#778;font-size:10px">PF</span>&nbsp;{acts}')
+                st_lines.append(
+                    f'<div class="street-line">'
+                    f'<span class="street-label">PF</span>'
+                    f'<span>{acts}</span></div>'
+                )
 
         for st_key, st_lbl in [("flop","F"), ("turn","T"), ("river","R")]:
             s = streets.get(st_key)
@@ -1885,30 +1889,35 @@ def classify_result_page(
             board_cards = [c for c in s.get("board", []) if c and c != "-"]
             pot         = s.get("pot_bb", 0)
             actions     = s.get("actions", [])
-            board_part  = f'<span style="font-size:11px">{_card_html(" ".join(board_cards))}</span>' if board_cards else ""
-            pot_part    = f'<span style="color:#667;font-size:10px">({pot}bb)</span>'
+            board_part  = f'<span class="board-cards">{_card_html(" ".join(board_cards))}</span> ' if board_cards else ""
+            pot_part    = f'<span class="pot-label">({pot}bb)</span>'
             acts        = _fmt_actions(actions)
-            line = f'<span style="color:#778;font-size:10px">{st_lbl}</span>&nbsp;{board_part}&nbsp;{pot_part}'
+            line = (
+                f'<div class="street-line">'
+                f'<span class="street-label">{st_lbl}</span>'
+                f'{board_part}{pot_part}'
+            )
             if acts:
-                line += f'&nbsp;&nbsp;{acts}'
+                line += f' <span>{acts}</span>'
+            line += '</div>'
             st_lines.append(line)
 
-        streets_html = "<br>".join(st_lines) if st_lines else ""
+        streets_html = "".join(st_lines)
 
         return (
-            f'<div style="background:{card_bg};border-radius:5px;padding:8px 10px;'
-            f'margin-bottom:5px;border-left:2px solid #1e2535">'
-            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap">'
-            f'<span style="color:#889;font-size:10px">{api_mark}H{h.get("hand_number","")}</span>'
+            f'<div class="{card_cls}">'
+            f'<div class="hand-card-head">'
+            f'{badge_ai}'
+            f'<span class="hand-num">H{h.get("hand_number","")}</span>'
             f'{badge_3bet}'
-            f'<span style="font-size:11px;font-weight:bold;color:#eee">{hero_pos}</span>'
-            f'<span style="color:#889;font-size:10px">(Hero)</span>'
-            f'<span style="font-size:12px">{hero_c_html}</span>'
-            f'<span style="color:#667;font-size:10px">vs</span>'
-            f'<span style="font-size:11px">{opp_html}</span>'
-            f'<span style="margin-left:auto;color:{pl_c};font-weight:bold;font-size:12px">{_fmt_bb(pl)}bb</span>'
+            f'<span class="hero-pos">{hero_pos}</span>'
+            f'<span class="hero-label">(Hero)</span>'
+            f'<span class="hero-cards">{hero_c_html}</span>'
+            f'<span class="vs-label">vs</span>'
+            f'<span class="opp-cards">{opp_html}</span>'
+            f'<span class="hand-pl {pl_cls}">{_fmt_bb(pl)}bb</span>'
             f'</div>'
-            f'<div style="font-size:11px;color:#bbb;line-height:1.9">{streets_html}</div>'
+            f'<div class="hand-card-body">{streets_html}</div>'
             f'</div>'
         )
 
@@ -1928,21 +1937,24 @@ def classify_result_page(
             if not cat_hands: continue
             cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
             cat_pl    = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
-            pl_color  = "#4caf93" if cat_pl > 0 else "#e94560" if cat_pl < 0 else "#888"
-            bg, fg    = _CAT_COLORS.get(cat, ("#222", "#aaa"))
+            pl_cls    = "pos" if cat_pl > 0 else "neg" if cat_pl < 0 else ""
+            cc        = _CAT_CLASS.get(cat, "")
             needs_api_cnt = sum(1 for h in cat_hands if h.get("bluered_classification", {}).get("needs_api"))
-            api_badge = f' <span style="color:#c8a030;font-size:10px">★要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
+            ai_badge  = f' <span class="ai-badge">★ 要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
+            pl_sign   = "+" if cat_pl > 0 else ""
 
+            # cat-subheaderのクラス: blue/red/warn のみCSS定義あり; 空の場合はデフォルト
+            sub_cls = f"cat-subheader {cc}" if cc else "cat-subheader"
             html += (
-                f'<div style="background:{bg};border-radius:4px;padding:5px 10px;'
-                f'margin:10px 0 5px;display:flex;align-items:center;gap:10px">'
-                f'<span style="color:{fg};font-size:11px;font-weight:bold">{_esc(cat_label)}</span>'
-                f'<span style="color:#666;font-size:10px">{len(cat_hands)}手</span>'
-                f'<span style="margin-left:auto;color:{pl_color};font-size:11px;font-weight:bold">{_fmt_bb(cat_pl)}bb</span>'
-                f'{api_badge}</div>\n'
+                f'<div style="padding:0 10px">'
+                f'<div class="{sub_cls}">'
+                f'{_esc(cat_label)} <span style="font-weight:400;color:#555">{len(cat_hands)}手</span>'
+                f'<span class="cat-sub-pl {pl_cls}">{pl_sign}{cat_pl:.2f}bb</span>'
+                f'{ai_badge}</div>\n'
             )
             for h in cat_hands:
                 html += _build_hand_card(h)
+            html += '</div>\n'
         return html
 
     hands_html = ""
@@ -1952,92 +1964,94 @@ def classify_result_page(
         pf_hands   = [h for h in hands if h.get("bluered_classification", {}).get("line") == "preflop_only"]
         blue_pl    = sum(float(h.get("hero_result_bb", 0)) for h in blue_hands)
         red_pl     = sum(float(h.get("hero_result_bb", 0)) for h in red_hands)
-        blue_pl_c  = "#4caf93" if blue_pl > 0 else "#e94560" if blue_pl < 0 else "#888"
-        red_pl_c   = "#4caf93" if red_pl  > 0 else "#e94560" if red_pl  < 0 else "#888"
+        blue_pl_c  = "pos" if blue_pl > 0 else "neg" if blue_pl < 0 else ""
+        red_pl_c   = "pos" if red_pl  > 0 else "neg" if red_pl  < 0 else ""
         blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
         red_section  = _build_hand_section(red_hands,  _RED_ORDER)
 
         # 全ハンド一覧（青+赤+PFのみ、ハンド番号順）
         all_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
         _LINE_BADGE = {
-            "blue":         '<span style="background:#1a2d40;color:#7ec8e3;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:bold">青</span>',
-            "red":          '<span style="background:#3d1a22;color:#f47b8a;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:bold">赤</span>',
-            "preflop_only": '<span style="background:#222;color:#778;font-size:9px;padding:1px 5px;border-radius:3px">PF</span>',
+            "blue":         '<span class="badge-line-blue">青</span>',
+            "red":          '<span class="badge-line-red">赤</span>',
+            "preflop_only": '<span class="badge-line-pf">PF</span>',
         }
         all_rows = ""
         for h in all_sorted:
             clf      = h.get("bluered_classification", {})
             line     = clf.get("line", "preflop_only")
             pl       = float(h.get("hero_result_bb", 0))
-            pl_c     = "#4caf93" if pl > 0 else "#e94560" if pl < 0 else "#889"
+            pl_color = "#2e7d32" if pl > 0 else "#c0392b" if pl < 0 else "#999"
             hero_pos = h.get("hero_position", "?")
             hero_c   = "".join(h.get("hero_cards", []))
             badge    = _LINE_BADGE.get(line, "")
-            badge3   = '<span style="background:#2a1a40;color:#b08aff;font-size:9px;padding:1px 4px;border-radius:3px;font-weight:bold">3B</span> ' if h.get("is_3bet_pot") else ""
+            badge3   = '<span class="badge-3bet" style="font-size:9px;padding:1px 4px">3B</span> ' if h.get("is_3bet_pot") else ""
             opp_parts2 = []
             for p in h.get("players", []):
                 if not p.get("is_hero"):
                     cards2 = "".join(p.get("hole_cards", []))
                     pos2   = p.get("position", "?")
                     if cards2:
-                        opp_parts2.append(f'<span style="color:#9ab;font-size:9px">{pos2}</span>&nbsp;<span style="font-size:11px">{_card_html(cards2)}</span>')
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>&nbsp;{_card_html(cards2)}')
                     else:
-                        opp_parts2.append(f'<span style="color:#667;font-size:9px">{pos2}</span>')
-            opp2 = "&ensp;".join(opp_parts2) if opp_parts2 else '<span style="color:#556">—</span>'
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>')
+            opp2 = "&ensp;".join(opp_parts2) if opp_parts2 else "—"
             pf_acts = _fmt_actions(h.get("streets", {}).get("preflop", []))
             all_rows += (
-                f'<tr style="border-bottom:1px solid #16213e">'
-                f'<td style="padding:4px 6px;color:#889;font-size:10px;white-space:nowrap">{badge} H{h.get("hand_number","")}</td>'
-                f'<td style="padding:4px 6px;white-space:nowrap">'
-                f'  {badge3}<span style="color:#eee;font-weight:bold;font-size:11px">{_esc(hero_pos)}</span>'
-                f'  <span style="color:#889;font-size:9px">(H)</span>&nbsp;'
-                f'  <span style="font-size:11px">{_card_html(hero_c) if hero_c else chr(60) + "span style=" + chr(34) + "color:#667" + chr(34) + chr(62) + "—" + chr(60) + "/span" + chr(62)}</span>'
-                f'  &ensp;<span style="color:#556;font-size:9px">vs</span>&ensp;{opp2}'
-                f'</td>'
-                f'<td style="padding:4px 6px;font-size:10px;color:#bbb;line-height:1.7">{pf_acts}</td>'
-                f'<td style="padding:4px 8px;text-align:right;font-weight:bold;font-size:11px;color:{pl_c};white-space:nowrap">{_fmt_bb(pl)}bb</td>'
+                f'<tr>'
+                f'<td style="white-space:nowrap">{badge} H{h.get("hand_number","")}</td>'
+                f'<td><span style="font-weight:700">{_esc(hero_pos)} (H)</span> {badge3}'
+                f'{_card_html(hero_c) if hero_c else "—"}'
+                f' <span style="color:#bbb;font-size:10px">vs</span> {opp2}</td>'
+                f'<td style="font-size:10px">{pf_acts}</td>'
+                f'<td style="text-align:right;color:{pl_color};font-weight:700;white-space:nowrap">{_fmt_bb(pl)}bb</td>'
                 f'</tr>'
             )
 
+        blue_pl_str = ("+" if blue_pl > 0 else "") + f"{blue_pl:.2f}"
+        red_pl_str  = ("+" if red_pl  > 0 else "") + f"{red_pl:.2f}"
+
         hands_html = f"""
-  <div class="section" id="hand-list-section">
-    <div class="section-title">&#x1F4CB; 青線 / 赤線 ハンド一覧
-      <button onclick="var b=document.getElementById('hand-list-body');b.style.display=b.style.display==='none'?'block':'none'" style="float:right;padding:2px 10px;background:transparent;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:11px">折りたたむ</button>
-    </div>
-    <div id="hand-list-body">
-      <div style="font-size:12px;color:#7ec8e3;font-weight:bold;margin-bottom:4px;padding-top:4px">
-        &#x1F535; 青線（ショーダウン）&nbsp; {len(blue_hands)}手 &nbsp;
-        <span style="color:{blue_pl_c}">{_fmt_bb(blue_pl)}bb</span>
-      </div>
-      {blue_section or '<div style="color:#778;font-size:12px;padding:8px">該当なし</div>'}
-      <div style="border-top:1px solid #1e2535;margin:16px 0 8px"></div>
-      <div style="font-size:12px;color:#e94560;font-weight:bold;margin-bottom:4px">
-        &#x1F534; 赤線（ノーショーダウン）&nbsp; {len(red_hands)}手 &nbsp;
-        <span style="color:{red_pl_c}">{_fmt_bb(red_pl)}bb</span>
-      </div>
-      {red_section or '<div style="color:#778;font-size:12px;padding:8px">該当なし</div>'}
-    </div>
+<div class="section">
+  <div class="section-header" onclick="toggleSection('hand-list-body')">
+    &#x1F4CB; 青線 / 赤線 ハンド一覧
+    <span class="toggle-btn">&#x25B2;</span>
   </div>
-  <div class="section" id="all-hands-section">
-    <div class="section-title">&#x1F5C2; 全ハンド一覧（{len(all_sorted)}手）
-      <button onclick="var b=document.getElementById('all-hands-body');b.style.display=b.style.display==='none'?'block':'none'" style="float:right;padding:2px 10px;background:transparent;color:#e94560;border:1px solid #e94560;border-radius:4px;cursor:pointer;font-size:11px">折りたたむ</button>
+  <div class="accordion-body" id="hand-list-body">
+    <div class="line-header">
+      <span class="line-title blue">&#x1F535; 青線（ショーダウン）</span>
+      <span class="line-count">{len(blue_hands)}手</span>
+      <span class="line-pl {blue_pl_c}">{blue_pl_str}bb</span>
     </div>
-    <div id="all-hands-body" style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead>
-          <tr style="background:#0f1828;font-size:10px;color:#778">
-            <th style="padding:4px 6px;text-align:left;white-space:nowrap">分類 / H#</th>
-            <th style="padding:4px 6px;text-align:left">ポジション / ホールカード</th>
-            <th style="padding:4px 6px;text-align:left">PFアクション</th>
-            <th style="padding:4px 8px;text-align:right;white-space:nowrap">損益(bb)</th>
-          </tr>
-        </thead>
-        <tbody style="background:#131c2e">
-          {all_rows}
-        </tbody>
+    {blue_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+    <div class="line-header" style="border-top:2px solid #eee;margin-top:8px">
+      <span class="line-title red">&#x1F534; 赤線（ノーショーダウン）</span>
+      <span class="line-count">{len(red_hands)}手</span>
+      <span class="line-pl {red_pl_c}">{red_pl_str}bb</span>
+    </div>
+    {red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" onclick="toggleSection('all-hands-body')">
+    &#x1F5C2; 全ハンド一覧（{len(all_sorted)}手）
+    <span class="toggle-btn">&#x25BC;</span>
+  </div>
+  <div class="accordion-body collapsed" id="all-hands-body">
+    <div class="section-body" style="overflow-x:auto">
+      <table class="all-hands-table">
+        <thead><tr>
+          <th>分類 / H#</th>
+          <th>ポジション / ホールカード</th>
+          <th>PFアクション</th>
+          <th style="text-align:right">損益(bb)</th>
+        </tr></thead>
+        <tbody>{all_rows}</tbody>
       </table>
     </div>
-  </div>"""
+  </div>
+</div>"""
 
     # APIキーのデフォルト値
     key_val = _DEFAULT_KEY
@@ -2050,174 +2064,255 @@ def classify_result_page(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>解析結果 - ポーカーGTO</title>
 <style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e; color: #eee;
-  min-height: 100vh; padding: 20px;
+  font-family: 'Segoe UI', 'Meiryo', 'Yu Gothic', sans-serif;
+  background: #f5f5f5; color: #1a1a1a;
+  font-size: 13px; line-height: 1.5;
 }}
-.topbar {{
-  background: #16213e; padding: 12px 24px;
-  display: flex; align-items: center; gap: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.5);
-  position: sticky; top: 0; z-index: 100;
-  margin: -20px -20px 24px;
-}}
-.topbar h1 {{ font-size: 16px; color: #e94560; flex: 1; }}
-.btn-back {{
-  padding: 8px 16px; background: transparent; color: #aaa;
-  border: 1px solid #444; border-radius: 6px; font-size: 13px;
-  text-decoration: none; transition: border-color .2s, color .2s;
-}}
-.btn-back:hover {{ border-color: #e94560; color: #e94560; }}
-.container {{ max-width: 1100px; margin: 0 auto; }}
-/* サマリーストリップ */
-.summary {{ display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }}
-.stat-card {{ background: #16213e; border-radius: 8px; padding: 8px 16px;
-  display: flex; align-items: center; gap: 10px; }}
-.stat-label {{ font-size: 11px; color: #888; white-space: nowrap; }}
-.stat-value {{ font-size: 20px; font-weight: bold; }}
-/* セクション */
-.section {{ background: #16213e; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }}
-.section-title {{ font-size: 13px; font-weight: bold; color: #e94560; margin-bottom: 8px; }}
-/* カテゴリ */
-.cat-row {{ display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 0; border-bottom: 1px solid #1e2535; }}
-.cat-row:last-child {{ border-bottom: none; }}
-.cat-label {{ font-size: 12px; }}
-.cat-count {{ font-size: 13px; font-weight: bold; color: #eee; min-width: 28px; text-align: right; }}
-/* アクションエリア */
-.actions {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }}
-.action-card {{ background: #16213e; border-radius: 12px; padding: 24px; text-align: center; }}
-.action-icon {{ font-size: 32px; margin-bottom: 10px; }}
-.action-title {{ font-size: 15px; font-weight: bold; margin-bottom: 6px; }}
-.action-desc {{ font-size: 12px; color: #888; margin-bottom: 16px; line-height: 1.6; }}
-.action-time {{ font-size: 12px; color: #e94560; margin-bottom: 16px; font-weight: bold; }}
-.btn-primary {{
-  width: 100%; padding: 12px; background: #e94560;
-  color: #fff; border: none; border-radius: 8px;
-  font-size: 14px; font-weight: bold; cursor: pointer;
-  transition: background .2s;
-}}
-.btn-primary:hover {{ background: #c73652; }}
-.btn-primary:disabled {{ background: #555; cursor: not-allowed; }}
-.btn-secondary {{
-  width: 100%; padding: 12px; background: rgba(233,69,96,.1);
-  color: #e94560; border: 1px solid #e94560; border-radius: 8px;
-  font-size: 14px; font-weight: bold; cursor: pointer;
-  transition: background .2s;
-}}
-.btn-secondary:hover {{ background: rgba(233,69,96,.2); }}
-/* AIパネル */
-#ai-panel {{ display: none; margin-top: 14px; text-align: left; }}
+.page-wrap {{ max-width: 960px; margin: 0 auto; background: #fff; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.08); }}
+/* ─── ヘッダー ─── */
+.page-header {{ background: #1a1a2e; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 14px; }}
+.page-header h1 {{ font-size: 17px; font-weight: 700; color: #fff; }}
+.btn-back {{ padding: 5px 14px; background: transparent; border: 1px solid #556; border-radius: 5px; color: #aab; font-size: 12px; cursor: pointer; text-decoration: none; }}
+/* ─── サマリーバー ─── */
+.summary-bar {{ background: #fff; border-bottom: 2px solid #e8e8e8; padding: 14px 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }}
+.summary-item {{ text-align: center; }}
+.summary-num {{ font-size: 26px; font-weight: 800; line-height: 1; color: #1a1a1a; }}
+.summary-num.blue {{ color: #1a6abf; }}
+.summary-num.red  {{ color: #c0392b; }}
+.summary-num.gray {{ color: #666; }}
+.summary-label {{ font-size: 10px; color: #555; margin-top: 2px; }}
+.summary-sep {{ width: 1px; height: 40px; background: #e0e0e0; }}
+/* ─── コンテンツエリア ─── */
+.content {{ padding: 0 20px 40px; }}
+/* ─── セクション ─── */
+.section {{ margin-top: 16px; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }}
+.section-header {{ background: #f0f0f0; padding: 9px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; border-bottom: 1px solid #ddd; }}
+.section-header:hover {{ background: #e8e8e8; }}
+.section-header .toggle-btn {{ margin-left: auto; font-size: 11px; color: #555; background: none; border: none; cursor: pointer; }}
+.section-body {{ padding: 12px 14px; }}
+/* ─── カテゴリ内訳 ─── */
+.cat-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }}
+.cat-item {{ display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; border-radius: 4px; border: 1px solid #e0e0e0; }}
+.cat-label {{ font-size: 11px; font-weight: 600; }}
+.cat-count {{ font-size: 14px; font-weight: 800; }}
+.cat-item.cat-blue {{ background: #e8f4fd; border-color: #b8d9f5; }}
+.cat-item.cat-blue .cat-label, .cat-item.cat-blue .cat-count {{ color: #1a6abf; }}
+.cat-item.cat-red  {{ background: #fdecea; border-color: #f5b8b5; }}
+.cat-item.cat-red  .cat-label, .cat-item.cat-red  .cat-count {{ color: #c0392b; }}
+.cat-item.cat-gray {{ background: #f5f5f5; border-color: #ddd; }}
+.cat-item.cat-gray .cat-label, .cat-item.cat-gray .cat-count {{ color: #666; }}
+.cat-item.cat-warn {{ background: #fdf9e8; border-color: #e8d8a0; }}
+.cat-item.cat-warn .cat-label, .cat-item.cat-warn .cat-count {{ color: #8a6500; }}
+/* ─── スート4色（ドイツ式） ─── */
+.s {{ color: #1a1a1a; }} .h {{ color: #d32f2f; }} .d {{ color: #1565c0; }} .c {{ color: #2e7d32; }}
+/* ─── ライン見出し ─── */
+.line-header {{ padding: 10px 14px; display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid #eee; }}
+.line-title {{ font-size: 14px; font-weight: 800; }}
+.line-title.blue {{ color: #1a6abf; }} .line-title.red {{ color: #c0392b; }}
+.line-count {{ font-size: 12px; color: #444; }}
+.line-pl {{ margin-left: auto; font-size: 13px; font-weight: 700; }}
+.line-pl.pos {{ color: #2e7d32; }} .line-pl.neg {{ color: #c0392b; }}
+/* ─── カテゴリ小見出し ─── */
+.cat-subheader {{ display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 10px 0 4px; border-radius: 4px; font-size: 11px; font-weight: 700; }}
+.cat-subheader.blue {{ background: #dbeafe; color: #1a6abf; border-left: 3px solid #1a6abf; }}
+.cat-subheader.red  {{ background: #fee2e2; color: #c0392b; border-left: 3px solid #c0392b; }}
+.cat-subheader.warn {{ background: #fef9c3; color: #8a6500; border-left: 3px solid #ca8a04; }}
+.cat-subheader .cat-sub-pl {{ margin-left: auto; }}
+.cat-sub-pl.pos {{ color: #2e7d32; }} .cat-sub-pl.neg {{ color: #c0392b; }}
+.ai-badge {{ font-size: 9px; background: #fef9c3; color: #8a6500; border: 1px solid #e8d070; border-radius: 3px; padding: 1px 5px; }}
+/* ─── ハンドカード ─── */
+.hand-card {{ border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 6px; overflow: hidden; }}
+.hand-card.needs-ai {{ border-color: #e8d070; background: #fffef0; }}
+.hand-card-head {{ display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fafafa; border-bottom: 1px solid #eeeeee; flex-wrap: wrap; }}
+.hand-card.needs-ai .hand-card-head {{ background: #fffce8; }}
+.hand-num {{ font-size: 10px; color: #666; font-weight: 600; }}
+.badge-3bet {{ font-size: 9px; background: #ede9fe; color: #5b21b6; border-radius: 3px; padding: 1px 5px; font-weight: 800; }}
+.badge-ai   {{ font-size: 9px; color: #ca8a04; font-weight: 800; }}
+.hero-pos {{ font-size: 12px; font-weight: 800; color: #1a1a1a; }}
+.hero-label {{ font-size: 9px; color: #666; }}
+.hero-cards {{ font-size: 14px; font-weight: 700; }}
+.vs-label {{ font-size: 10px; color: #777; }}
+.opp-cards {{ font-size: 11px; }}
+.opp-pos {{ font-size: 9px; color: #666; }}
+.hand-pl {{ margin-left: auto; font-size: 13px; font-weight: 800; white-space: nowrap; }}
+.hand-pl.pos {{ color: #2e7d32; }} .hand-pl.neg {{ color: #c0392b; }} .hand-pl.zero {{ color: #999; }}
+/* ─── アクションライン ─── */
+.hand-card-body {{ padding: 6px 10px 8px; font-size: 11px; line-height: 2; }}
+.street-line {{ display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }}
+.street-label {{ font-size: 9px; font-weight: 800; color: #666; min-width: 16px; }}
+.board-cards {{ font-size: 11px; }}
+.pot-label {{ font-size: 10px; color: #888; }}
+.act-fold  {{ color: #888; }}
+.act-check {{ color: #444; }}
+.act-call  {{ color: #1a6abf; }}
+.act-bet   {{ color: #ca8a04; font-weight: 700; }}
+.act-raise {{ color: #c0392b; font-weight: 700; }}
+.act-sep   {{ color: #aaa; }}
+/* ─── 全ハンド一覧テーブル ─── */
+.all-hands-table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
+.all-hands-table th {{ background: #f0f0f0; padding: 5px 8px; text-align: left; font-size: 10px; color: #333; border-bottom: 2px solid #ddd; }}
+.all-hands-table td {{ padding: 4px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }}
+.all-hands-table tr:hover td {{ background: #fafafa; }}
+.badge-line-blue {{ font-size: 9px; background: #dbeafe; color: #1a6abf; border-radius: 2px; padding: 1px 4px; font-weight: 700; }}
+.badge-line-red  {{ font-size: 9px; background: #fee2e2; color: #c0392b; border-radius: 2px; padding: 1px 4px; font-weight: 700; }}
+.badge-line-pf   {{ font-size: 9px; background: #f5f5f5; color: #999; border-radius: 2px; padding: 1px 4px; }}
+/* ─── アコーディオン ─── */
+.accordion-body {{ display: block; }}
+.accordion-body.collapsed {{ display: none; }}
+/* ─── タブ ─── */
+.tab-bar {{ display: flex; border-bottom: 2px solid #ddd; padding: 0 20px; margin-top: 0; }}
+.tab-btn {{ padding: 8px 16px; border: none; background: none; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }}
+.tab-btn.active {{ color: #1a1a2e; border-bottom-color: #1a1a2e; }}
+.tab-btn:hover {{ color: #333; }}
+.tab-panel {{ display: none; }}
+.tab-panel.active {{ display: block; }}
+/* ─── AIアクションエリア ─── */
+.actions {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 20px 40px; }}
+.action-card {{ border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; }}
+.action-icon {{ font-size: 28px; margin-bottom: 8px; }}
+.action-title {{ font-size: 14px; font-weight: 700; margin-bottom: 5px; color: #1a1a1a; }}
+.action-desc {{ font-size: 11px; color: #666; margin-bottom: 12px; line-height: 1.6; }}
+.action-time {{ font-size: 11px; color: #c0392b; margin-bottom: 12px; font-weight: 600; }}
+.btn-primary {{ width: 100%; padding: 10px; background: #1a1a2e; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s; }}
+.btn-primary:hover {{ background: #2a2a4e; }}
+.btn-primary:disabled {{ background: #aaa; cursor: not-allowed; }}
+.btn-secondary {{ width: 100%; padding: 10px; background: transparent; color: #1a1a2e; border: 1px solid #1a1a2e; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s; }}
+.btn-secondary:hover {{ background: #f0f0f4; }}
+#ai-panel {{ display: none; margin-top: 12px; text-align: left; }}
 #ai-panel.show {{ display: block; }}
-.field-group {{ margin-bottom: 12px; }}
-.field-group label {{ font-size: 11px; color: #888; display: block; margin-bottom: 5px; }}
-.field-group input[type=password] {{
-  width: 100%; padding: 9px 11px;
-  background: #0f0f1a; border: 1px solid #333;
-  border-radius: 6px; color: #eee; font-size: 13px;
-  outline: none; transition: border-color .2s;
-}}
-.field-group input:focus {{ border-color: #e94560; }}
-.key-hint {{ font-size: 11px; color: #555; margin-top: 4px; }}
-.key-hint a {{ color: #e94560; text-decoration: none; }}
-/* ハンド一覧テーブル */
-.cat-hdr td {{ background: #1e2a3a; font-size: 11px; padding: 3px 6px; border-bottom: 1px solid #334; }}
-#hand-list-section table td {{ padding: 3px 5px; border-bottom: 1px solid #1e2535; }}
-#hand-list-section table tr:hover td {{ background: rgba(255,255,255,0.04); }}
-@media (max-width: 800px) {{
-  #hand-list-section > div > div {{ grid-template-columns: 1fr !important; }}
-}}
-@media (max-width: 540px) {{
-  .summary {{ grid-template-columns: 1fr 1fr; }}
+.field-group {{ margin-bottom: 10px; }}
+.field-group label {{ font-size: 11px; color: #555; display: block; margin-bottom: 4px; }}
+.field-group input[type=password] {{ width: 100%; padding: 8px 10px; background: #fff; border: 1px solid #ccc; border-radius: 5px; color: #1a1a1a; font-size: 12px; outline: none; transition: border-color .2s; }}
+.field-group input:focus {{ border-color: #1a1a2e; }}
+.key-hint {{ font-size: 11px; color: #666; margin-top: 4px; }}
+.key-hint a {{ color: #1a6abf; text-decoration: none; }}
+@media (max-width: 600px) {{
   .actions {{ grid-template-columns: 1fr; }}
-  .stat-value {{ font-size: 22px; }}
+  .summary-bar {{ gap: 12px; }}
 }}
 </style>
 </head>
 <body>
-<div class="topbar">
-  <h1>&#x1F0A1; ポーカーGTO — 解析結果</h1>
+<div class="page-wrap">
+
+<!-- ヘッダー -->
+<div class="page-header">
   <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <h1>&#x1F0A1; PokerGTO — 解析結果</h1>
 </div>
 
-<div class="container">
+<!-- サマリーバー -->
+<div class="summary-bar">
+  <div class="summary-item">
+    <div class="summary-num">{total_hands}</div>
+    <div class="summary-label">総ハンド数</div>
+  </div>
+  <div class="summary-sep"></div>
+  <div class="summary-item">
+    <div class="summary-num blue">{blue_count}</div>
+    <div class="summary-label">&#x1F535; 青線</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-num red">{red_count}</div>
+    <div class="summary-label">&#x1F534; 赤線</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-num gray">{pf_count}</div>
+    <div class="summary-label">PFのみ</div>
+  </div>
+  <div class="summary-sep"></div>
+</div>
 
-  <!-- サマリー（1行ストリップ） -->
-  <div class="summary">
-    <div class="stat-card">
-      <div class="stat-label">総ハンド数</div>
-      <div class="stat-value" style="color:#7ec8e3">{total_hands}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">🔵 青線</div>
-      <div class="stat-value" style="color:#7ec8e3">{blue_count}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">🔴 赤線</div>
-      <div class="stat-value" style="color:#e94560">{red_count}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">PFのみ</div>
-      <div class="stat-value" style="color:#555">{pf_count}</div>
+{ev_html}
+
+<!-- タブ -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('tab-hands', this)">青赤線</button>
+  <button class="tab-btn" onclick="switchTab('tab-position', this)">ポジション別</button>
+  <button class="tab-btn" onclick="switchTab('tab-chart', this)">チップ推移</button>
+</div>
+
+<!-- ═══ タブ①: 青赤線 ═══ -->
+<div class="tab-panel active" id="tab-hands">
+<div class="content">
+
+<!-- カテゴリ内訳 -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('cat-body')">
+    &#x1F4CA; ハンド分類内訳
+    <span class="toggle-btn">&#x25B2;</span>
+  </div>
+  <div class="section-body accordion-body" id="cat-body">
+    <div class="cat-grid">
+      {cat_rows}
     </div>
   </div>
+</div>
 
-  <!-- カテゴリ内訳 -->
-  <div class="section">
-    <div class="section-title">&#x1F4CA; ハンド分類内訳</div>
-    {cat_rows}
+{hands_html}
+
+</div><!-- /content -->
+</div><!-- /tab-hands -->
+
+<!-- ═══ タブ②: ポジション別 ═══ -->
+<div class="tab-panel" id="tab-position">
+  <div style="padding:40px;text-align:center;color:#aaa">（ポジション別統計は実装予定）</div>
+</div>
+
+<!-- ═══ タブ③: チップ推移 ═══ -->
+<div class="tab-panel" id="tab-chart">
+  <div style="padding:40px;text-align:center;color:#aaa">（チップ推移グラフは実装予定）</div>
+</div>
+
+<!-- アクション -->
+<div class="actions">
+  <div class="action-card">
+    <div class="action-icon">&#x1F4C4;</div>
+    <div class="action-title">PDFレポート生成</div>
+    <div class="action-desc">APIなし・無料<br>分類結果をPDFに出力</div>
+    <form method="post" action="/generate_pdf/{job_id}" target="_blank">
+      <button type="submit" class="btn-primary">&#x1F4CA; PDFを生成</button>
+    </form>
   </div>
-
-  {ev_html}
-
-  {hands_html}
-
-  <!-- アクション選択 -->
-  <div class="actions">
-
-    <!-- PDF生成 -->
-    <div class="action-card">
-      <div class="action-icon">&#x1F4C4;</div>
-      <div class="action-title">PDFレポート生成</div>
-      <div class="action-desc">APIなし・無料<br>分類結果をPDFに出力</div>
-      <form method="post" action="/generate_pdf/{job_id}" target="_blank">
-        <button type="submit" class="btn-primary">&#x1F4CA; PDFを生成</button>
+  <div class="action-card">
+    <div class="action-icon">&#x1F916;</div>
+    <div class="action-title">AI分析 (Gemini)</div>
+    <div class="action-desc">Gemini APIを使用<br>GTO評価付きPDFを生成</div>
+    <div class="action-time">推定時間: {ai_time_str}</div>
+    <button type="button" class="btn-secondary" onclick="toggleAI()">&#x1F916; AI分析を開始</button>
+    <div id="ai-panel">
+      <form method="post" action="/start_ai/{job_id}" id="ai-form" target="_blank">
+        <div class="field-group">
+          <label>Gemini API キー</label>
+          <input type="password" name="api_key" id="ai-key"
+                 placeholder="{key_placeholder}" value="{key_val}" autocomplete="off">
+          <p class="key-hint">取得: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
+        </div>
+        <button type="submit" id="ai-submit" class="btn-primary">分析を開始</button>
       </form>
     </div>
-
-    <!-- AI分析 -->
-    <div class="action-card">
-      <div class="action-icon">&#x1F916;</div>
-      <div class="action-title">AI分析 (Gemini)</div>
-      <div class="action-desc">Gemini APIを使用<br>GTO評価付きPDFを生成</div>
-      <div class="action-time">推定時間: {ai_time_str}</div>
-      <button type="button" class="btn-secondary" onclick="toggleAI()">&#x1F916; AI分析を開始</button>
-      <div id="ai-panel">
-        <form method="post" action="/start_ai/{job_id}" id="ai-form" target="_blank">
-          <div class="field-group">
-            <label>Gemini API キー</label>
-            <input type="password" name="api_key" id="ai-key"
-                   placeholder="{key_placeholder}"
-                   value="{key_val}"
-                   autocomplete="off">
-            <p class="key-hint">
-              取得: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
-            </p>
-          </div>
-          <button type="submit" id="ai-submit" class="btn-primary">分析を開始</button>
-        </form>
-      </div>
-    </div>
-
   </div>
 </div>
 
+</div><!-- /page-wrap -->
+
 <script>
+function toggleSection(id) {{
+  const el = document.getElementById(id);
+  el.classList.toggle('collapsed');
+  const btn = el.previousElementSibling.querySelector('.toggle-btn');
+  if (btn) btn.textContent = el.classList.contains('collapsed') ? '▼' : '▲';
+}}
+function switchTab(id, btn) {{
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}}
 function toggleAI() {{
-  const panel = document.getElementById('ai-panel');
-  panel.classList.toggle('show');
+  document.getElementById('ai-panel').classList.toggle('show');
 }}
 document.getElementById('ai-form').addEventListener('submit', function() {{
   document.getElementById('ai-submit').disabled = true;
