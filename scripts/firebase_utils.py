@@ -141,61 +141,56 @@ def delete_session(uid: str, session_id: str):
 
 def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
     """
-    Firestore users/{uid}/hands を全件取得してPythonで降順ソート・件数制限する。
-    Firestoreのインデックスに依存しないため captured_at / saved_at の欠落ドキュメントも全て対象。
+    Firestore users/{uid}/hands を saved_at 降順で取得する。
     since_iso: この ISO 文字列以降のハンドのみ取得（例: "2026-04-05T00:00:00"）
     各 dict に hand_id フィールドを追加して返す。
     """
     db = get_db()
-    col = db.collection("users").document(uid).collection("hands")
+    ref = db.collection("users").document(uid).collection("hands")
 
-    docs = col.stream()
+    if since_iso:
+        since_dt = datetime.fromisoformat(since_iso)
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
+        ref = ref.where("saved_at", ">=", since_dt)
+
+    max_fetch = limit if 0 < limit < 9999 else 9999
+    hands_ref = ref.order_by("saved_at", direction="DESCENDING").limit(max_fetch)
+
     result = []
-    for doc in docs:
+    for doc in hands_ref.stream():
         d = doc.to_dict()
         d["hand_id"] = doc.id
-        # Firestore Timestamp → ISO文字列に変換
         if hasattr(d.get("saved_at"), "isoformat"):
             d["saved_at"] = d["saved_at"].isoformat()
         result.append(d)
-
-    # since_iso フィルタ（Pythonで処理）
-    if since_iso:
-        result = [d for d in result if d.get("captured_at", "") >= since_iso
-                  or d.get("saved_at", "") >= since_iso]
-
-    # saved_at → captured_at の順で降順ソート（Pythonで処理）
-    def _sort_key(d: dict) -> str:
-        return d.get("saved_at") or d.get("captured_at") or ""
-
-    result.sort(key=_sort_key, reverse=True)
-
-    # 件数制限（9999は「全て」を意味するため上限なし）
-    if 0 < limit < 9999:
-        result = result[:limit]
-
     return result
 
 
 def get_hands_stats(uid: str) -> dict:
     """
     Firestore users/{uid}/hands の件数・最古/最新の captured_at を返す。
-    大量ドキュメントでも集計クエリなしでメタデータのみ取得（先頭1件・末尾1件）。
+    COUNT 集計クエリで件数を取得（全件読み取りなし）。
     """
     db = get_db()
     col = db.collection("users").document(uid).collection("hands")
 
-    # 最新1件（降順）
-    newest_docs = list(col.order_by("captured_at", direction="DESCENDING").limit(1).stream())
-    # 最古1件（昇順）
-    oldest_docs = list(col.order_by("captured_at", direction="ASCENDING").limit(1).stream())
+    # COUNT 集計（ドキュメント読み取りコストなし）
+    try:
+        count_result = col.count().get()
+        count = count_result[0][0].value
+    except Exception:
+        # 旧バージョンの SDK では count() 未対応のためフォールバック
+        count = sum(1 for _ in col.order_by("saved_at").limit(9999).stream())
 
-    if not newest_docs:
+    if count == 0:
         return {"count": 0, "newest": None, "oldest": None}
 
-    # 件数は全件 stream で count（数百件程度想定なのでOK）
-    count = sum(1 for _ in col.stream())
-    newest = newest_docs[0].to_dict().get("captured_at", "")
+    # 最新1件・最古1件（各1ドキュメント読み取りのみ）
+    newest_docs = list(col.order_by("captured_at", direction="DESCENDING").limit(1).stream())
+    oldest_docs = list(col.order_by("captured_at", direction="ASCENDING").limit(1).stream())
+
+    newest = newest_docs[0].to_dict().get("captured_at", "") if newest_docs else None
     oldest = oldest_docs[0].to_dict().get("captured_at", "") if oldest_docs else newest
     return {"count": count, "newest": newest, "oldest": oldest}
 

@@ -3058,102 +3058,6 @@ async def api_hands_stats(request: Request):
     return JSONResponse(stats)
 
 
-@app.get("/api/hands/debug")
-async def api_hands_debug(request: Request):
-    """
-    Firestoreのhandsコレクションの診断情報を返す。
-    stream_count: col.stream()で取得した全件数
-    saved_at_count: order_by("saved_at")で取得した件数（インデックス依存）
-    captured_at_count: order_by("captured_at")で取得した件数（インデックス依存）
-    """
-    from scripts.firebase_utils import is_firebase_enabled, get_db
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
-    try:
-        uid = _get_uid_from_request(request)
-    except Exception as e:
-        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
-    try:
-        db = get_db()
-        col = db.collection("users").document(uid).collection("hands")
-        # 全件 stream（インデックス不要）
-        stream_count = sum(1 for _ in col.stream())
-        # saved_at 順（Firestore Timestamp、常に存在するはず）
-        try:
-            saved_at_count = sum(1 for _ in col.order_by("saved_at").limit(9999).stream())
-        except Exception as e:
-            saved_at_count = f"ERROR: {e}"
-        # captured_at 順（文字列、欠落している可能性あり）
-        try:
-            captured_at_count = sum(1 for _ in col.order_by("captured_at").limit(9999).stream())
-        except Exception as e:
-            captured_at_count = f"ERROR: {e}"
-        # saved_at なしのドキュメント数
-        try:
-            no_saved_at = sum(1 for d in col.stream() if "saved_at" not in d.to_dict())
-        except Exception as e:
-            no_saved_at = f"ERROR: {e}"
-        # captured_at なしのドキュメント数
-        try:
-            no_captured_at = sum(1 for d in col.stream() if "captured_at" not in d.to_dict())
-        except Exception as e:
-            no_captured_at = f"ERROR: {e}"
-        return JSONResponse({
-            "stream_count": stream_count,
-            "saved_at_count": saved_at_count,
-            "captured_at_count": captured_at_count,
-            "missing_saved_at": no_saved_at,
-            "missing_captured_at": no_captured_at,
-        })
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/hands/pipeline-test")
-async def api_hands_pipeline_test(request: Request):
-    """
-    フェッチ→変換の件数だけ確認するテスト。実際の解析は行わない。
-    → { fetched, converted, dropped, sample_errors }
-    """
-    from scripts.firebase_utils import is_firebase_enabled, get_hands
-    from scripts.hand_converter import convert_hands_batch
-    import sys
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
-    try:
-        uid = _get_uid_from_request(request)
-    except Exception as e:
-        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
-    try:
-        hands_data = get_hands(uid, limit=9999)
-    except Exception as e:
-        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
-
-    fetched = len(hands_data)
-    errors = []
-    converted_list = []
-    for i, item in enumerate(hands_data, 1):
-        try:
-            from scripts.hand_converter import convert_hand_json
-            h = convert_hand_json(item.get("hand_json", {}), item.get("captured_at", ""), i)
-            converted_list.append(h)
-        except Exception as e:
-            errors.append({"hand_id": item.get("hand_id", "?"), "error": str(e)})
-
-    converted = len(converted_list)
-    # 変換済みのうち preflop_only かどうか確認（ストリート有無チェック）
-    has_postflop = sum(1 for h in converted_list if h.get("streets", {}).get("flop") is not None)
-
-    return JSONResponse({
-        "fetched": fetched,
-        "converted": converted,
-        "dropped_in_convert": fetched - converted,
-        "has_postflop": has_postflop,
-        "preflop_only_in_convert": converted - has_postflop,
-        "sample_errors": errors[:5],
-    })
-
-
 @app.post("/api/hands/analyze")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
     """
@@ -3607,24 +3511,6 @@ select:focus { outline: none; border-color: #e94560; }
     return currentUser.getIdToken();
   }
 
-  // 診断用グローバル関数（コンソールから呼べる）
-  window.debugHands = async function() {
-    const token = await getIdToken();
-    const d = await fetch("/api/hands/debug", {
-      headers: { "Authorization": "Bearer " + token }
-    }).then(r => r.json());
-    console.table(d);
-    return d;
-  };
-  window.pipelineTest = async function() {
-    console.log("パイプラインテスト中（時間がかかります）...");
-    const token = await getIdToken();
-    const d = await fetch("/api/hands/pipeline-test", {
-      headers: { "Authorization": "Bearer " + token }
-    }).then(r => r.json());
-    console.table(d);
-    return d;
-  };
 
   function fmtDate(iso) {
     if (!iso) return "—";
