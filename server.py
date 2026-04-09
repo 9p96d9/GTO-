@@ -1957,6 +1957,91 @@ def classify_result_page(
             html += '</div>\n'
         return html
 
+    # ─── ポジション別統計 ────────────────────────────────────────────
+    _POS_ORDER = ["UTG", "UTG+1", "LJ", "HJ", "CO", "BTN", "SB", "BB"]
+    pos_stats_html = ""
+    if hands:
+        pos_map = {}
+        for h in hands:
+            pos = h.get("hero_position", "?")
+            if pos not in pos_map:
+                pos_map[pos] = {"total": 0, "pl": 0.0, "blue": 0, "red": 0, "pf": 0, "won": 0, "vpip": 0, "pfr": 0, "tbet": 0}
+            s = pos_map[pos]
+            s["total"] += 1
+            s["pl"] += float(h.get("hero_result_bb", 0))
+            line = h.get("bluered_classification", {}).get("line", "preflop_only")
+            if line == "blue":   s["blue"] += 1
+            elif line == "red":  s["red"] += 1
+            else:                s["pf"] += 1
+            winners = {w["name"] for w in h.get("result", {}).get("winners", [])}
+            hero_name2 = next((p.get("name","") for p in h.get("players",[]) if p.get("is_hero")), "")
+            if hero_name2 and hero_name2 in winners:
+                s["won"] += 1
+            # VPIP: Heroが PF で Call or Raise
+            pf_acts = h.get("streets", {}).get("preflop", [])
+            hero_acts = [a for a in pf_acts if a.get("name") == hero_name2]
+            if any(a.get("action") in ("Call","Raise") for a in hero_acts):
+                s["vpip"] += 1
+            if any(a.get("action") == "Raise" for a in hero_acts):
+                s["pfr"] += 1
+            if h.get("is_3bet_pot") and any(a.get("action") == "Raise" for a in hero_acts):
+                s["tbet"] += 1
+
+        rows_pos = ""
+        ordered_pos = [p for p in _POS_ORDER if p in pos_map] + [p for p in pos_map if p not in _POS_ORDER]
+        for pos in ordered_pos:
+            s = pos_map[pos]
+            n = s["total"]
+            pl = s["pl"]
+            pl_c = "#2e7d32" if pl > 0 else "#c0392b" if pl < 0 else "#888"
+            pl_s = ("+" if pl > 0 else "") + f"{pl:.2f}"
+            avg = pl / n
+            avg_c = "#2e7d32" if avg > 0 else "#c0392b" if avg < 0 else "#888"
+            avg_s = ("+" if avg > 0 else "") + f"{avg:.2f}"
+            red_r = f'{s["red"]/n*100:.0f}%' if n else "—"
+            rows_pos += f"""<tr>
+  <td style="font-weight:700">{_esc(pos)}</td>
+  <td style="text-align:center">{n}</td>
+  <td style="text-align:center">{s['vpip']/n*100:.0f}%</td>
+  <td style="text-align:center">{s['pfr']/n*100:.0f}%</td>
+  <td style="text-align:center">{s['tbet']/n*100:.0f}%</td>
+  <td style="text-align:center"><span style="color:#1a6abf">{s['blue']}</span> / <span style="color:#c0392b">{s['red']}</span> / <span style="color:#888">{s['pf']}</span></td>
+  <td style="text-align:right;color:{pl_c};font-weight:700">{pl_s}bb</td>
+  <td style="text-align:right;color:{avg_c}">{avg_s}bb</td>
+</tr>"""
+        pos_stats_html = f"""<div style="padding:16px 20px 24px">
+<table style="width:100%;border-collapse:collapse;font-size:12px">
+  <thead><tr style="background:#f0f0f0">
+    <th style="padding:7px 8px;text-align:left;border-bottom:2px solid #ddd">ポジション</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">手数</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">VPIP</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">PFR</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">3BET%</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">青/赤/PF</th>
+    <th style="padding:7px 8px;text-align:right;border-bottom:2px solid #ddd">合計損益</th>
+    <th style="padding:7px 8px;text-align:right;border-bottom:2px solid #ddd">平均損益/手</th>
+  </tr></thead>
+  <tbody>{rows_pos}</tbody>
+</table>
+<p style="font-size:10px;color:#aaa;margin-top:8px">VPIP=自発的投資率 / PFR=プリフロップレイズ率 / 3BET%=3BETポット参加率</p>
+</div>"""
+
+    # ─── チップ推移データ（JS用JSON） ───────────────────────────────
+    chip_data_json = "[]"
+    if hands:
+        chip_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
+        cumulative = 0.0
+        points = []
+        for h in chip_sorted:
+            cumulative += float(h.get("hero_result_bb", 0))
+            points.append({
+                "x": h.get("hand_number", 0),
+                "y": round(cumulative, 2),
+                "line": h.get("bluered_classification", {}).get("line", "preflop_only"),
+            })
+        import json as _json
+        chip_data_json = _json.dumps(points)
+
     hands_html = ""
     if hands:
         blue_hands = [h for h in hands if h.get("bluered_classification", {}).get("line") == "blue"]
@@ -2262,12 +2347,17 @@ body {{
 
 <!-- ═══ タブ②: ポジション別 ═══ -->
 <div class="tab-panel" id="tab-position">
-  <div style="padding:40px;text-align:center;color:#aaa">（ポジション別統計は実装予定）</div>
+  {pos_stats_html or '<div style="padding:40px;text-align:center;color:#aaa">データなし</div>'}
 </div>
 
 <!-- ═══ タブ③: チップ推移 ═══ -->
 <div class="tab-panel" id="tab-chart">
-  <div style="padding:40px;text-align:center;color:#aaa">（チップ推移グラフは実装予定）</div>
+  <div style="padding:16px 20px 8px">
+    <canvas id="chipChart" style="width:100%;max-height:340px"></canvas>
+  </div>
+  <div style="padding:4px 20px 20px;font-size:10px;color:#aaa">
+    横軸: ハンド番号 / 縦軸: 累積損益 (bb) ／ 青=青線ハンド 赤=赤線ハンド 灰=PFのみ
+  </div>
 </div>
 
 <!-- アクション（詳細カード、ページ下部） -->
@@ -2313,18 +2403,79 @@ body {{
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+const _CHIP_DATA = {chip_data_json};
+
+function buildChart() {{
+  const ctx = document.getElementById('chipChart');
+  if (!ctx || !_CHIP_DATA.length) return;
+  const labels = _CHIP_DATA.map(p => 'H' + p.x);
+  const values = _CHIP_DATA.map(p => p.y);
+  // ポイントカラー: blue=青, red=赤, gray=PF
+  const ptColors = _CHIP_DATA.map(p =>
+    p.line === 'blue' ? '#1a6abf' : p.line === 'red' ? '#c0392b' : '#bbb'
+  );
+  const ptRadius = _CHIP_DATA.map(p => p.line === 'preflop_only' ? 2 : 4);
+  new Chart(ctx, {{
+    type: 'line',
+    data: {{
+      labels,
+      datasets: [{{
+        label: '累積損益 (bb)',
+        data: values,
+        borderColor: '#1a1a2e',
+        borderWidth: 2,
+        pointBackgroundColor: ptColors,
+        pointRadius: ptRadius,
+        pointHoverRadius: 6,
+        tension: 0.1,
+        fill: {{
+          target: 'origin',
+          above: 'rgba(46,125,50,0.07)',
+          below: 'rgba(192,57,43,0.07)',
+        }},
+      }}]
+    }},
+    options: {{
+      responsive: true,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            label: ctx => {{
+              const p = _CHIP_DATA[ctx.dataIndex];
+              const sign = p.y >= 0 ? '+' : '';
+              return `累積: ${{sign}}${{p.y.toFixed(2)}}bb  [${{p.line}}]`;
+            }}
+          }}
+        }}
+      }},
+      scales: {{
+        x: {{ ticks: {{ maxTicksLimit: 20, font: {{ size: 10 }} }}, grid: {{ color: '#f0f0f0' }} }},
+        y: {{
+          ticks: {{ font: {{ size: 10 }}, callback: v => v + 'bb' }},
+          grid: {{ color: '#f0f0f0' }},
+          beginAtZero: false,
+        }}
+      }}
+    }}
+  }});
+}}
+
 function toggleSection(id) {{
   const el = document.getElementById(id);
   el.classList.toggle('collapsed');
   const btn = el.previousElementSibling.querySelector('.toggle-btn');
   if (btn) btn.textContent = el.classList.contains('collapsed') ? '▼' : '▲';
 }}
+let _chartBuilt = false;
 function switchTab(id, btn) {{
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
+  if (id === 'tab-chart' && !_chartBuilt) {{ buildChart(); _chartBuilt = true; }}
 }}
 function toggleAI() {{
   document.getElementById('ai-panel').classList.toggle('show');
