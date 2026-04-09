@@ -1999,7 +1999,7 @@ def classify_result_page(
         }
         def _pf_fold_target(hand):
             """PFのみハンドで、Heroがフォールドした直前の相手Raise/Bet情報を返す (pos, amount_bb)"""
-            hero_name = get_hero_name(hand)
+            hero_name = next((p.get("name", "") for p in hand.get("players", []) if p.get("is_hero")), "")
             pf_actions = hand.get("streets", {}).get("preflop", [])
             last_raise_pos = None
             last_raise_amt = None

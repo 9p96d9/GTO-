@@ -650,6 +650,7 @@ async function generatePdf(html, outFile) {
   });
   try {
     const page = await browser.newPage();
+    await page.emulateMediaType("print");
     await page.setContent(html, { waitUntil: "networkidle0" });
     await page.pdf({
       path:            outFile,
