@@ -122,6 +122,20 @@ hand_results = hand_json.get("handResults") or []
 
 ---
 
+## effortレベルの使い分け
+
+現在のレベル確認: `/effort`
+
+| 場面 | レベル |
+|---|---|
+| バグ診断（原因不明系）・DB設計・セキュリティ実装 | `/effort high` |
+| classify.py ロジック改善・Phase 8/11 設計 | `/effort high` |
+| CSS・HTML・ドキュメント更新・エンドポイント追加 | デフォルト（medium）|
+
+> `/effort max` は Opus 4.6 専用。Sonnet 4.6 では無効。
+
+---
+
 ## デプロイ手順
 
 ```bash
