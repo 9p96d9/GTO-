@@ -140,7 +140,11 @@ GTO-/
 **出力:** `data/upload_classified.json`
 
 ```
-postflopなし → preflop_only
+postflopなし:
+  3BET+ポット:
+    Heroが勝ち（相手fold） → hero_aggression_won    （赤・needs_api）
+    Heroが負け（Hero fold） → fold_unknown           （赤・needs_api）
+  通常ポット → preflop_only
 
 postflopあり:
   ショーダウンあり:
