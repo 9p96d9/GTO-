@@ -1969,27 +1969,6 @@ def classify_result_page(
         blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
         red_section  = _build_hand_section(red_hands,  _RED_ORDER)
 
-        # PFのみセクション
-        pf_sorted = sorted(pf_hands, key=lambda h: h.get("hand_number", 0))
-        pf_pl = sum(float(h.get("hero_result_bb", 0)) for h in pf_sorted)
-        pf_pl_s = ("+" if pf_pl > 0 else "") + f"{pf_pl:.2f}"
-        pf_pl_c = "pos" if pf_pl > 0 else "neg" if pf_pl < 0 else ""
-        pf_cards_html = "".join(_build_hand_card(h) for h in pf_sorted)
-        pf_section_html = f"""
-<div class="section">
-  <div class="section-header" onclick="toggleSection('pf-only-body')">
-    &#x1F3B4; PFのみ（{len(pf_sorted)}手）
-    <span style="font-size:11px;font-weight:400;color:#555;margin-left:4px">{pf_pl_s}bb</span>
-    <span class="toggle-btn">&#x25BC;</span>
-  </div>
-  <div class="accordion-body collapsed" id="pf-only-body">
-    <div style="padding:6px 10px;font-size:11px;color:#777;border-bottom:1px solid #eee">
-      ポジション・ホールカード・相手のBET額・PFアクションを確認できます
-    </div>
-    {pf_cards_html or '<div style="padding:12px 14px;color:#aaa">該当なし</div>'}
-  </div>
-</div>"""
-
         # 全ハンド一覧（青+赤+PFのみ、ハンド番号順）
         all_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
         _LINE_BADGE = {
@@ -1997,20 +1976,6 @@ def classify_result_page(
             "red":          '<span class="badge-line-red">赤</span>',
             "preflop_only": '<span class="badge-line-pf">PF</span>',
         }
-        def _pf_fold_target(hand):
-            """PFのみハンドで、Heroがフォールドした直前の相手Raise/Bet情報を返す (pos, amount_bb)"""
-            hero_name = next((p.get("name", "") for p in hand.get("players", []) if p.get("is_hero")), "")
-            pf_actions = hand.get("streets", {}).get("preflop", [])
-            last_raise_pos = None
-            last_raise_amt = None
-            for a in pf_actions:
-                if a.get("action") in ("Raise", "Bet") and a.get("name") != hero_name:
-                    last_raise_pos = a.get("position") or a.get("name", "?")
-                    last_raise_amt = a.get("amount_bb")
-                elif a.get("action") == "Fold" and a.get("name") == hero_name:
-                    break
-            return last_raise_pos, last_raise_amt
-
         all_rows = ""
         for h in all_sorted:
             clf      = h.get("bluered_classification", {})
@@ -2021,38 +1986,23 @@ def classify_result_page(
             hero_c   = "".join(h.get("hero_cards", []))
             badge    = _LINE_BADGE.get(line, "")
             badge3   = '<span class="badge-3bet" style="font-size:9px;padding:1px 4px">3B</span> ' if h.get("is_3bet_pot") else ""
-
-            if line == "preflop_only":
-                # PFのみ: Hero情報 + フォールド先の相手ポジション・金額を強調
-                fold_pos, fold_amt = _pf_fold_target(h)
-                hero_c_html = _card_html(hero_c) if hero_c else '<span style="color:#bbb">?</span>'
-                if fold_pos:
-                    amt_str = f'&nbsp;<span style="color:#c0392b;font-weight:700">{fold_amt}bb</span>' if fold_amt else ""
-                    vs_html = (f'<span style="color:#bbb;font-size:10px">→fold to</span>&nbsp;'
-                               f'<span style="font-weight:700;color:#c0392b">{_esc(fold_pos)}</span>{amt_str}')
-                else:
-                    vs_html = '<span style="color:#bbb;font-size:10px">（フォールド先不明）</span>'
-                opp2 = vs_html
-            else:
-                opp_parts2 = []
-                for p in h.get("players", []):
-                    if not p.get("is_hero"):
-                        cards2 = "".join(p.get("hole_cards", []))
-                        pos2   = p.get("position", "?")
-                        if cards2:
-                            opp_parts2.append(f'<span class="opp-pos">{pos2}</span>&nbsp;{_card_html(cards2)}')
-                        else:
-                            opp_parts2.append(f'<span class="opp-pos">{pos2}</span>')
-                opp2 = "&ensp;".join(opp_parts2) if opp_parts2 else "—"
-                hero_c_html = _card_html(hero_c) if hero_c else "—"
-
+            opp_parts2 = []
+            for p in h.get("players", []):
+                if not p.get("is_hero"):
+                    cards2 = "".join(p.get("hole_cards", []))
+                    pos2   = p.get("position", "?")
+                    if cards2:
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>&nbsp;{_card_html(cards2)}')
+                    else:
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>')
+            opp2 = "&ensp;".join(opp_parts2) if opp_parts2 else "—"
             pf_acts = _fmt_actions(h.get("streets", {}).get("preflop", []))
             all_rows += (
                 f'<tr>'
                 f'<td style="white-space:nowrap">{badge} H{h.get("hand_number","")}</td>'
                 f'<td><span style="font-weight:700">{_esc(hero_pos)} (H)</span> {badge3}'
-                f'{hero_c_html}'
-                f' {opp2}</td>'
+                f'{_card_html(hero_c) if hero_c else "—"}'
+                f' <span style="color:#bbb;font-size:10px">vs</span> {opp2}</td>'
                 f'<td style="font-size:10px">{pf_acts}</td>'
                 f'<td style="text-align:right;color:{pl_color};font-weight:700;white-space:nowrap">{_fmt_bb(pl)}bb</td>'
                 f'</tr>'
@@ -2082,8 +2032,6 @@ def classify_result_page(
     {red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
   </div>
 </div>
-
-{pf_section_html}
 
 <div class="section">
   <div class="section-header" onclick="toggleSection('all-hands-body')">
