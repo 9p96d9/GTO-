@@ -645,7 +645,7 @@ ${sections.join("\n")}
 
 async function generatePdf(html, outFile) {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: "shell",
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {

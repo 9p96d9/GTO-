@@ -1969,6 +1969,27 @@ def classify_result_page(
         blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
         red_section  = _build_hand_section(red_hands,  _RED_ORDER)
 
+        # PFのみセクション
+        pf_sorted = sorted(pf_hands, key=lambda h: h.get("hand_number", 0))
+        pf_pl = sum(float(h.get("hero_result_bb", 0)) for h in pf_sorted)
+        pf_pl_s = ("+" if pf_pl > 0 else "") + f"{pf_pl:.2f}"
+        pf_pl_c = "pos" if pf_pl > 0 else "neg" if pf_pl < 0 else ""
+        pf_cards_html = "".join(_build_hand_card(h) for h in pf_sorted)
+        pf_section_html = f"""
+<div class="section">
+  <div class="section-header" onclick="toggleSection('pf-only-body')">
+    &#x1F3B4; PFのみ（{len(pf_sorted)}手）
+    <span style="font-size:11px;font-weight:400;color:#555;margin-left:4px">{pf_pl_s}bb</span>
+    <span class="toggle-btn">&#x25BC;</span>
+  </div>
+  <div class="accordion-body collapsed" id="pf-only-body">
+    <div style="padding:6px 10px;font-size:11px;color:#777;border-bottom:1px solid #eee">
+      ポジション・ホールカード・相手のBET額・PFアクションを確認できます
+    </div>
+    {pf_cards_html or '<div style="padding:12px 14px;color:#aaa">該当なし</div>'}
+  </div>
+</div>"""
+
         # 全ハンド一覧（青+赤+PFのみ、ハンド番号順）
         all_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
         _LINE_BADGE = {
@@ -2032,6 +2053,8 @@ def classify_result_page(
     {red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
   </div>
 </div>
+
+{pf_section_html}
 
 <div class="section">
   <div class="section-header" onclick="toggleSection('all-hands-body')">
@@ -2162,14 +2185,18 @@ body {{
 .accordion-body {{ display: block; }}
 .accordion-body.collapsed {{ display: none; }}
 /* ─── タブ ─── */
-.tab-bar {{ display: flex; border-bottom: 2px solid #ddd; padding: 0 20px; margin-top: 0; }}
+.tab-bar {{ display: flex; border-bottom: 2px solid #ddd; padding: 0 20px; margin-top: 0; position: sticky; top: 0; z-index: 100; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }}
 .tab-btn {{ padding: 8px 16px; border: none; background: none; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }}
 .tab-btn.active {{ color: #1a1a2e; border-bottom-color: #1a1a2e; }}
 .tab-btn:hover {{ color: #333; }}
 .tab-panel {{ display: none; }}
 .tab-panel.active {{ display: block; }}
-/* ─── AIアクションエリア ─── */
-.actions {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 20px 40px; }}
+/* ─── スティッキーフッター（PDF/AIボタン） ─── */
+.sticky-footer {{ position: sticky; bottom: 0; z-index: 100; background: #fff; border-top: 1px solid #ddd; padding: 8px 20px; display: flex; gap: 10px; box-shadow: 0 -2px 8px rgba(0,0,0,0.07); }}
+.sticky-footer form, .sticky-footer > div {{ flex: 1; }}
+.sticky-footer .btn-primary, .sticky-footer .btn-secondary {{ padding: 8px; font-size: 12px; }}
+/* ─── AIアクションエリア（詳細カード、ページ下部） ─── */
+.actions {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 20px 16px; }}
 .action-card {{ border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; }}
 .action-icon {{ font-size: 28px; margin-bottom: 8px; }}
 .action-title {{ font-size: 14px; font-weight: 700; margin-bottom: 5px; color: #1a1a1a; }}
@@ -2266,7 +2293,7 @@ body {{
   <div style="padding:40px;text-align:center;color:#aaa">（チップ推移グラフは実装予定）</div>
 </div>
 
-<!-- アクション -->
+<!-- アクション（詳細カード、ページ下部） -->
 <div class="actions">
   <div class="action-card">
     <div class="action-icon">&#x1F4C4;</div>
@@ -2296,7 +2323,18 @@ body {{
   </div>
 </div>
 
+<div style="height:56px"></div><!-- sticky-footer の高さ分のスペーサー -->
 </div><!-- /page-wrap -->
+
+<!-- スティッキーフッター -->
+<div class="sticky-footer">
+  <form method="post" action="/generate_pdf/{job_id}" target="_blank" style="flex:1">
+    <button type="submit" class="btn-primary" style="width:100%">&#x1F4CA; PDFを生成</button>
+  </form>
+  <div style="flex:1">
+    <button type="button" class="btn-secondary" style="width:100%" onclick="scrollToAI()">&#x1F916; AI分析</button>
+  </div>
+</div>
 
 <script>
 function toggleSection(id) {{
@@ -2313,6 +2351,11 @@ function switchTab(id, btn) {{
 }}
 function toggleAI() {{
   document.getElementById('ai-panel').classList.toggle('show');
+}}
+function scrollToAI() {{
+  const el = document.querySelector('.action-card:last-child');
+  if (el) el.scrollIntoView({{behavior:'smooth', block:'center'}});
+  document.getElementById('ai-panel').classList.add('show');
 }}
 document.getElementById('ai-form').addEventListener('submit', function() {{
   document.getElementById('ai-submit').disabled = true;
