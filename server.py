@@ -321,6 +321,20 @@ async def run_classify_pipeline_from_json(job_id: str, json_path: Path):
         jobs[job_id]["json_path"] = str(json_path)
         jobs[job_id]["classified_path"] = str(classified_path)
 
+    # Phase 8: 解析結果を Firestore に永続化
+    with jobs_lock:
+        fb_uid = jobs[job_id].get("firebase_uid", "")
+    if fb_uid:
+        try:
+            from scripts.firebase_utils import is_firebase_enabled, save_analysis
+            if is_firebase_enabled():
+                with open(classified_path, encoding="utf-8") as _f:
+                    _classified = json.load(_f)
+                has_snap = save_analysis(fb_uid, job_id, _classified)
+                print(f"[job:{job_id[:8]}] Firestore保存完了 snapshot={'あり' if has_snap else 'なし(サイズ超過)'}")
+        except Exception as _e:
+            print(f"[job:{job_id[:8]}] Firestore保存失敗: {_e}")
+
     push({"type": "classify_done"})
     loop.call_soon_threadsafe(q.put_nowait, None)
     print(f"[job:{job_id[:8]}] hands分類完了: {classified_path.name}")
@@ -571,8 +585,22 @@ async def classify_progress(job_id: str):
 async def classify_result_view(job_id: str):
     with jobs_lock:
         job = jobs.get(job_id)
+
+    # ── フォールバック①: 同一デプロイ内のファイルが残っている場合 ──
     if not job or job.get("status") != "done":
-        return HTMLResponse("<h1>404: 結果が見つかりません</h1>", status_code=404)
+        candidate = DATA_DIR / f"{job_id}_classified.json"
+        if candidate.exists():
+            with jobs_lock:
+                jobs[job_id] = {
+                    "status": "done",
+                    "classified_path": str(candidate),
+                    "json_path": str(DATA_DIR / f"{job_id}.json"),
+                    "pdf": "", "log": "", "mode": "classify", "hero_name": "",
+                }
+            job = jobs[job_id]
+        else:
+            # ── フォールバック②: Firestore から復元するページを返す ──
+            return HTMLResponse(_RESTORE_PAGE_HTML.replace("{job_id}", job_id))
 
     classified_path = job.get("classified_path", "")
     json_path = job.get("json_path", "")
@@ -3383,12 +3411,71 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
     json_path.write_text(json.dumps(parsed_data, ensure_ascii=False), encoding="utf-8")
 
     with jobs_lock:
-        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "classify", "hero_name": ""}
+        jobs[job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "classify", "hero_name": "", "firebase_uid": uid}
 
     background_tasks.add_task(run_classify_pipeline_from_json, job_id, json_path)
 
     progress_url = f"/classify_progress/{job_id}"
     return JSONResponse({"job_id": job_id, "progress_url": progress_url})
+
+
+@app.get("/api/analyses")
+async def api_analyses_list(request: Request):
+    """解析履歴一覧（最新20件、Bearer認証）"""
+    from scripts.firebase_utils import is_firebase_enabled, get_analyses
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    try:
+        analyses = get_analyses(uid, limit=20)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"analyses": analyses})
+
+
+@app.post("/api/analyses/{job_id}/restore")
+async def api_analyses_restore(job_id: str, request: Request):
+    """
+    Firestore に保存された解析結果をメモリに復元する。
+    復元後に /classify_result/{job_id} が正常に開けるようになる。
+    """
+    from scripts.firebase_utils import is_firebase_enabled, get_analysis
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = _get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+
+    try:
+        analysis = get_analysis(uid, job_id)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    if not analysis:
+        return JSONResponse({"error": "解析結果が見つかりません"}, status_code=404)
+
+    snapshot = analysis.get("classified_snapshot")
+    if not snapshot:
+        return JSONResponse({"error": "スナップショットが保存されていません（データが大きすぎます）"}, status_code=404)
+
+    # ファイルに書き出してメモリに登録
+    classified_path = DATA_DIR / f"{job_id}_classified.json"
+    json_path       = DATA_DIR / f"{job_id}.json"
+    classified_path.write_text(snapshot, encoding="utf-8")
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "done",
+            "classified_path": str(classified_path),
+            "json_path": str(json_path),
+            "pdf": "", "log": "", "mode": "classify", "hero_name": "",
+        }
+
+    return JSONResponse({"status": "ok"})
 
 
 @app.post("/api/hands/realtime")
@@ -3559,6 +3646,71 @@ h1 { font-size: 22px; color: #e94560; margin-bottom: 8px; }
 </html>"""
 
 
+_RESTORE_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>解析結果を復元中...</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Meiryo', sans-serif; background: #1a1a2e; color: #eee;
+       display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.box { text-align: center; }
+.spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #e94560;
+           border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.msg { font-size: 14px; color: #9ab; }
+.err { color: #e94560; font-size: 14px; margin-top: 16px; display: none; }
+.btn-back { display: inline-block; margin-top: 20px; padding: 8px 20px;
+            border: 1px solid #444; border-radius: 6px; color: #9ab;
+            text-decoration: none; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <div class="msg" id="msg">解析結果をFirestoreから復元中...</div>
+  <div class="err" id="err"></div>
+  <a class="btn-back" href="/sessions">← セッション一覧に戻る</a>
+</div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  function showErr(msg) {
+    document.getElementById("spinner").style.display = "none";
+    const e = document.getElementById("err");
+    e.textContent = msg; e.style.display = "block";
+  }
+
+  onAuthStateChanged(auth, async user => {
+    if (!user) { window.location.href = "/login"; return; }
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/analyses/{job_id}/restore", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showErr(d.error || "復元に失敗しました"); return;
+      }
+      window.location.href = "/classify_result/{job_id}";
+    } catch (e) {
+      showErr("エラー: " + e.message);
+    }
+  });
+</script>
+</body>
+</html>"""
+
+
 _SESSIONS_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -3705,6 +3857,40 @@ select:focus { outline: none; border-color: #e94560; }
 /* ─── アラート ─── */
 .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
 .alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
+
+/* ─── 解析履歴 ─── */
+.history-section {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-top: 20px;
+}
+.history-title {
+  font-size: 13px;
+  color: #9ab;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #1e2535;
+  font-size: 12px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-date { color: #778; min-width: 110px; font-size: 11px; }
+.history-counts { flex: 1; color: #ccd; }
+.history-link {
+  color: #e94560;
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.history-link:hover { text-decoration: underline; }
+.history-empty { color: #556; font-size: 12px; text-align: center; padding: 16px 0; }
 </style>
 </head>
 <body>
@@ -3754,6 +3940,12 @@ select:focus { outline: none; border-color: #e94560; }
     <a class="sub-link" href="/download-extension">⬇ 拡張機能ZIP</a>
     <a class="sub-link" href="/legacy">手動アップロード（旧版）</a>
     <a class="sub-link" href="/">トップ</a>
+  </div>
+
+  <!-- 解析履歴 -->
+  <div class="history-section" id="history-section" style="display:none">
+    <div class="history-title">📊 解析履歴</div>
+    <div id="history-list"><div class="history-empty">読み込み中...</div></div>
   </div>
 </div>
 
@@ -3855,11 +4047,43 @@ select:focus { outline: none; border-color: #e94560; }
     window.location.href = "/login";
   });
 
+  async function loadHistory() {
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/analyses", {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const analyses = data.analyses || [];
+      const section = document.getElementById("history-section");
+      const list    = document.getElementById("history-list");
+      if (analyses.length === 0) {
+        list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
+      } else {
+        list.innerHTML = analyses.map(a => `
+          <div class="history-item">
+            <div class="history-date">${fmtDate(a.created_at)}</div>
+            <div class="history-counts">
+              ${(a.hand_count||0).toLocaleString()}手
+              &nbsp;<span style="color:#4a9eff">&#11044;${a.blue_count||0}</span>
+              <span style="color:#e94560">&#11044;${a.red_count||0}</span>
+              <span style="color:#778">PF:${a.pf_count||0}</span>
+            </div>
+            <a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>
+          </div>
+        `).join("");
+      }
+      section.style.display = "block";
+    } catch (e) { /* silent */ }
+  }
+
   onAuthStateChanged(auth, user => {
     if (!user) { window.location.href = "/login"; return; }
     currentUser = user;
     document.getElementById("user-email").textContent = user.email || user.displayName || "";
     loadStats();
+    loadHistory();
   });
 </script>
 </body>

@@ -214,6 +214,80 @@ def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
     return hand_id
 
 
+def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
+    """
+    解析結果を Firestore users/{uid}/analyses/{job_id} に保存する。
+    classified_snapshot が 900KB 以下の場合は全データを保存し True を返す。
+    超過する場合はメタデータのみ保存して False を返す。
+    """
+    import json as _json
+    db = get_db()
+
+    hands = classified_data.get("hands", [])
+    blue  = sum(1 for h in hands if h.get("bluered_classification", {}).get("line") == "blue")
+    red   = sum(1 for h in hands if h.get("bluered_classification", {}).get("line") == "red")
+    pf    = len(hands) - blue - red
+
+    categories: dict = {}
+    for hand in hands:
+        label = hand.get("bluered_classification", {}).get("category_label", "")
+        if label:
+            categories[label] = categories.get(label, 0) + 1
+
+    snapshot     = _json.dumps(classified_data, ensure_ascii=False)
+    has_snapshot = len(snapshot.encode("utf-8")) <= 900_000
+
+    doc_data: dict = {
+        "job_id":     job_id,
+        "created_at": datetime.now(timezone.utc),
+        "hand_count": len(hands),
+        "blue_count": blue,
+        "red_count":  red,
+        "pf_count":   pf,
+        "categories": categories,
+    }
+    if has_snapshot:
+        doc_data["classified_snapshot"] = snapshot
+
+    db.collection("users").document(uid).collection("analyses").document(job_id).set(doc_data)
+    return has_snapshot
+
+
+def get_analysis(uid: str, job_id: str) -> dict | None:
+    """Firestore から解析結果を取得する（classified_snapshot を含む）。"""
+    db = get_db()
+    doc = (
+        db.collection("users").document(uid)
+        .collection("analyses").document(job_id)
+        .get()
+    )
+    if not doc.exists:
+        return None
+    d = doc.to_dict()
+    if hasattr(d.get("created_at"), "isoformat"):
+        d["created_at"] = d["created_at"].isoformat()
+    return d
+
+
+def get_analyses(uid: str, limit: int = 20) -> list[dict]:
+    """Firestore から解析一覧を取得する（最新順、snapshot は除外）。"""
+    db = get_db()
+    docs = (
+        db.collection("users").document(uid).collection("analyses")
+        .order_by("created_at", direction="DESCENDING")
+        .limit(limit)
+        .stream()
+    )
+    result = []
+    for doc in docs:
+        d = doc.to_dict()
+        d.pop("classified_snapshot", None)
+        if hasattr(d.get("created_at"), "isoformat"):
+            d["created_at"] = d["created_at"].isoformat()
+        result.append(d)
+    return result
+
+
 def is_firebase_enabled() -> bool:
     """FIREBASE_SERVICE_ACCOUNT_JSON が設定されているか確認（起動チェック用）"""
     return bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip())
