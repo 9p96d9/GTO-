@@ -118,8 +118,8 @@ def get_session(uid: str, session_id: str) -> dict | None:
     return d
 
 
-def update_session_status(uid: str, session_id: str, status: str, result_pdf: str = ""):
-    """セッションのステータスとPDFファイル名を更新する"""
+def update_session_status(uid: str, session_id: str, status: str, result_pdf: str = "", job_id: str = ""):
+    """セッションのステータス・PDFファイル名・job_id を更新する"""
     db = get_db()
     doc_ref = (
         db.collection("users").document(uid)
@@ -128,6 +128,8 @@ def update_session_status(uid: str, session_id: str, status: str, result_pdf: st
     update = {"status": status}
     if result_pdf:
         update["result_pdf"] = result_pdf
+    if job_id:
+        update["job_id"] = job_id
     doc_ref.update(update)
 
 
@@ -135,6 +137,81 @@ def delete_session(uid: str, session_id: str):
     """Firestore からセッションを削除する"""
     db = get_db()
     db.collection("users").document(uid).collection("sessions").document(session_id).delete()
+
+
+def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
+    """
+    Firestore users/{uid}/hands を saved_at 降順で取得する。
+    since_iso: この ISO 文字列以降のハンドのみ取得（例: "2026-04-05T00:00:00"）
+    各 dict に hand_id フィールドを追加して返す。
+    """
+    db = get_db()
+    ref = db.collection("users").document(uid).collection("hands")
+
+    if since_iso:
+        since_dt = datetime.fromisoformat(since_iso)
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
+        ref = ref.where("saved_at", ">=", since_dt)
+
+    max_fetch = limit if 0 < limit < 9999 else 9999
+    hands_ref = ref.order_by("saved_at", direction="DESCENDING").limit(max_fetch)
+
+    result = []
+    for doc in hands_ref.stream():
+        d = doc.to_dict()
+        d["hand_id"] = doc.id
+        if hasattr(d.get("saved_at"), "isoformat"):
+            d["saved_at"] = d["saved_at"].isoformat()
+        result.append(d)
+    return result
+
+
+def get_hands_stats(uid: str) -> dict:
+    """
+    Firestore users/{uid}/hands の件数・最古/最新の captured_at を返す。
+    COUNT 集計クエリで件数を取得（全件読み取りなし）。
+    """
+    db = get_db()
+    col = db.collection("users").document(uid).collection("hands")
+
+    # COUNT 集計（ドキュメント読み取りコストなし）
+    try:
+        count_result = col.count().get()
+        count = count_result[0][0].value
+    except Exception:
+        # 旧バージョンの SDK では count() 未対応のためフォールバック
+        count = sum(1 for _ in col.order_by("saved_at").limit(9999).stream())
+
+    if count == 0:
+        return {"count": 0, "newest": None, "oldest": None}
+
+    # 最新1件・最古1件（各1ドキュメント読み取りのみ）
+    newest_docs = list(col.order_by("captured_at", direction="DESCENDING").limit(1).stream())
+    oldest_docs = list(col.order_by("captured_at", direction="ASCENDING").limit(1).stream())
+
+    newest = newest_docs[0].to_dict().get("captured_at", "") if newest_docs else None
+    oldest = oldest_docs[0].to_dict().get("captured_at", "") if oldest_docs else newest
+    return {"count": count, "newest": newest, "oldest": oldest}
+
+
+def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
+    """
+    Firestore users/{uid}/hands/{handId} にリアルタイムハンドを保存する。
+    handId = tableId_captured_at（重複防止）
+    """
+    db = get_db()
+    table_id = hand_json.get("tableId", "unknown")
+    safe_ts = captured_at.replace(":", "").replace(".", "").replace("-", "")
+    hand_id = f"{table_id}_{safe_ts}"
+
+    doc_ref = db.collection("users").document(uid).collection("hands").document(hand_id)
+    doc_ref.set({
+        "hand_json":   hand_json,
+        "captured_at": captured_at,
+        "saved_at":    datetime.now(timezone.utc),
+    })
+    return hand_id
 
 
 def is_firebase_enabled() -> bool:

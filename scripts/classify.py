@@ -176,6 +176,27 @@ def classify_hand(hand: dict) -> dict:
         last_street: 最後のストリート名
     """
     if not is_postflop(hand):
+        # 3BET+ポットでPF終了 → 赤線に分類（勉強価値あり）
+        if hand.get("is_3bet_pot"):
+            if hero_wins(hand):
+                return {
+                    "line": "red",
+                    "category": "hero_aggression_won",
+                    "category_label": CATEGORY_LABELS["hero_aggression_won"],
+                    "needs_api": True,
+                    "showdown": False,
+                    "last_street": "preflop",
+                }
+            else:
+                # Heroがフォールド（ボードなしのためtreys判定不可）
+                return {
+                    "line": "red",
+                    "category": "fold_unknown",
+                    "category_label": CATEGORY_LABELS["fold_unknown"],
+                    "needs_api": True,
+                    "showdown": False,
+                    "last_street": "preflop",
+                }
         return {
             "line": "preflop_only",
             "category": "preflop_only",

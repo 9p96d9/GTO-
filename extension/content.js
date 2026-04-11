@@ -82,6 +82,13 @@ async function scrapeHands() {
   };
 }
 
+// ─── リアルタイムハンド受信（Phase 7） ───────────────────────────────────────
+// interceptor.js（MAIN world）からの CustomEvent を受け取り background.js に転送する
+
+window.addEventListener('t4_hand_complete', function (e) {
+  chrome.runtime.sendMessage({ type: 'HAND_COMPLETE', hand: e.detail });
+});
+
 // ─── メッセージリスナー ──────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

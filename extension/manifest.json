@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "PokerGTO - ハンドログ送信",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqprAjEblxTPAHFF4rylzD127CTiw8PnE7h9zFfcdTi8aEf32HLpDjaJzprDV80PMI/T/sMHB6HqOLQs1GmKIPKNxXs05MoU53ccdNP+ykPTRrPfG1px2T91wY/x1vii1EdFWcPP+OOXAT/zHl7ckDJzY1qlfaCe4bYAbza5EAy0OfmqrCFriDuk8dgYcgytr1ZeKwwv0eekRuhFzojeIMQLrtCEuYQUhR2MMeYFTqf2oJk/wcP71bRs7l6ZM1ujAsW5+PSGHOeCROxlALN63zTB/euFXQE2qNmF2l2sC0qPONk+5eoUwdpPJbMuQItO3GanCTjpooDAQJuqaKkwo7QIDAQAB",
-  "version": "2.0.0",
-  "description": "T4のブックマーク一覧からハンドログを収集してPokerGTOサーバーに送信します",
+  "version": "2.1.0",
+  "description": "T4のハンドログをリアルタイム自動取得・PokerGTOサーバーへ送信します",
 
   "permissions": [
     "storage",
@@ -42,8 +42,18 @@
         "https://*.tenfour-poker.com/*",
         "https://*.t4poker.com/*"
       ],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.tenfourpoker.com/*",
+        "https://*.tenfour-poker.com/*",
+        "https://*.t4poker.com/*"
+      ],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
 

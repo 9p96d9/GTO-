@@ -683,11 +683,12 @@ ${history || "(データなし)"}
 
 async function generatePdf(html, outFile) {
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: "shell",
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
     const page = await browser.newPage();
+    await page.emulateMediaType("print");
     await page.setContent(html, { waitUntil: "networkidle0" });
     await page.pdf({
       path:              outFile,
