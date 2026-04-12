@@ -122,23 +122,48 @@ document.getElementById("btn-options").addEventListener("click", () => {
 // ─── 解析ボタン ──────────────────────────────────────────────────────────────
 
 document.getElementById("btn-analyze").addEventListener("click", async () => {
-  const btn = document.getElementById("btn-analyze");
+  const btn   = document.getElementById("btn-analyze");
+  const range = document.getElementById("sel-analyze-range").value;
   btn.disabled = true;
-  btn.textContent = "解析中...";
+  btn.textContent = "...";
   setStatus("");
+
+  // range に応じて limit / since_iso を決定
+  let limit = 500;
+  let since_iso = "";
+
+  if (range === "since_last") {
+    // 前回解析の日時以降
+    const stored = await chrome.storage.local.get(["analysisHistory"]);
+    const last = (stored.analysisHistory || [])[0];
+    if (last?.at) {
+      since_iso = last.at;
+      limit = 9999;
+    } else {
+      // 履歴なし → 今日分にフォールバック
+      since_iso = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+      limit = 9999;
+    }
+  } else if (range === "today") {
+    since_iso = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+    limit = 9999;
+  } else {
+    limit = parseInt(range);
+  }
+
   try {
-    const resp = await sendBg({ type: "MANUAL_ANALYZE" });
+    const resp = await sendBg({ type: "MANUAL_ANALYZE", limit, since_iso });
     if (resp?.ok) {
       setStatus("解析を開始しました", "success");
     } else {
       setStatus(resp?.error || "エラーが発生しました", "error");
       btn.disabled = false;
-      btn.textContent = "⚡ 今すぐ解析";
+      btn.textContent = "⚡ 解析";
     }
   } catch (e) {
     setStatus("エラー: " + e.message, "error");
     btn.disabled = false;
-    btn.textContent = "⚡ 今すぐ解析";
+    btn.textContent = "⚡ 解析";
   }
 });
 

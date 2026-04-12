@@ -3379,8 +3379,9 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
     limit       = int(body.get("limit", 500))
     since_hours = int(body.get("since_hours", 0))
 
-    since_iso = ""
-    if since_hours > 0:
+    # since_iso を直接受け取るか、since_hours から計算する
+    since_iso = body.get("since_iso", "")
+    if not since_iso and since_hours > 0:
         from datetime import datetime, timezone, timedelta
         since_dt  = datetime.now(timezone.utc) - timedelta(hours=since_hours)
         since_iso = since_dt.isoformat()

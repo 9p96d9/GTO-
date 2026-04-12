@@ -134,14 +134,15 @@ async function handleMessage(msg) {
       if (!_user) return { error: "未ログイン" };
       try {
         const token = await _user.getIdToken(false);
+        const body = { limit: msg.limit ?? 500 };
+        if (msg.since_iso) body.since_iso = msg.since_iso;
         const res = await fetch(SERVER_URL + "/api/hands/analyze", {
           method: "POST",
           headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 500 }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (data.progress_url) {
-          // 進捗ページをタブで開く（手動解析はタブを開いてOK）
           chrome.tabs.create({ url: SERVER_URL + data.progress_url });
           return { ok: true };
         }

@@ -59,12 +59,24 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
 .counter-label { font-size: 10px; color: #445; margin-top: 2px; }
 .playtime-num { font-size: 18px; font-weight: 600; color: #9ab; }
 
-/* ─── 解析ボタン ─── */
+/* ─── 解析コントロール ─── */
+.analyze-row {
+  display: flex; gap: 6px; margin-bottom: 10px; align-items: stretch;
+}
+.analyze-select {
+  flex: 1; padding: 0 8px;
+  background: #0f1828; border: 1px solid #2a3550;
+  border-radius: 8px; color: #ccd; font-size: 11px; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23778'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+.analyze-select:focus { outline: none; border-color: #e94560; }
 .btn-analyze {
-  width: 100%; padding: 11px;
-  background: #e94560; border: none; border-radius: 9px;
-  color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
-  transition: background 0.15s; margin-bottom: 10px;
+  flex: none; padding: 10px 14px;
+  background: #e94560; border: none; border-radius: 8px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s; white-space: nowrap;
 }
 .btn-analyze:hover { background: #c73652; }
 .btn-analyze:disabled { background: #3a2030; color: #555; cursor: not-allowed; }
@@ -179,8 +191,18 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
     </div>
   </div>
 
-  <!-- 解析ボタン -->
-  <button class="btn-analyze" id="btn-analyze" disabled>⚡ 今すぐ解析</button>
+  <!-- 解析コントロール -->
+  <div class="analyze-row">
+    <select class="analyze-select" id="sel-analyze-range">
+      <option value="since_last">前回以降（差分）</option>
+      <option value="today">今日</option>
+      <option value="50">直近 50手</option>
+      <option value="100">直近 100手</option>
+      <option value="200">直近 200手</option>
+      <option value="500">直近 500手</option>
+    </select>
+    <button class="btn-analyze" id="btn-analyze" disabled>⚡ 解析</button>
+  </div>
   <p class="status" id="main-status"></p>
 
   <!-- 解析履歴 -->
