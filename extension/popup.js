@@ -1,30 +1,6 @@
-/**
- * popup.js - PokerGTO Chrome拡張機能 ポップアップ
- */
 "use strict";
 
 const SERVER_URL = "https://gto-production.up.railway.app";
-
-const viewLogin    = document.getElementById("view-login");
-const viewMain     = document.getElementById("view-main");
-const loginStatus  = document.getElementById("login-status");
-const mainStatus   = document.getElementById("main-status");
-
-function showLogin() {
-  viewLogin.style.display = "block";
-  viewMain.style.display  = "none";
-}
-
-function showMain(email) {
-  viewLogin.style.display = "none";
-  viewMain.style.display  = "block";
-  document.getElementById("user-email").textContent = email || "";
-}
-
-function setStatus(el, msg, type = "") {
-  el.textContent = msg;
-  el.className = "status" + (type ? " " + type : "");
-}
 
 function sendBg(msg) {
   return new Promise((resolve, reject) => {
@@ -35,81 +11,155 @@ function sendBg(msg) {
   });
 }
 
-// ─── 蓄積ハンド数を取得して表示 ────────────────────────────────────────────
+function setStatus(msg, type = "") {
+  const el = document.getElementById("main-status");
+  el.textContent = msg;
+  el.className = "status" + (type ? " " + type : "");
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
+}
+
+function fmtPlaytime(startMs) {
+  if (!startMs) return "—";
+  const mins = Math.floor((Date.now() - startMs) / 60000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+// ─── ログイン後UI初期化 ──────────────────────────────────────────────────────
+
+async function initMain(email) {
+  document.getElementById("view-login").style.display = "none";
+  document.getElementById("view-main").style.display  = "block";
+  document.getElementById("user-email").textContent   = email || "";
+
+  // バッジをクリア
+  chrome.action.setBadgeText({ text: "" });
+
+  await Promise.all([loadHandCount(), loadHistory(), updatePlaytime()]);
+
+  // プレイ時間を10秒ごとに更新
+  setInterval(updatePlaytime, 10000);
+}
 
 async function loadHandCount() {
-  const row = document.getElementById("hand-count-row");
+  const btn = document.getElementById("btn-analyze");
   try {
     const resp = await sendBg({ type: "GET_ID_TOKEN" });
-    if (!resp || !resp.token) { row.innerHTML = '<div style="font-size:12px;color:#556">ログイン中...</div>'; return; }
+    if (!resp?.token) return;
     const res = await fetch(SERVER_URL + "/api/hands/stats", {
       headers: { "Authorization": "Bearer " + resp.token }
     });
-    if (!res.ok) throw new Error("取得失敗");
+    if (!res.ok) return;
     const data = await res.json();
     const count = data.count || 0;
-    row.innerHTML = `
-      <div class="hand-count-num">${count.toLocaleString()}<span class="hand-count-unit">手</span></div>
-      <div class="hand-count-label">蓄積済みハンド</div>
-    `;
-    // 自動解析バッジ（100手未確認の場合）
-    const badge = document.getElementById("auto-badge");
-    const stored = await chrome.storage.local.get(["autoAnalyzePending"]);
-    if (stored.autoAnalyzePending) {
-      badge.classList.add("visible");
-      document.getElementById("auto-badge-text").textContent = "100手達成 → 自動解析を開始しました";
-      setTimeout(() => chrome.storage.local.remove("autoAnalyzePending"), 3000);
-    }
+    document.getElementById("hand-count").textContent = count.toLocaleString();
+    btn.disabled = count === 0;
   } catch (e) {
-    row.innerHTML = '<div style="font-size:12px;color:#556">—</div>';
+    document.getElementById("hand-count").textContent = "—";
   }
 }
 
-// ─── 初期化 ─────────────────────────────────────────────────────────────────
-
-async function init() {
+async function loadHistory() {
+  const list = document.getElementById("history-list");
   try {
-    const resp = await sendBg({ type: "GET_USER" });
-    if (resp && resp.uid) {
-      showMain(resp.email);
-      loadHandCount();
-    } else {
-      showLogin();
+    // ローカルキャッシュから表示（APIコールなし）
+    const stored = await chrome.storage.local.get(["analysisHistory"]);
+    const history = stored.analysisHistory || [];
+    if (history.length === 0) {
+      list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
+      return;
     }
+    list.innerHTML = history.map(h => `
+      <div class="history-item">
+        <span class="history-date">${fmtDate(h.at)}</span>
+        <span class="history-hands">${h.hands}手</span>
+        <a class="history-link" href="${h.url}" target="_blank">結果 →</a>
+      </div>
+    `).join("");
   } catch (e) {
-    showLogin();
-    setStatus(loginStatus, "初期化エラー: " + e.message, "error");
+    list.innerHTML = '<div class="history-empty">—</div>';
   }
 }
 
-// ─── ログイン ────────────────────────────────────────────────────────────────
+async function updatePlaytime() {
+  const stored = await chrome.storage.local.get(["sessionStartAt"]);
+  document.getElementById("playtime-display").textContent = fmtPlaytime(stored.sessionStartAt);
+}
 
-document.getElementById("btn-login").addEventListener("click", async () => {
-  setStatus(loginStatus, "ログイン中...");
+// ─── 解析ボタン ──────────────────────────────────────────────────────────────
+
+document.getElementById("btn-analyze").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-analyze");
+  btn.disabled = true;
+  btn.textContent = "解析中...";
+  setStatus("");
   try {
-    const resp = await sendBg({ type: "SIGN_IN" });
-    if (resp && resp.uid) {
-      showMain(resp.email);
-      loadHandCount();
+    const resp = await sendBg({ type: "MANUAL_ANALYZE" });
+    if (resp?.ok) {
+      setStatus("解析を開始しました", "success");
     } else {
-      setStatus(loginStatus, resp?.error || "ログイン失敗", "error");
+      setStatus(resp?.error || "エラーが発生しました", "error");
+      btn.disabled = false;
+      btn.textContent = "⚡ 今すぐ解析";
     }
   } catch (e) {
-    setStatus(loginStatus, "エラー: " + e.message, "error");
+    setStatus("エラー: " + e.message, "error");
+    btn.disabled = false;
+    btn.textContent = "⚡ 今すぐ解析";
   }
 });
 
-// ─── ログアウト ──────────────────────────────────────────────────────────────
+// ─── フッターボタン ──────────────────────────────────────────────────────────
 
-document.getElementById("btn-logout").addEventListener("click", async () => {
-  await sendBg({ type: "SIGN_OUT" });
-  showLogin();
-});
-
-// ─── PokerGTOを開く ──────────────────────────────────────────────────────────
-
-document.getElementById("btn-open-site").addEventListener("click", () => {
+document.getElementById("btn-sessions").addEventListener("click", () => {
   chrome.tabs.create({ url: SERVER_URL + "/sessions" });
 });
 
-init();
+document.getElementById("btn-options").addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+// ─── ログイン / ログアウト ───────────────────────────────────────────────────
+
+document.getElementById("btn-login").addEventListener("click", async () => {
+  const status = document.getElementById("login-status");
+  status.textContent = "ログイン中...";
+  status.className = "status";
+  try {
+    const resp = await sendBg({ type: "SIGN_IN" });
+    if (resp?.uid) {
+      await initMain(resp.email);
+    } else {
+      status.textContent = resp?.error || "ログイン失敗";
+      status.className = "status error";
+    }
+  } catch (e) {
+    status.textContent = "エラー: " + e.message;
+    status.className = "status error";
+  }
+});
+
+document.getElementById("btn-logout").addEventListener("click", async () => {
+  await sendBg({ type: "SIGN_OUT" });
+  document.getElementById("view-login").style.display = "block";
+  document.getElementById("view-main").style.display  = "none";
+});
+
+// ─── 初期化 ─────────────────────────────────────────────────────────────────
+
+(async () => {
+  try {
+    const resp = await sendBg({ type: "GET_USER" });
+    if (resp?.uid) {
+      await initMain(resp.email);
+    } else {
+      document.getElementById("view-login").style.display = "block";
+    }
+  } catch (e) {
+    document.getElementById("view-login").style.display = "block";
+  }
+})();

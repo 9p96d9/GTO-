@@ -1,12 +1,5 @@
 /**
- * background.js - PokerGTO Chrome拡張機能 Service Worker
- *
- * Firebase Auth の状態管理を担当する。
- * popup.js / content.js からのメッセージを受け取り、Auth操作を実行して結果を返す。
- *
- * Firebase JS SDK は background service worker でも動作するが、
- * IndexedDB ベースの persistence を使うため、
- * initializeApp 時に indexedDB persistence を明示的に設定する。
+ * background.js - PokerGTO Chrome拡張機能 Service Worker (Phase 9)
  */
 
 import { initializeApp }          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -24,7 +17,7 @@ const SERVER_URL = "https://gto-production.up.railway.app";
 
 let _app  = null;
 let _auth = null;
-let _user = null;  // 現在ログイン中のユーザー
+let _user = null;
 
 async function getFirebaseConfig() {
   const res = await fetch(SERVER_URL + "/api/firebase-config");
@@ -38,6 +31,18 @@ async function initFirebase() {
   _auth = getAuth(_app);
   onAuthStateChanged(_auth, user => {
     _user = user;
+    if (user) {
+      // ログイン時にプレイ開始タイムスタンプを記録
+      chrome.storage.local.get(["sessionStartAt"], s => {
+        if (!s.sessionStartAt) {
+          chrome.storage.local.set({ sessionStartAt: Date.now() });
+        }
+      });
+      _schedulePlaytimeNotify();
+    } else {
+      chrome.storage.local.remove(["sessionStartAt"]);
+      _clearPlaytimeAlarm();
+    }
   });
 }
 
@@ -45,7 +50,7 @@ async function initFirebase() {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   handleMessage(msg).then(sendResponse).catch(e => sendResponse({ error: e.message }));
-  return true;  // 非同期レスポンスを有効化
+  return true;
 });
 
 async function handleMessage(msg) {
@@ -53,41 +58,51 @@ async function handleMessage(msg) {
 
   switch (msg.type) {
 
-    // 現在のログイン状態を返す
     case "GET_USER":
-      if (_user) {
-        return { uid: _user.uid, email: _user.email, displayName: _user.displayName };
-      }
+      if (_user) return { uid: _user.uid, email: _user.email, displayName: _user.displayName };
       return { uid: null };
 
-    // Google ログイン（chrome.identity を使って Popup なしでトークン取得）
     case "SIGN_IN": {
       try {
         const token = await getChromeIdentityToken();
         const credential = GoogleAuthProvider.credential(null, token);
         const result = await signInWithCredential(_auth, credential);
         _user = result.user;
+        // ログイン時にプレイ開始時刻をリセット
+        await chrome.storage.local.set({ sessionStartAt: Date.now(), handCounter: 0 });
+        _schedulePlaytimeNotify();
         return { uid: _user.uid, email: _user.email, displayName: _user.displayName };
       } catch (e) {
         return { error: e.message };
       }
     }
 
-    // ログアウト
     case "SIGN_OUT":
       if (_auth) await signOut(_auth);
       _user = null;
+      _clearPlaytimeAlarm();
+      await chrome.storage.local.remove(["sessionStartAt", "handCounter"]);
       return { ok: true };
 
-    // 最新の idToken を返す（サーバー送信時に使用）
     case "GET_ID_TOKEN": {
       if (!_user) return { error: "未ログイン" };
       try {
-        const token = await _user.getIdToken(/* forceRefresh */ false);
+        const token = await _user.getIdToken(false);
         return { token };
       } catch (e) {
         return { error: e.message };
       }
+    }
+
+    case "GET_STORAGE": {
+      const data = await chrome.storage.local.get(msg.keys || null);
+      return data;
+    }
+
+    // 設定変更時にプレイ時間アラームを再設定
+    case "SETTINGS_UPDATED": {
+      _schedulePlaytimeNotify();
+      return { ok: true };
     }
 
     // リアルタイムハンド取得（Phase 7）
@@ -105,12 +120,32 @@ async function handleMessage(msg) {
           body: JSON.stringify({ hand_json: msg.hand, captured_at })
         });
         const result = await res.json();
-
-        // 自動解析チェック: 100手蓄積ごとに自動解析を起動
         if (result.ok) {
           await _checkAutoAnalyze(token);
         }
         return result;
+      } catch(e) {
+        return { error: e.message };
+      }
+    }
+
+    // ポップアップからの手動解析トリガー
+    case "MANUAL_ANALYZE": {
+      if (!_user) return { error: "未ログイン" };
+      try {
+        const token = await _user.getIdToken(false);
+        const res = await fetch(SERVER_URL + "/api/hands/analyze", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 500 }),
+        });
+        const data = await res.json();
+        if (data.progress_url) {
+          // 進捗ページをタブで開く（手動解析はタブを開いてOK）
+          chrome.tabs.create({ url: SERVER_URL + data.progress_url });
+          return { ok: true };
+        }
+        return { error: data.error || "解析開始失敗" };
       } catch(e) {
         return { error: e.message };
       }
@@ -121,38 +156,120 @@ async function handleMessage(msg) {
   }
 }
 
-// ─── 自動解析: 100手蓄積ごとにバックグラウンドで解析を起動 ──────────────────
-
-const AUTO_ANALYZE_THRESHOLD = 100;
+// ─── 自動解析（バックグラウンド） ───────────────────────────────────────────
 
 async function _checkAutoAnalyze(token) {
   try {
-    // chrome.storage.local から現在のカウンターを取得
-    const stored = await chrome.storage.local.get(["handCounter", "lastAutoAt"]);
-    let counter = (stored.handCounter || 0) + 1;
-    await chrome.storage.local.set({ handCounter: counter });
+    const s = await chrome.storage.local.get(["handCounter", "autoMode", "autoThreshold"]);
+    const mode      = s.autoMode      ?? "background";
+    const threshold = s.autoThreshold ?? 100;
 
-    if (counter < AUTO_ANALYZE_THRESHOLD) return;
+    if (mode === "off") return;
+
+    let counter = (s.handCounter || 0) + 1;
+    await chrome.storage.local.set({ handCounter: counter });
+    if (counter < threshold) return;
 
     // 閾値到達 → カウンターリセット
-    await chrome.storage.local.set({ handCounter: 0, lastAutoAt: new Date().toISOString(), autoAnalyzePending: true });
+    await chrome.storage.local.set({ handCounter: 0, lastAutoAt: new Date().toISOString() });
 
-    // バックグラウンドで解析API呼び出し
     const res = await fetch(SERVER_URL + "/api/hands/analyze", {
       method: "POST",
       headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({ limit: AUTO_ANALYZE_THRESHOLD }),
+      body: JSON.stringify({ limit: threshold }),
     });
     const data = await res.json();
 
-    // 結果ページを新タブで開く（進捗ページへ遷移）
-    if (data.progress_url) {
-      chrome.tabs.create({ url: SERVER_URL + data.progress_url });
+    if (data.job_id) {
+      // 解析結果URLを履歴に追加（最新3件を保持）
+      const resultUrl = SERVER_URL + "/classify_result/" + data.job_id;
+      const stored = await chrome.storage.local.get(["analysisHistory"]);
+      const history = stored.analysisHistory || [];
+      history.unshift({ url: resultUrl, job_id: data.job_id, at: new Date().toISOString(), hands: threshold });
+      await chrome.storage.local.set({ analysisHistory: history.slice(0, 3) });
+
+      // バッジ通知（緑の✓）
+      chrome.action.setBadgeText({ text: "✓" });
+      chrome.action.setBadgeBackgroundColor({ color: "#2e7d32" });
+
+      // ブラウザ通知
+      chrome.notifications.create("analyze_done_" + data.job_id, {
+        type:    "basic",
+        iconUrl: "icons/icon48.png",
+        title:   "PokerGTO — 解析完了",
+        message: `${threshold}手の解析が完了しました。クリックして結果を見る`,
+        buttons: [{ title: "結果を見る" }],
+      });
+
+      // 通知クリック → 小窓で結果ページを開く
+      chrome.notifications.onButtonClicked.addListener(function onBtn(notifId, btnIdx) {
+        if (notifId.startsWith("analyze_done_")) {
+          const jid = notifId.replace("analyze_done_", "");
+          chrome.windows.create({
+            url:    SERVER_URL + "/classify_result/" + jid,
+            type:   "popup",
+            width:  1200,
+            height: 800,
+            focused: false,
+          });
+          chrome.notifications.onButtonClicked.removeListener(onBtn);
+        }
+      });
     }
   } catch(e) {
     console.warn("[PokerGTO] 自動解析エラー:", e.message);
   }
 }
+
+// ─── プレイ時間通知 ──────────────────────────────────────────────────────────
+
+const PLAYTIME_ALARM = "gto_playtime";
+
+async function _schedulePlaytimeNotify() {
+  _clearPlaytimeAlarm();
+  const s = await chrome.storage.local.get(["playtimeNotify"]);
+  const minutes = parseInt(s.playtimeNotify ?? 0);
+  if (!minutes) return;
+  chrome.alarms.create(PLAYTIME_ALARM, { delayInMinutes: minutes });
+}
+
+function _clearPlaytimeAlarm() {
+  chrome.alarms.clear(PLAYTIME_ALARM);
+}
+
+chrome.alarms.onAlarm.addListener(async alarm => {
+  if (alarm.name !== PLAYTIME_ALARM) return;
+  const s = await chrome.storage.local.get(["sessionStartAt", "playtimeNotify"]);
+  const minutes = parseInt(s.playtimeNotify ?? 0);
+  if (!minutes || !s.sessionStartAt) return;
+
+  const elapsed = Math.round((Date.now() - s.sessionStartAt) / 60000);
+  chrome.notifications.create("playtime_" + Date.now(), {
+    type:    "basic",
+    iconUrl: "icons/icon48.png",
+    title:   "PokerGTO — プレイ時間通知",
+    message: `${elapsed}分プレイ中です。休憩を取りましょう。`,
+  });
+
+  // 繰り返し通知（同じ間隔で再スケジュール）
+  chrome.alarms.create(PLAYTIME_ALARM, { delayInMinutes: minutes });
+});
+
+// ─── 通知クリックで小窓表示 ─────────────────────────────────────────────────
+
+chrome.notifications.onClicked.addListener(notifId => {
+  if (notifId.startsWith("analyze_done_")) {
+    const jid = notifId.replace("analyze_done_", "");
+    chrome.windows.create({
+      url:    SERVER_URL + "/classify_result/" + jid,
+      type:   "popup",
+      width:  1200,
+      height: 800,
+      focused: false,
+    });
+    chrome.notifications.clear(notifId);
+  }
+});
 
 // ─── chrome.identity でGoogleトークン取得 ────────────────────────────────────
 
@@ -169,3 +286,6 @@ function getChromeIdentityToken() {
     });
   });
 }
+
+// ─── 起動時に初期化 ─────────────────────────────────────────────────────────
+initFirebase();

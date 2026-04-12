@@ -2,7 +2,6 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PokerGTO</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -11,117 +10,100 @@ body {
   background: #1a1a2e;
   color: #eee;
   width: 300px;
-  padding: 20px;
+  padding: 16px 18px;
 }
-h1 { font-size: 16px; color: #e94560; margin-bottom: 3px; }
-.sub { font-size: 11px; color: #556; margin-bottom: 18px; }
+h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
+.sub { font-size: 10px; color: #445; margin-bottom: 14px; }
 
 /* ─── ログイン前 ─── */
 #view-login { display: block; }
 .btn-google {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 11px;
-  background: #fff;
-  color: #333;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 11px;
+  background: #fff; color: #333; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .btn-google:hover { background: #f0f0f0; }
 .btn-google img { width: 18px; height: 18px; }
 
 /* ─── ログイン後 ─── */
 #view-main { display: none; }
+
 .user-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
+  display: flex; align-items: center; gap: 7px;
+  padding-bottom: 11px; margin-bottom: 11px;
   border-bottom: 1px solid #1e2535;
 }
 .live-dot {
-  width: 7px; height: 7px;
-  background: #4caf93;
-  border-radius: 50%;
-  flex-shrink: 0;
+  width: 6px; height: 6px; background: #4caf93;
+  border-radius: 50%; flex-shrink: 0;
   animation: pulse 2s infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-.user-email { font-size: 11px; color: #778; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-email { font-size: 10px; color: #668; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-logout {
-  background: transparent;
-  border: 1px solid #333;
-  border-radius: 5px;
-  color: #556;
-  font-size: 10px;
-  padding: 3px 7px;
-  cursor: pointer;
-  flex-shrink: 0;
+  background: transparent; border: 1px solid #333; border-radius: 4px;
+  color: #556; font-size: 10px; padding: 2px 6px; cursor: pointer; flex-shrink: 0;
 }
 .btn-logout:hover { border-color: #e94560; color: #e94560; }
 
-/* ─── 蓄積ハンド数 ─── */
-.hand-count-row {
-  text-align: center;
-  margin-bottom: 18px;
+/* ─── カウンター行 ─── */
+.counter-row {
+  display: flex; align-items: baseline; justify-content: center;
+  gap: 12px; margin-bottom: 12px;
 }
-.hand-count-num {
-  font-size: 42px;
-  font-weight: 700;
-  color: #e94560;
-  line-height: 1;
-}
-.hand-count-unit { font-size: 15px; color: #9ab; margin-left: 2px; }
-.hand-count-label { font-size: 11px; color: #556; margin-top: 3px; }
+.counter-item { text-align: center; }
+.counter-num { font-size: 32px; font-weight: 700; color: #e94560; line-height: 1; }
+.counter-unit { font-size: 12px; color: #9ab; margin-left: 2px; }
+.counter-sep { width: 1px; height: 28px; background: #1e2535; }
+.counter-label { font-size: 10px; color: #445; margin-top: 2px; }
+.playtime-num { font-size: 18px; font-weight: 600; color: #9ab; }
 
-/* ─── メインボタン ─── */
-.btn-open {
-  width: 100%;
-  padding: 14px;
-  background: #e94560;
-  border: none;
-  border-radius: 10px;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s;
-  margin-bottom: 10px;
+/* ─── 解析ボタン ─── */
+.btn-analyze {
+  width: 100%; padding: 11px;
+  background: #e94560; border: none; border-radius: 9px;
+  color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s; margin-bottom: 10px;
 }
-.btn-open:hover { background: #c73652; }
+.btn-analyze:hover { background: #c73652; }
+.btn-analyze:disabled { background: #3a2030; color: #555; cursor: not-allowed; }
+
+/* ─── 解析履歴 ─── */
+.section-label {
+  font-size: 10px; color: #556; font-weight: 600;
+  margin-bottom: 5px; letter-spacing: 0.4px;
+}
+.history-list { margin-bottom: 10px; }
+.history-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0; border-bottom: 1px solid #1a2030; font-size: 11px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-date { color: #556; font-size: 10px; min-width: 80px; }
+.history-hands { color: #9ab; }
+.history-link {
+  color: #e94560; text-decoration: none; font-size: 10px; white-space: nowrap;
+}
+.history-link:hover { text-decoration: underline; }
+.history-empty { font-size: 11px; color: #445; padding: 6px 0; text-align: center; }
+
+/* ─── フッター ─── */
+.footer-row {
+  display: flex; gap: 10px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid #1e2535;
+}
+.btn-sub {
+  flex: 1; padding: 6px;
+  background: transparent; border: 1px solid #2a3550;
+  border-radius: 6px; color: #778; font-size: 11px; cursor: pointer;
+}
+.btn-sub:hover { border-color: #9ab; color: #9ab; }
 
 /* ─── ステータス ─── */
-.status {
-  font-size: 11px;
-  color: #556;
-  text-align: center;
-  min-height: 16px;
-}
+.status { font-size: 10px; color: #556; text-align: center; min-height: 14px; margin-top: 4px; }
 .status.error { color: #e94560; }
 .status.success { color: #4caf93; }
-
-/* ─── 自動解析バッジ ─── */
-.auto-badge {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  background: #1a3a1a;
-  border: 1px solid #2d6a2d;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  font-size: 11px;
-  color: #5cb85c;
-}
-.auto-badge.visible { display: flex; }
 </style>
 </head>
 <body>
@@ -145,19 +127,34 @@ h1 { font-size: 16px; color: #e94560; margin-bottom: 3px; }
     <button class="btn-logout" id="btn-logout">ログアウト</button>
   </div>
 
-  <!-- 蓄積ハンド数 -->
-  <div class="hand-count-row" id="hand-count-row">
-    <div style="font-size:12px;color:#556">読み込み中...</div>
+  <!-- カウンター行 -->
+  <div class="counter-row" id="counter-row">
+    <div class="counter-item">
+      <div><span class="counter-num" id="hand-count">—</span><span class="counter-unit">手</span></div>
+      <div class="counter-label">蓄積済みハンド</div>
+    </div>
+    <div class="counter-sep"></div>
+    <div class="counter-item">
+      <div class="playtime-num" id="playtime-display">—</div>
+      <div class="counter-label">プレイ時間</div>
+    </div>
   </div>
 
-  <!-- 自動解析通知 -->
-  <div class="auto-badge" id="auto-badge">
-    <span>⚡</span>
-    <span id="auto-badge-text">100手蓄積 → 自動解析を実行中</span>
-  </div>
-
-  <button class="btn-open" id="btn-open-site">📊 PokerGTOを開く</button>
+  <!-- 解析ボタン -->
+  <button class="btn-analyze" id="btn-analyze" disabled>⚡ 今すぐ解析</button>
   <p class="status" id="main-status"></p>
+
+  <!-- 解析履歴 -->
+  <div class="section-label">📊 最近の解析結果</div>
+  <div class="history-list" id="history-list">
+    <div class="history-empty">読み込み中...</div>
+  </div>
+
+  <!-- フッター -->
+  <div class="footer-row">
+    <button class="btn-sub" id="btn-sessions">セッション</button>
+    <button class="btn-sub" id="btn-options">⚙ 設定</button>
+  </div>
 </div>
 
 <script src="popup.js"></script>
