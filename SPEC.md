@@ -246,7 +246,7 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 | 履歴リンク | ポップアップに最新3件表示 |
 | 今すぐ解析ボタン | ポップアップに配置（/sessions不要） |
 
-### 設定画面（options.html）
+### 設定（ポップアップ内インライン、options.html は不要）
 
 | 設定名 | 選択肢 | デフォルト |
 |---|---|---|
