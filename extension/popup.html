@@ -88,6 +88,43 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
 .history-link:hover { text-decoration: underline; }
 .history-empty { font-size: 11px; color: #445; padding: 6px 0; text-align: center; }
 
+/* ─── 設定パネル ─── */
+#view-settings { display: none; }
+#view-settings.open { display: block; }
+
+.settings-panel {
+  background: #12122a;
+  border: 1px solid #1e2535;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.settings-title {
+  font-size: 11px; color: #9ab; font-weight: 600;
+  margin-bottom: 10px; letter-spacing: 0.4px;
+}
+.settings-field { margin-bottom: 8px; }
+.settings-field:last-child { margin-bottom: 0; }
+.settings-label { font-size: 10px; color: #668; margin-bottom: 3px; }
+.settings-select {
+  width: 100%; padding: 5px 8px;
+  background: #0f1828; border: 1px solid #2a3550;
+  border-radius: 5px; color: #ccd; font-size: 11px; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23778'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.settings-select:focus { outline: none; border-color: #e94560; }
+.btn-save-settings {
+  width: 100%; padding: 7px;
+  background: #1e3a5f; border: 1px solid #2a5080;
+  border-radius: 6px; color: #9ab; font-size: 11px;
+  cursor: pointer; margin-top: 10px; transition: background 0.15s;
+}
+.btn-save-settings:hover { background: #2a4f7a; color: #ccd; }
+.saved-flash { font-size: 10px; color: #4caf93; text-align: center; min-height: 14px; margin-top: 4px; }
+
 /* ─── フッター ─── */
 .footer-row {
   display: flex; gap: 10px; margin-top: 10px;
@@ -97,8 +134,10 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
   flex: 1; padding: 6px;
   background: transparent; border: 1px solid #2a3550;
   border-radius: 6px; color: #778; font-size: 11px; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
 }
 .btn-sub:hover { border-color: #9ab; color: #9ab; }
+.btn-sub.active { border-color: #e94560; color: #e94560; }
 
 /* ─── ステータス ─── */
 .status { font-size: 10px; color: #556; text-align: center; min-height: 14px; margin-top: 4px; }
@@ -128,7 +167,7 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
   </div>
 
   <!-- カウンター行 -->
-  <div class="counter-row" id="counter-row">
+  <div class="counter-row">
     <div class="counter-item">
       <div><span class="counter-num" id="hand-count">—</span><span class="counter-unit">手</span></div>
       <div class="counter-label">蓄積済みハンド</div>
@@ -148,6 +187,40 @@ h1 { font-size: 15px; color: #e94560; margin-bottom: 2px; }
   <div class="section-label">📊 最近の解析結果</div>
   <div class="history-list" id="history-list">
     <div class="history-empty">読み込み中...</div>
+  </div>
+
+  <!-- 設定パネル（トグル） -->
+  <div id="view-settings">
+    <div class="settings-panel">
+      <div class="settings-title">⚙ 設定</div>
+      <div class="settings-field">
+        <div class="settings-label">自動解析モード</div>
+        <select class="settings-select" id="sel-auto-mode">
+          <option value="off">オフ（手動のみ）</option>
+          <option value="background">バックグラウンド（バッジ通知）</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <div class="settings-label">自動解析トリガー</div>
+        <select class="settings-select" id="sel-threshold">
+          <option value="50">50手ごと</option>
+          <option value="100">100手ごと</option>
+          <option value="200">200手ごと</option>
+          <option value="500">500手ごと</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <div class="settings-label">プレイ時間通知</div>
+        <select class="settings-select" id="sel-playtime">
+          <option value="0">なし</option>
+          <option value="30">30分</option>
+          <option value="60">1時間</option>
+          <option value="120">2時間</option>
+        </select>
+      </div>
+      <button class="btn-save-settings" id="btn-save-settings">保存する</button>
+      <div class="saved-flash" id="saved-flash"></div>
+    </div>
   </div>
 
   <!-- フッター -->

@@ -36,12 +36,9 @@ async function initMain(email) {
   document.getElementById("view-main").style.display  = "block";
   document.getElementById("user-email").textContent   = email || "";
 
-  // バッジをクリア
   chrome.action.setBadgeText({ text: "" });
 
-  await Promise.all([loadHandCount(), loadHistory(), updatePlaytime()]);
-
-  // プレイ時間を10秒ごとに更新
+  await Promise.all([loadHandCount(), loadHistory(), updatePlaytime(), loadSettings()]);
   setInterval(updatePlaytime, 10000);
 }
 
@@ -66,7 +63,6 @@ async function loadHandCount() {
 async function loadHistory() {
   const list = document.getElementById("history-list");
   try {
-    // ローカルキャッシュから表示（APIコールなし）
     const stored = await chrome.storage.local.get(["analysisHistory"]);
     const history = stored.analysisHistory || [];
     if (history.length === 0) {
@@ -89,6 +85,39 @@ async function updatePlaytime() {
   const stored = await chrome.storage.local.get(["sessionStartAt"]);
   document.getElementById("playtime-display").textContent = fmtPlaytime(stored.sessionStartAt);
 }
+
+// ─── 設定 ────────────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  const s = await chrome.storage.local.get(["autoMode", "autoThreshold", "playtimeNotify"]);
+  document.getElementById("sel-auto-mode").value = s.autoMode      ?? "background";
+  document.getElementById("sel-threshold").value  = s.autoThreshold ?? 100;
+  document.getElementById("sel-playtime").value   = s.playtimeNotify ?? 0;
+}
+
+document.getElementById("btn-save-settings").addEventListener("click", async () => {
+  const settings = {
+    autoMode:       document.getElementById("sel-auto-mode").value,
+    autoThreshold:  parseInt(document.getElementById("sel-threshold").value),
+    playtimeNotify: parseInt(document.getElementById("sel-playtime").value),
+  };
+  await chrome.storage.local.set(settings);
+  sendBg({ type: "SETTINGS_UPDATED", settings });
+
+  const flash = document.getElementById("saved-flash");
+  flash.textContent = "✓ 保存しました";
+  setTimeout(() => { flash.textContent = ""; }, 2000);
+});
+
+// ─── 設定パネル トグル ────────────────────────────────────────────────────────
+
+document.getElementById("btn-options").addEventListener("click", () => {
+  const panel = document.getElementById("view-settings");
+  const btn   = document.getElementById("btn-options");
+  const isOpen = panel.classList.toggle("open");
+  btn.classList.toggle("active", isOpen);
+  btn.textContent = isOpen ? "✕ 閉じる" : "⚙ 設定";
+});
 
 // ─── 解析ボタン ──────────────────────────────────────────────────────────────
 
@@ -117,10 +146,6 @@ document.getElementById("btn-analyze").addEventListener("click", async () => {
 
 document.getElementById("btn-sessions").addEventListener("click", () => {
   chrome.tabs.create({ url: SERVER_URL + "/sessions" });
-});
-
-document.getElementById("btn-options").addEventListener("click", () => {
-  chrome.runtime.openOptionsPage();
 });
 
 // ─── ログイン / ログアウト ───────────────────────────────────────────────────

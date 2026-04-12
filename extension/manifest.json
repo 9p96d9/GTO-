@@ -12,10 +12,6 @@
     "alarms"
   ],
 
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
-  },
 
   "oauth2": {
     "client_id": "615725442966-l1k8rgi5m43stim6ellgj8e36s8hfn6l.apps.googleusercontent.com",
