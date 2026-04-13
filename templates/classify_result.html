@@ -736,17 +736,26 @@ window.saveApiKey = async function() {
       headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
       body: JSON.stringify({api_key: key})
     });
+    if (!r.ok) {
+      const d = await r.json().catch(()=>({}));
+      statusEl.textContent = 'HTTPエラー ' + r.status + ': ' + (d.error || r.statusText);
+      statusEl.style.color = '#c0392b';
+      return;
+    }
     const d = await r.json();
-    if (d.ok) {
-      _userSettings.has_key = true;
-      _userSettings.key_masked = '****' + key.slice(-4);
-      document.getElementById('api-key-input').value = '';
-      statusEl.textContent = `設定済み: ${_userSettings.key_masked}`;
-      statusEl.style.color = '#2e7d32';
-    } else {
+    if (!d.ok) {
       statusEl.textContent = 'エラー: ' + (d.error || '保存失敗');
       statusEl.style.color = '#c0392b';
+      return;
     }
+    // 保存後にGETで実際に読み直して確認
+    const vr = await fetch('/api/user/settings', {headers: {'Authorization': `Bearer ${token}`}});
+    const vd = await vr.json();
+    const saved_hint = vd.key_masked || ('****' + key.slice(-4));
+    _userSettings = vd;
+    document.getElementById('api-key-input').value = '';
+    statusEl.textContent = `保存完了: ${saved_hint}`;
+    statusEl.style.color = '#2e7d32';
   } catch(e) {
     statusEl.textContent = 'エラー: ' + e.message;
     statusEl.style.color = '#c0392b';
