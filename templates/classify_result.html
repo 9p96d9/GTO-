@@ -830,6 +830,10 @@ window.startAnalyze = async function() {
           // AI込みPDFボタンがあれば表示
           const aiPdfArea = document.getElementById('ai-pdf-area');
           if (aiPdfArea) aiPdfArea.style.display = '';
+          // カートを閉じてAI解析結果セクションへスクロール
+          window.closeCartPanel();
+          const aiSec = document.getElementById('ai-section');
+          if (aiSec) aiSec.scrollIntoView({behavior: 'smooth', block: 'start'});
         } else if (ev.type === 'error') {
           throw new Error(ev.message || '解析エラー');
         }
