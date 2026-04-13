@@ -1834,11 +1834,20 @@ def classify_result_page(
 
         streets_html = "".join(st_lines)
 
+        hnum = h.get("hand_number", "")
+        line = h.get("bluered_classification", {}).get("line", "")
+        na_attr = ' data-needs-api="1"' if needs_api else ""
+        cart_btn = (
+            f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
+            f'data-hnum="{hnum}" title="カートに追加/削除">🛒</button>'
+            if line != "preflop_only" else ""
+        )
+
         return (
-            f'<div class="{card_cls}">'
+            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{na_attr}>'
             f'<div class="hand-card-head">'
             f'{badge_ai}'
-            f'<span class="hand-num">H{h.get("hand_number","")}</span>'
+            f'<span class="hand-num">H{hnum}</span>'
             f'{badge_3bet}'
             f'<span class="hero-pos">{hero_pos}</span>'
             f'<span class="hero-label">(Hero)</span>'
@@ -1846,6 +1855,7 @@ def classify_result_page(
             f'<span class="vs-label">vs</span>'
             f'<span class="opp-cards">{opp_html}</span>'
             f'<span class="hand-pl {pl_cls}">{_fmt_bb(pl)}bb</span>'
+            f'{cart_btn}'
             f'</div>'
             f'<div class="hand-card-body">{streets_html}</div>'
             f'</div>'
@@ -2134,10 +2144,72 @@ body {{
 .cat-sub-pl.pos {{ color: #2e7d32; }} .cat-sub-pl.neg {{ color: #c0392b; }}
 .ai-badge {{ font-size: 9px; background: #fef9c3; color: #8a6500; border: 1px solid #e8d070; border-radius: 3px; padding: 1px 5px; }}
 /* ─── ハンドカード ─── */
-.hand-card {{ border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 6px; overflow: hidden; }}
+.hand-card {{ border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 6px; overflow: hidden; transition: box-shadow .15s; }}
 .hand-card.needs-ai {{ border-color: #e8d070; background: #fffef0; }}
+.hand-card.in-cart {{ border-color: #0055CC; box-shadow: 0 0 0 2px #ccdeff; }}
 .hand-card-head {{ display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fafafa; border-bottom: 1px solid #eeeeee; flex-wrap: wrap; }}
 .hand-card.needs-ai .hand-card-head {{ background: #fffce8; }}
+.hand-card.in-cart .hand-card-head {{ background: #eef4ff; }}
+/* カート追加ボタン */
+.cart-add-btn {{ margin-left: auto; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 11px; padding: 2px 7px; color: #888; transition: all .15s; flex-shrink: 0; }}
+.cart-add-btn:hover {{ background: #e8f0ff; border-color: #0055CC; color: #0055CC; }}
+.hand-card.in-cart .cart-add-btn {{ background: #0055CC; border-color: #0055CC; color: #fff; }}
+
+/* ─── カート FAB ─── */
+.cart-fab {{ position: fixed; bottom: 80px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #1a1a2e; color: #fff; border: none; font-size: 22px; cursor: pointer; box-shadow: 0 3px 14px rgba(0,0,0,0.35); z-index: 300; display: flex; align-items: center; justify-content: center; transition: transform .15s; }}
+.cart-fab:hover {{ transform: scale(1.08); }}
+.cart-fab-badge {{ position: absolute; top: -4px; right: -4px; background: #e94560; color: #fff; border-radius: 999px; font-size: 10px; font-weight: 700; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0 3px; }}
+.cart-fab-badge:empty, .cart-fab-badge.hidden {{ display: none; }}
+
+/* ─── カートパネル 共通 ─── */
+.cart-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 250; display: none; }}
+.cart-overlay.open {{ display: block; }}
+.cart-panel {{ z-index: 260; background: #fff; display: flex; flex-direction: column; transition: all .3s cubic-bezier(.4,0,.2,1); }}
+.cart-panel-head {{ padding: 14px 16px 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 8px; }}
+.cart-panel-title {{ font-weight: 700; font-size: 14px; flex: 1; }}
+.cart-panel-close {{ background: none; border: none; font-size: 20px; cursor: pointer; color: #666; padding: 0 4px; }}
+.cart-panel-body {{ flex: 1; overflow-y: auto; padding: 10px; }}
+.cart-item {{ display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid #e8e8e8; border-radius: 5px; margin-bottom: 6px; background: #fafafa; font-size: 12px; }}
+.cart-item-num {{ font-weight: 700; color: #333; min-width: 36px; }}
+.cart-item-cat {{ flex: 1; color: #666; font-size: 11px; }}
+.cart-item-del {{ background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 0 2px; }}
+.cart-item-del:hover {{ color: #e74c3c; }}
+.cart-empty {{ text-align: center; color: #aaa; font-size: 12px; padding: 30px 0; }}
+.cart-panel-foot {{ padding: 10px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }}
+.cart-name-row {{ display: flex; gap: 6px; }}
+.cart-name-input {{ flex: 1; border: 1px solid #ddd; border-radius: 5px; padding: 6px 8px; font-size: 12px; outline: none; }}
+.cart-name-input:focus {{ border-color: #0055CC; }}
+.cart-btn {{ width: 100%; padding: 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 700; cursor: pointer; }}
+.cart-btn.primary {{ background: #1a1a2e; color: #fff; }}
+.cart-btn.primary:hover {{ background: #2a2a4e; }}
+.cart-btn.secondary {{ background: transparent; border: 1px solid #ccc; color: #444; }}
+.cart-btn.secondary:hover {{ background: #f5f5f5; }}
+.cart-btn:disabled {{ opacity: .5; cursor: not-allowed; }}
+.cart-load-btn {{ font-size: 11px; color: #0055CC; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }}
+.cart-saved-list {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 5px; padding: 6px; margin-top: 4px; max-height: 160px; overflow-y: auto; }}
+.cart-saved-item {{ display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; }}
+.cart-saved-item:hover {{ background: #eef4ff; }}
+.cart-saved-name {{ flex: 1; font-weight: 600; }}
+.cart-saved-meta {{ color: #888; }}
+
+/* ─── デザインA: 右ドロワー ─── */
+body.design-a .cart-panel {{ position: fixed; top: 0; right: -320px; width: 300px; height: 100vh; box-shadow: -4px 0 20px rgba(0,0,0,0.15); border-radius: 0; }}
+body.design-a .cart-panel.open {{ right: 0; }}
+
+/* ─── デザインB: ボトムシート ─── */
+body.design-b .cart-panel {{ position: fixed; bottom: -65vh; left: 0; right: 0; height: 62vh; box-shadow: 0 -4px 20px rgba(0,0,0,0.15); border-radius: 16px 16px 0 0; }}
+body.design-b .cart-panel.open {{ bottom: 0; }}
+
+/* ─── デザインC: ミニサイドバー ─── */
+body.design-c .cart-fab {{ width: 44px; height: 44px; font-size: 18px; bottom: 90px; }}
+body.design-c .cart-panel {{ position: fixed; top: 56px; right: -260px; width: 240px; max-height: 80vh; box-shadow: -2px 0 12px rgba(0,0,0,0.12); border-radius: 8px 0 0 8px; border: 1px solid #e0e0e0; }}
+body.design-c .cart-panel.open {{ right: 0; }}
+
+/* ─── デザイン切替UI ─── */
+.design-switcher {{ position: fixed; top: 60px; right: 14px; z-index: 400; display: flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.1); font-size: 11px; }}
+.ds-label {{ color: #888; margin-right: 2px; }}
+.ds-btn {{ background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer; color: #444; }}
+.ds-btn.active {{ background: #1a1a2e; color: #fff; border-color: #1a1a2e; }}
 .hand-num {{ font-size: 10px; color: #666; font-weight: 600; }}
 .badge-3bet {{ font-size: 9px; background: #ede9fe; color: #5b21b6; border-radius: 3px; padding: 1px 5px; font-weight: 800; }}
 .badge-ai   {{ font-size: 9px; color: #ca8a04; font-weight: 800; }}
@@ -2301,6 +2373,43 @@ body {{
 <div style="height:56px"></div><!-- sticky-footer の高さ分のスペーサー -->
 </div><!-- /page-wrap -->
 
+<!-- ─── デザイン切替UI ─── -->
+<div class="design-switcher">
+  <span class="ds-label">デザイン</span>
+  <button class="ds-btn active" id="ds-a" onclick="setDesign('a')">A</button>
+  <button class="ds-btn" id="ds-b" onclick="setDesign('b')">B</button>
+  <button class="ds-btn" id="ds-c" onclick="setDesign('c')">C</button>
+</div>
+
+<!-- ─── カート FAB ─── -->
+<button class="cart-fab" onclick="toggleCartPanel()" id="cart-fab" title="解析カート">
+  🛒<span class="cart-fab-badge hidden" id="cart-badge"></span>
+</button>
+
+<!-- ─── オーバーレイ ─── -->
+<div class="cart-overlay" id="cart-overlay" onclick="closeCartPanel()"></div>
+
+<!-- ─── カートパネル ─── -->
+<div class="cart-panel" id="cart-panel">
+  <div class="cart-panel-head">
+    <span class="cart-panel-title">🛒 解析カート</span>
+    <button class="cart-panel-close" onclick="closeCartPanel()">✕</button>
+  </div>
+  <div class="cart-panel-body" id="cart-body">
+    <div class="cart-empty" id="cart-empty">ハンドをカートに追加してください</div>
+    <div id="cart-items"></div>
+  </div>
+  <div class="cart-panel-foot">
+    <button class="cart-load-btn" id="saved-toggle" onclick="toggleSavedList()">▾ 保存済みカートを読み込む</button>
+    <div class="cart-saved-list" id="saved-list" style="display:none"></div>
+    <div class="cart-name-row">
+      <input class="cart-name-input" id="cart-name" type="text" placeholder="カート名（省略可）">
+      <button class="cart-btn secondary" style="width:auto;padding:6px 12px" onclick="saveCartNamed()">📌 保存</button>
+    </div>
+    <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行（準備中）</button>
+  </div>
+</div>
+
 <!-- スティッキーフッター -->
 <div class="sticky-footer">
   <form method="post" action="/generate_pdf/{job_id}" target="_blank" style="flex:1">
@@ -2385,6 +2494,217 @@ function switchTab(id, btn) {{
   btn.classList.add('active');
   if (id === 'tab-chart' && !_chartBuilt) {{ buildChart(); _chartBuilt = true; }}
 }}
+</script>
+
+<!-- ─── Firebase + Cart JS ─── -->
+<script type="module">
+import {{ initializeApp }} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+const JOB_ID = '{job_id}';
+let _auth = null;
+let _user = null;
+let cartSet = new Set();  // hand_numbers in cart
+let _syncTimer = null;
+let _cartLabels = {{}};  // hand_number -> category label
+
+// ── Firebase 初期化 ──────────────────────────────────────────────
+(async () => {{
+  try {{
+    const r = await fetch('/api/firebase-config');
+    const cfg = await r.json();
+    const app = initializeApp(cfg);
+    _auth = getAuth(app);
+    onAuthStateChanged(_auth, async user => {{
+      _user = user;
+      if (user) {{
+        buildHandLabels();
+        await loadCart();
+        autoAddNeedsApi();
+      }}
+    }});
+  }} catch(e) {{ console.warn('Firebase init failed', e); }}
+}})();
+
+async function getToken() {{
+  if (!_user) return null;
+  return _user.getIdToken();
+}}
+
+// ── ハンドラベル収集（カートドロワー表示用）──────────────────────
+function buildHandLabels() {{
+  document.querySelectorAll('.hand-card[data-hnum]').forEach(el => {{
+    const num = parseInt(el.dataset.hnum);
+    const cat = el.querySelector('.badge-cat')?.textContent
+      || el.dataset.line || '';
+    _cartLabels[num] = cat;
+  }});
+}}
+
+// ── カート読み込み（ページロード時）──────────────────────────────
+async function loadCart() {{
+  const token = await getToken();
+  if (!token) return;
+  try {{
+    const r = await fetch(`/api/cart/${{JOB_ID}}`, {{
+      headers: {{'Authorization': `Bearer ${{token}}`}}
+    }});
+    const data = await r.json();
+    cartSet = new Set((data.hand_numbers || []).map(Number));
+    renderCart();
+  }} catch(e) {{ console.warn('cart load error', e); }}
+}}
+
+// ── needs_api 自動追加 ────────────────────────────────────────────
+function autoAddNeedsApi() {{
+  const autoAdd = localStorage.getItem('needs_api_auto_cart') !== 'off';
+  if (!autoAdd) return;
+  let changed = false;
+  document.querySelectorAll('.hand-card[data-needs-api="1"]').forEach(el => {{
+    const num = parseInt(el.dataset.hnum);
+    if (!cartSet.has(num)) {{ cartSet.add(num); changed = true; }}
+  }});
+  if (changed) {{ renderCart(); scheduleSync(); }}
+}}
+
+// ── カート追加/削除 ───────────────────────────────────────────────
+window.toggleCart = function(handNum) {{
+  handNum = parseInt(handNum);
+  if (cartSet.has(handNum)) {{ cartSet.delete(handNum); }}
+  else {{ cartSet.add(handNum); }}
+  renderCart();
+  scheduleSync();
+}};
+
+function scheduleSync() {{
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncCart, 600);
+}}
+
+async function syncCart() {{
+  const token = await getToken();
+  if (!token) return;
+  try {{
+    await fetch(`/api/cart/${{JOB_ID}}/hands`, {{
+      method: 'POST',
+      headers: {{'Authorization': `Bearer ${{token}}`, 'Content-Type': 'application/json'}},
+      body: JSON.stringify({{hand_numbers: [...cartSet]}})
+    }});
+  }} catch(e) {{ console.warn('cart sync error', e); }}
+}}
+
+// ── レンダリング ─────────────────────────────────────────────────
+function renderCart() {{
+  const count = cartSet.size;
+  // バッジ
+  const badge = document.getElementById('cart-badge');
+  badge.textContent = count || '';
+  badge.classList.toggle('hidden', count === 0);
+
+  // ハンドカードのスタイル
+  document.querySelectorAll('.hand-card[data-hnum]').forEach(el => {{
+    const num = parseInt(el.dataset.hnum);
+    el.classList.toggle('in-cart', cartSet.has(num));
+    const btn = el.querySelector('.cart-add-btn');
+    if (btn) btn.textContent = cartSet.has(num) ? '✓カート' : '🛒';
+  }});
+
+  // ドロワー内アイテム
+  const itemsEl = document.getElementById('cart-items');
+  const emptyEl = document.getElementById('cart-empty');
+  if (count === 0) {{
+    emptyEl.style.display = '';
+    itemsEl.innerHTML = '';
+    document.getElementById('cart-analyze-btn').disabled = true;
+    return;
+  }}
+  emptyEl.style.display = 'none';
+  document.getElementById('cart-analyze-btn').disabled = false;
+  const sorted = [...cartSet].sort((a,b) => a-b);
+  itemsEl.innerHTML = sorted.map(n => {{
+    const label = _cartLabels[n] || '';
+    const el = document.querySelector(`.hand-card[data-hnum="${{n}}"]`);
+    const na = el?.dataset.needsApi === '1' ? ' ★' : '';
+    return `<div class="cart-item">
+      <span class="cart-item-num">H${{n}}</span>
+      <span class="cart-item-cat">${{label}}${{na}}</span>
+      <button class="cart-item-del" onclick="toggleCart(${{n}})" title="削除">✕</button>
+    </div>`;
+  }}).join('');
+}}
+
+// ── ドロワー開閉 ─────────────────────────────────────────────────
+window.toggleCartPanel = () => {{
+  const panel = document.getElementById('cart-panel');
+  const overlay = document.getElementById('cart-overlay');
+  panel.classList.toggle('open');
+  overlay.classList.toggle('open');
+}};
+window.closeCartPanel = () => {{
+  document.getElementById('cart-panel').classList.remove('open');
+  document.getElementById('cart-overlay').classList.remove('open');
+}};
+
+// ── 保存済みカート ───────────────────────────────────────────────
+let _savedLoaded = false;
+window.toggleSavedList = async () => {{
+  const el = document.getElementById('saved-list');
+  const show = el.style.display === 'none';
+  el.style.display = show ? '' : 'none';
+  if (show && !_savedLoaded) {{
+    _savedLoaded = true;
+    const token = await getToken();
+    if (!token) {{ el.innerHTML = '<div style="color:#aaa;font-size:11px;padding:6px">ログインが必要です</div>'; return; }}
+    const r = await fetch(`/api/carts?job_id=${{JOB_ID}}`, {{headers:{{'Authorization':`Bearer ${{token}}`}}}});
+    const data = await r.json();
+    if (!data.carts?.length) {{ el.innerHTML = '<div style="color:#aaa;font-size:11px;padding:6px">保存済みカートなし</div>'; return; }}
+    el.innerHTML = data.carts.map(c => `
+      <div class="cart-saved-item" onclick="loadSavedCart(${{JSON.stringify(c.hand_numbers)}}, '${{c.name}}')">
+        <span class="cart-saved-name">${{c.name}}</span>
+        <span class="cart-saved-meta">${{c.hand_numbers.length}}手</span>
+      </div>`).join('');
+  }}
+}};
+
+window.loadSavedCart = (nums, name) => {{
+  cartSet = new Set(nums.map(Number));
+  document.getElementById('cart-name').value = name;
+  document.getElementById('saved-list').style.display = 'none';
+  _savedLoaded = false;
+  renderCart();
+  scheduleSync();
+}};
+
+window.saveCartNamed = async () => {{
+  if (!cartSet.size) {{ alert('カートが空です'); return; }}
+  const token = await getToken();
+  if (!token) {{ alert('ログインが必要です'); return; }}
+  const name = document.getElementById('cart-name').value.trim();
+  await fetch(`/api/cart/${{JOB_ID}}/save`, {{
+    method: 'POST',
+    headers: {{'Authorization': `Bearer ${{token}}`, 'Content-Type': 'application/json'}},
+    body: JSON.stringify({{name, hand_numbers: [...cartSet]}})
+  }});
+  _savedLoaded = false;
+  alert(`「${{name || 'カート'}}」を保存しました`);
+}};
+
+window.startAnalyze = () => {{
+  alert('解析カート機能は Phase 12 で実装予定です');
+}};
+
+// ── デザイン切替 ─────────────────────────────────────────────────
+window.setDesign = (d) => {{
+  document.body.className = document.body.className
+    .replace(/\\bdesign-[a-c]\\b/g, '').trim() + ` design-${{d}}`;
+  ['a','b','c'].forEach(x => {{
+    document.getElementById(`ds-${{x}}`).classList.toggle('active', x === d);
+  }});
+  localStorage.setItem('cart_design', d);
+}};
+// 保存されたデザインを適用
+const _savedDesign = localStorage.getItem('cart_design') || 'a';
+setDesign(_savedDesign);
 </script>
 </body>
 </html>"""
@@ -3286,6 +3606,66 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
 
     progress_url = f"/classify_progress/{job_id}"
     return JSONResponse({"job_id": job_id, "progress_url": progress_url})
+
+
+# ─── 解析カート API（Phase 12） ───────────────────────────────────────────────
+
+@app.get("/api/cart/{job_id}")
+async def api_get_cart(job_id: str, request: Request):
+    """アクティブカート取得"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    from scripts.firebase_utils import is_firebase_enabled, get_cart
+    if not is_firebase_enabled():
+        return JSONResponse({"hand_numbers": []})
+    return JSONResponse({"hand_numbers": get_cart(uid, job_id)})
+
+
+@app.post("/api/cart/{job_id}/hands")
+async def api_update_cart(job_id: str, request: Request):
+    """カートのhand_number配列を上書き保存（変更のたびに呼ぶ）"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    body = await request.json()
+    hand_numbers = [int(n) for n in body.get("hand_numbers", [])]
+    from scripts.firebase_utils import is_firebase_enabled, update_cart
+    if is_firebase_enabled():
+        update_cart(uid, job_id, hand_numbers)
+    return JSONResponse({"ok": True, "hand_numbers": hand_numbers})
+
+
+@app.post("/api/cart/{job_id}/save")
+async def api_save_cart(job_id: str, request: Request):
+    """カートを名前付きで保存"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    body = await request.json()
+    name = body.get("name", "")
+    hand_numbers = [int(n) for n in body.get("hand_numbers", [])]
+    from scripts.firebase_utils import is_firebase_enabled, save_cart_snapshot
+    if not is_firebase_enabled():
+        return JSONResponse({"ok": False, "error": "Firebase未設定"})
+    cart_id = save_cart_snapshot(uid, job_id, name, hand_numbers)
+    return JSONResponse({"ok": True, "cart_id": cart_id})
+
+
+@app.get("/api/carts")
+async def api_list_carts(request: Request, job_id: str = None):
+    """保存済みカート一覧（最新20件、job_idでフィルタ可能）"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    from scripts.firebase_utils import is_firebase_enabled, list_saved_carts
+    if not is_firebase_enabled():
+        return JSONResponse({"carts": []})
+    return JSONResponse({"carts": list_saved_carts(uid, job_id)})
 
 
 @app.get("/api/analyses")

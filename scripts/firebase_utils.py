@@ -291,3 +291,55 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
 def is_firebase_enabled() -> bool:
     """FIREBASE_SERVICE_ACCOUNT_JSON が設定されているか確認（起動チェック用）"""
     return bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip())
+
+
+# ─── 解析カート（Phase 12） ────────────────────────────────────────────────────
+
+def get_cart(uid: str, job_id: str) -> list:
+    """アクティブカートの hand_number 配列を返す"""
+    _init()
+    doc = _db.collection("users").document(uid).collection("analyses").document(job_id).get()
+    if not doc.exists:
+        return []
+    return doc.to_dict().get("active_cart", [])
+
+
+def update_cart(uid: str, job_id: str, hand_numbers: list):
+    """アクティブカートを更新（Firestoreへ即時反映）"""
+    _init()
+    _db.collection("users").document(uid).collection("analyses").document(job_id).set(
+        {"active_cart": hand_numbers}, merge=True
+    )
+
+
+def save_cart_snapshot(uid: str, job_id: str, name: str, hand_numbers: list) -> str:
+    """カートを名前付きで保存。cart_id を返す"""
+    import uuid as _uuid
+    _init()
+    cart_id = _uuid.uuid4().hex
+    label = name.strip() or datetime.now(timezone.utc).strftime("カート %Y-%m-%d %H:%M")
+    _db.collection("users").document(uid).collection("carts").document(cart_id).set({
+        "job_id":       job_id,
+        "name":         label,
+        "created_at":   datetime.now(timezone.utc),
+        "hand_numbers": hand_numbers,
+        "status":       "saved",
+    })
+    return cart_id
+
+
+def list_saved_carts(uid: str, job_id: str = None) -> list:
+    """保存済みカート一覧（最新20件）。job_id 指定でフィルタ可能"""
+    _init()
+    q = _db.collection("users").document(uid).collection("carts") \
+        .order_by("created_at", direction="DESCENDING").limit(20)
+    result = []
+    for c in q.stream():
+        d = c.to_dict()
+        d["cart_id"] = c.id
+        if job_id and d.get("job_id") != job_id:
+            continue
+        if hasattr(d.get("created_at"), "isoformat"):
+            d["created_at"] = d["created_at"].isoformat()
+        result.append(d)
+    return result
