@@ -118,45 +118,86 @@ def is_postflop(hand: dict) -> bool:
 
 def hero_would_win_treys(hand: dict):
     """
-    フォールド時にtreysでheroが勝てたか判定。
-    True=勝てた, False=負けてた, None=判定不能
+    フォールド時に treys でheroが勝てたか判定。
+    True=全アクティブ相手に勝てた, False=少なくとも1人に負けた, None=判定不能
+
+    修正ポイント:
+    - ボードはheroのフォールドストリートまでのカードのみ使用（リバー前fold→リバー除外）
+    - フォールドストリートより前にフォールドした相手は比較対象から除外
+    - 残った全アクティブ相手に勝つ場合のみ True を返す
     """
     if not _TREYS_AVAILABLE:
         return None
 
     hero_cards_raw = hand.get("hero_cards", [])
-    opp_cards_raw = []
-    for p in hand.get("players", []):
-        if not p.get("is_hero") and len(p.get("hole_cards", [])) >= 2:
-            opp_cards_raw = p["hole_cards"]
+    if len(hero_cards_raw) < 2:
+        return None
+
+    last_street = get_last_street_name(hand)
+    STREET_ORDER = ["preflop", "flop", "turn", "river"]
+    last_idx = STREET_ORDER.index(last_street)
+
+    # フォールド時点のボードカード（last_street まで、preflop は board なし）
+    streets = hand.get("streets", {})
+    board_raw = []
+    for st in STREET_ORDER[1:]:  # preflop にはボードなし
+        s = streets.get(st)
+        if s and isinstance(s, dict):
+            board_raw.extend(c for c in s.get("board", []) if c and c != "-")
+        if st == last_street:
             break
 
-    board_raw = get_all_board_cards(hand)
+    if len(board_raw) < 3:
+        return None
 
-    if len(hero_cards_raw) < 2 or len(opp_cards_raw) < 2 or len(board_raw) < 3:
+    # フォールドストリートより前にフォールドした相手を除外
+    # （例: PFフォールドした相手のカードが見えていても比較対象外）
+    active_opps = []
+    for p in hand.get("players", []):
+        if p.get("is_hero") or len(p.get("hole_cards", [])) < 2:
+            continue
+        pos   = p.get("position", "")
+        pname = p.get("name", "")
+        folded_early = False
+        for prev_st in STREET_ORDER[:last_idx]:  # フォールドストリートより前のストリートを確認
+            if prev_st == "preflop":
+                acts = streets.get("preflop", [])
+            else:
+                s = streets.get(prev_st)
+                acts = s.get("actions", []) if (s and isinstance(s, dict)) else []
+            for a in acts:
+                if a.get("action") == "Fold" and (
+                    a.get("position") == pos or a.get("name") == pname
+                ):
+                    folded_early = True
+                    break
+            if folded_early:
+                break
+        if not folded_early:
+            active_opps.append(p)
+
+    if not active_opps:
         return None
 
     try:
-        hero_strs = [card_to_treys(c) for c in hero_cards_raw]
-        opp_strs  = [card_to_treys(c) for c in opp_cards_raw]
+        hero_strs  = [card_to_treys(c) for c in hero_cards_raw]
         board_strs = [card_to_treys(c) for c in board_raw]
-
-        if None in hero_strs or None in opp_strs or None in board_strs:
+        if None in hero_strs or None in board_strs:
             return None
-
         hero_treys  = [Card.new(s) for s in hero_strs]
-        opp_treys   = [Card.new(s) for s in opp_strs]
         board_treys = [Card.new(s) for s in board_strs]
-
         hero_rank = _evaluator.evaluate(board_treys, hero_treys)
-        opp_rank  = _evaluator.evaluate(board_treys, opp_treys)
 
-        if hero_rank < opp_rank:   # 低いランク = 強い手
-            return True
-        elif hero_rank > opp_rank:
-            return False
-        else:
-            return None  # 引き分け
+        # アクティブ相手全員に勝てる場合のみ True
+        for opp in active_opps:
+            opp_strs = [card_to_treys(c) for c in opp.get("hole_cards", [])]
+            if None in opp_strs:
+                continue  # 判定不能な相手はスキップ
+            opp_treys = [Card.new(s) for s in opp_strs]
+            opp_rank  = _evaluator.evaluate(board_treys, opp_treys)
+            if hero_rank >= opp_rank:  # 同ランクも負け扱い（引き分けは勝てたとは言えない）
+                return False
+        return True
 
     except Exception:
         return None
