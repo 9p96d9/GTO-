@@ -2561,6 +2561,17 @@ window.closeCartPanel = function() {{
   document.getElementById('cart-panel').classList.remove('open');
   document.getElementById('cart-overlay').classList.remove('open');
 }};
+window.setDesign = function(d) {{
+  document.body.className = document.body.className
+    .replace(/\bdesign-[a-c]\b/g, '').trim() + ' design-' + d;
+  ['a','b','c'].forEach(function(x) {{
+    var el = document.getElementById('ds-' + x);
+    if (el) el.classList.toggle('active', x === d);
+  }});
+  localStorage.setItem('cart_design', d);
+}};
+// ページロード時にデザインを即時適用（Firebaseモジュール読み込み前に必要）
+setDesign(localStorage.getItem('cart_design') || 'a');
 </script>
 
 <!-- ─── Firebase + Cart JS ─── -->
