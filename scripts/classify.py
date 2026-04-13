@@ -18,7 +18,7 @@ except ImportError:
 SUIT_TO_TREYS = {"♠": "s", "♥": "h", "♦": "d", "♣": "c"}
 
 CATEGORY_LABELS = {
-    "value_or_bluff_success": "バリュー/ブラフ成功",
+    "value_success":          "バリュー成功",
     "bluff_catch":            "ブラフキャッチ",
     "bluff_failed":           "ブラフ失敗",
     "call_lost":              "コール負け",
@@ -214,7 +214,7 @@ def classify_hand(hand: dict) -> dict:
     if went_to_showdown:
         # ── 青線 ──
         if won:
-            cat = "value_or_bluff_success" if last_agg == "hero" else "bluff_catch"
+            cat = "value_success" if last_agg == "hero" else "bluff_catch"
         else:
             cat = "bluff_failed" if last_agg == "hero" else "call_lost"
 

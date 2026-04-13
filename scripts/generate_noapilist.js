@@ -178,7 +178,7 @@ function calcPositionStats(hands) {
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 
 const BLUE_CAT_ORDER = [
-  "value_or_bluff_success",
+  "value_success",
   "bluff_catch",
   "bluff_failed",
   "call_lost",
@@ -193,7 +193,7 @@ const STREET_ORDER = ["preflop", "flop", "turn", "river"];
 const STREET_JP    = { preflop: "PF", flop: "F", turn: "T", river: "R" };
 
 const CAT_CSS = {
-  value_or_bluff_success: "cat-value",
+  value_success: "cat-value",
   bluff_catch:            "cat-catch",
   bluff_failed:           "cat-bluff",
   call_lost:              "cat-call",

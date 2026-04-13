@@ -10,12 +10,12 @@ const puppeteer = require("puppeteer");
 const SUIT_COLORS = { "♠": "#000000", "♥": "#E00000", "♦": "#0055CC", "♣": "#007700" };
 
 // 青線/赤線カテゴリの表示順（generate_noapilist.js と統一）
-const BLUE_CAT_ORDER = ["value_or_bluff_success", "bluff_catch", "bluff_failed", "call_lost"];
+const BLUE_CAT_ORDER = ["value_success", "bluff_catch", "bluff_failed", "call_lost"];
 const RED_CAT_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"];
 const ALL_CAT_ORDER  = [...BLUE_CAT_ORDER, ...RED_CAT_ORDER];
 const STREET_ORDER   = ["preflop", "flop", "turn", "river"];
 const CAT_LABELS = {
-  value_or_bluff_success: "🔵 バリュー/ブラフ成功",
+  value_success: "🔵 バリュー成功",
   bluff_catch:            "🔵 ブラフキャッチ",
   bluff_failed:           "🔵 ブラフ失敗",
   call_lost:              "🔵 コール負け",
@@ -25,7 +25,7 @@ const CAT_LABELS = {
   fold_unknown:           "🔴 フォールド(要確認)",
 };
 const CAT_BG = {
-  value_or_bluff_success: "#E0FFE0", bluff_catch: "#E0F0FF",
+  value_success: "#E0FFE0", bluff_catch: "#E0F0FF",
   bluff_failed: "#FFE0E0", call_lost: "#FFE0E0",
   hero_aggression_won: "#E0FFE0", bad_fold: "#FFE0E0",
   nice_fold: "#EEFFEE", fold_unknown: "#FFF8E0",

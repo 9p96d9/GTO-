@@ -458,67 +458,7 @@ async def run_pdf_pipeline(job_id: str, classified_path: str):
     print(f"[job:{job_id[:8]}] PDF完了: {pdf_files[0].name}")
 
 
-async def run_ai_pipeline(job_id: str, json_path: str, api_key: str):
-    """分類済みJSONにGemini分析を追加してAI PDF生成"""
-    loop = asyncio.get_running_loop()
-    q: asyncio.Queue = asyncio.Queue()
-    event_queues[job_id] = q
-    env = {**BASE_ENV, "GEMINI_API_KEY": api_key}
-
-    def push(data: dict):
-        loop.call_soon_threadsafe(q.put_nowait, data)
-
-    def fail(msg):
-        with jobs_lock:
-            jobs[job_id]["status"] = "error"
-            jobs[job_id]["log"] = msg
-        push({"type": "error", "message": msg[:300]})
-        loop.call_soon_threadsafe(q.put_nowait, None)
-
-    # パース済みなのでハンド数だけ取得してstep1を即完了
-    try:
-        with open(json_path, encoding="utf-8") as f:
-            hands_total = len(json.load(f).get("hands", []))
-    except Exception:
-        hands_total = 0
-    push({"type": "parse_done", "hands_total": hands_total})
-    with jobs_lock:
-        jobs[job_id]["step"] = 2
-
-    def do_analyze():
-        _analyze_file(json_path, progress_cb=push, api_key=api_key)
-
-    try:
-        await loop.run_in_executor(None, do_analyze)
-    except SystemExit as e:
-        if e.code != 0:
-            fail("Gemini APIキーが無効またはAPI呼び出しエラーが発生しました"); return
-
-    push({"type": "generate_start"})
-    with jobs_lock:
-        jobs[job_id]["step"] = 3
-
-    def do_generate():
-        return subprocess.run(
-            ["node", str(SCRIPTS / "generate.js"), str(OUTPUT_DIR), json_path],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-        )
-
-    r = await loop.run_in_executor(None, do_generate)
-    if r.returncode != 0:
-        fail((r.stderr or r.stdout).strip()); return
-
-    pdf_files = sorted(OUTPUT_DIR.glob("GTO_Report_*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not pdf_files:
-        fail("PDFが見つかりません"); return
-
-    with jobs_lock:
-        jobs[job_id]["status"] = "done"
-        jobs[job_id]["pdf"] = pdf_files[0].name
-
-    push({"type": "done", "pdf": pdf_files[0].name})
-    loop.call_soon_threadsafe(q.put_nowait, None)
-    print(f"[job:{job_id[:8]}] AI PDF完了: {pdf_files[0].name}")
+# run_ai_pipeline は Phase 12 で解析カート方式に刷新するため廃止
 
 
 # ─── ルート ───────────────────────────────────────────────────────────────────
@@ -650,19 +590,9 @@ async def classify_result_view(job_id: str):
                 hero_ev_count += 1
     allin_ev_diffs = {hero_name_found: hero_ev_total} if hero_name_found and abs(hero_ev_total) > 0.05 else {}
 
-    # AI推定時間
-    batches = max(1, (total_hands + 9) // 10)
-    ai_secs = batches * 5
-    if ai_secs < 60:
-        ai_time_str = f"約{ai_secs}秒"
-    else:
-        m = ai_secs // 60
-        s = ai_secs % 60
-        ai_time_str = f"約{m}分{s:02d}秒" if s else f"約{m}分"
-
     return HTMLResponse(classify_result_page(
         job_id, total_hands, blue_count, red_count, pf_count,
-        categories, allin_ev_diffs, ai_time_str, classified_path, json_path, hands,
+        categories, allin_ev_diffs, classified_path, json_path, hands,
     ))
 
 
@@ -683,29 +613,7 @@ async def generate_pdf(job_id: str, background_tasks: BackgroundTasks):
     return RedirectResponse(f"/progress/{new_job_id}", status_code=303)
 
 
-@app.post("/start_ai/{job_id}")
-async def start_ai(
-    job_id: str,
-    background_tasks: BackgroundTasks,
-    api_key: str = Form(""),
-):
-    with jobs_lock:
-        src_job = jobs.get(job_id)
-    if not src_job:
-        return HTMLResponse("<h1>404</h1>", status_code=404)
-    json_path = src_job.get("json_path", "")
-    if not json_path or not Path(json_path).exists():
-        return HTMLResponse(ERROR_PAGE.format(log="パース済みデータが見つかりません"), status_code=400)
-
-    key = api_key.strip() or os.environ.get("GEMINI_API_KEY", "")
-    if not key:
-        return HTMLResponse(ERROR_PAGE.format(log="Gemini APIキーが入力されていません。"), status_code=400)
-
-    new_job_id = uuid.uuid4().hex
-    with jobs_lock:
-        jobs[new_job_id] = {"step": 0, "status": "running", "pdf": "", "log": "", "mode": "api"}
-    background_tasks.add_task(run_ai_pipeline, new_job_id, json_path, key)
-    return RedirectResponse(f"/progress/{new_job_id}", status_code=303)
+# /start_ai/{job_id} は Phase 12 解析カートに置き換えるため廃止
 
 
 @app.get("/progress/{job_id}", response_class=HTMLResponse)
@@ -849,10 +757,6 @@ def _esc(s: str) -> str:
 
 
 # ─── HTMLテンプレート ─────────────────────────────────────────────────────────
-
-# .env にキーがあればデフォルト値として埋め込む（BYOK: 空欄でも手入力可）
-_DEFAULT_KEY = os.environ.get("GEMINI_API_KEY", "")
-_KEY_PLACEHOLDER = "AIza... (Gemini APIキーを入力)"
 
 LANDING_PAGE = """<!DOCTYPE html>
 <html lang="ja">
@@ -1743,13 +1647,11 @@ def classify_result_page(
     pf_count: int,
     categories: dict,
     allin_ev_diffs: dict,
-    ai_time_str: str,
     classified_path: str,
     json_path: str,
     hands: list = None,
 ) -> str:
     import re as _re
-    _DEFAULT_KEY = os.environ.get("GEMINI_API_KEY", "")
 
     # カテゴリ行HTML（白背景グリッドスタイル）
     cat_rows = ""
@@ -1831,12 +1733,12 @@ def classify_result_page(
         return " ".join(cards)
 
     _ST_JP = {"preflop": "PF", "flop": "F", "turn": "T", "river": "R"}
-    _BLUE_ORDER = ["value_or_bluff_success", "bluff_catch", "bluff_failed", "call_lost"]
+    _BLUE_ORDER = ["value_success", "bluff_catch", "bluff_failed", "call_lost"]
     _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
 
     # 白背景向けカテゴリサブヘッダークラス
     _CAT_CLASS = {
-        "value_or_bluff_success": "blue",
+        "value_success": "blue",
         "bluff_catch":            "blue",
         "bluff_failed":           "red",
         "call_lost":              "red",
@@ -2166,10 +2068,6 @@ def classify_result_page(
   </div>
 </div>"""
 
-    # APIキーのデフォルト値
-    key_val = _DEFAULT_KEY
-    key_placeholder = "AIza... (Gemini APIキーを入力)"
-
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -2291,17 +2189,11 @@ body {{
 .action-icon {{ font-size: 28px; margin-bottom: 8px; }}
 .action-title {{ font-size: 14px; font-weight: 700; margin-bottom: 5px; color: #1a1a1a; }}
 .action-desc {{ font-size: 11px; color: #666; margin-bottom: 12px; line-height: 1.6; }}
-.action-time {{ font-size: 11px; color: #c0392b; margin-bottom: 12px; font-weight: 600; }}
 .btn-primary {{ width: 100%; padding: 10px; background: #1a1a2e; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s; }}
 .btn-primary:hover {{ background: #2a2a4e; }}
 .btn-primary:disabled {{ background: #aaa; cursor: not-allowed; }}
 .btn-secondary {{ width: 100%; padding: 10px; background: transparent; color: #1a1a2e; border: 1px solid #1a1a2e; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s; }}
 .btn-secondary:hover {{ background: #f0f0f4; }}
-#ai-panel {{ display: none; margin-top: 12px; text-align: left; }}
-#ai-panel.show {{ display: block; }}
-.field-group {{ margin-bottom: 10px; }}
-.field-group label {{ font-size: 11px; color: #555; display: block; margin-bottom: 4px; }}
-.field-group input[type=password] {{ width: 100%; padding: 8px 10px; background: #fff; border: 1px solid #ccc; border-radius: 5px; color: #1a1a1a; font-size: 12px; outline: none; transition: border-color .2s; }}
 .field-group input:focus {{ border-color: #1a1a2e; }}
 .key-hint {{ font-size: 11px; color: #666; margin-top: 4px; }}
 .key-hint a {{ color: #1a6abf; text-decoration: none; }}
@@ -2398,23 +2290,11 @@ body {{
       <button type="submit" class="btn-primary">&#x1F4CA; PDFを生成</button>
     </form>
   </div>
-  <div class="action-card">
-    <div class="action-icon">&#x1F916;</div>
-    <div class="action-title">AI分析 (Gemini)</div>
-    <div class="action-desc">Gemini APIを使用<br>GTO評価付きPDFを生成</div>
-    <div class="action-time">推定時間: {ai_time_str}</div>
-    <button type="button" class="btn-secondary" onclick="toggleAI()">&#x1F916; AI分析を開始</button>
-    <div id="ai-panel">
-      <form method="post" action="/start_ai/{job_id}" id="ai-form" target="_blank">
-        <div class="field-group">
-          <label>Gemini API キー</label>
-          <input type="password" name="api_key" id="ai-key"
-                 placeholder="{key_placeholder}" value="{key_val}" autocomplete="off">
-          <p class="key-hint">取得: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
-        </div>
-        <button type="submit" id="ai-submit" class="btn-primary">分析を開始</button>
-      </form>
-    </div>
+  <div class="action-card" style="opacity:0.6">
+    <div class="action-icon">&#x1F6D2;</div>
+    <div class="action-title">解析カート (準備中)</div>
+    <div class="action-desc">気になったハンドだけGemini解析<br>Phase 12 で実装予定</div>
+    <button type="button" class="btn-secondary" disabled>🛒 カートに追加</button>
   </div>
 </div>
 
@@ -2427,7 +2307,7 @@ body {{
     <button type="submit" class="btn-primary" style="width:100%">&#x1F4CA; PDFを生成</button>
   </form>
   <div style="flex:1">
-    <button type="button" class="btn-secondary" style="width:100%" onclick="scrollToAI()">&#x1F916; AI分析</button>
+    <button type="button" class="btn-secondary" style="width:100%;opacity:0.5" disabled>🛒 解析カート（準備中）</button>
   </div>
 </div>
 
@@ -2505,18 +2385,6 @@ function switchTab(id, btn) {{
   btn.classList.add('active');
   if (id === 'tab-chart' && !_chartBuilt) {{ buildChart(); _chartBuilt = true; }}
 }}
-function toggleAI() {{
-  document.getElementById('ai-panel').classList.toggle('show');
-}}
-function scrollToAI() {{
-  const el = document.querySelector('.action-card:last-child');
-  if (el) el.scrollIntoView({{behavior:'smooth', block:'center'}});
-  document.getElementById('ai-panel').classList.add('show');
-}}
-document.getElementById('ai-form').addEventListener('submit', function() {{
-  document.getElementById('ai-submit').disabled = true;
-  document.getElementById('ai-submit').textContent = '送信中...';
-}});
 </script>
 </body>
 </html>"""
