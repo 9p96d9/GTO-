@@ -2606,12 +2606,9 @@ setDesign(localStorage.getItem('cart_design') || 'a');
 </script>
 
 <!-- ─── Firebase + Cart JS ─── -->
-<script type="module">
-import {{ initializeApp, getApps, getApp }} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-
+<script>
+// static import の代わりに dynamic import を使用（import 失敗時もこのscript全体は実行される）
 const JOB_ID = '{job_id}';
-let _auth = null;
 let _user = null;
 const cartSet = window._cartSet;  // 非モジュールスクリプトと共有
 let _syncTimer = null;
@@ -2623,9 +2620,11 @@ function esc(s) {{
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
-// ── Firebase 初期化（既存アプリがあれば再利用） ──────────────────
+// ── Firebase 初期化（dynamic import → import失敗でも他の関数は動作する） ──────
 (async () => {{
   try {{
+    const {{ initializeApp, getApps, getApp }} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const {{ getAuth, onAuthStateChanged }} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     let app;
     if (getApps().length > 0) {{
       app = getApp();
@@ -2634,7 +2633,7 @@ function esc(s) {{
       const cfg = await r.json();
       app = initializeApp(cfg);
     }}
-    _auth = getAuth(app);
+    const _auth = getAuth(app);
     onAuthStateChanged(_auth, async user => {{
       _user = user;
       if (user) {{
@@ -2642,7 +2641,7 @@ function esc(s) {{
         await Promise.all([loadCart(), loadSettings()]);
       }}
     }});
-  }} catch(e) {{ console.warn('Firebase init failed', e); }}
+  }} catch(e) {{ console.warn('Firebase init failed:', e); }}
 }})();
 
 async function getToken() {{
@@ -2948,9 +2947,7 @@ window.setDesign = (d) => {{
   }});
   localStorage.setItem('cart_design', d);
 }};
-// 保存されたデザインを適用
-const _savedDesign = localStorage.getItem('cart_design') || 'a';
-setDesign(_savedDesign);
+
 </script>
 </body>
 </html>"""
