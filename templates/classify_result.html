@@ -338,11 +338,9 @@ body.design-c .cart-panel.open { right: 0; }
   <div class="cart-panel-foot">
     <div id="api-key-section" style="display:none;padding:10px 0 6px">
       <div style="font-size:11px;color:#555;margin-bottom:6px;font-weight:600">Gemini APIキー</div>
-      <div style="display:flex;gap:6px">
-        <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off"
-          style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #ccc;border-radius:4px;min-width:0" />
-        <button class="cart-btn" onclick="saveApiKey()" style="white-space:nowrap;flex-shrink:0">保存</button>
-      </div>
+      <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off"
+        style="display:block;width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;margin-bottom:6px" />
+      <button class="cart-btn" onclick="saveApiKey()" style="width:100%">保存</button>
       <div id="api-key-status" style="font-size:11px;margin-top:5px;color:#888"></div>
     </div>
     <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行</button>
