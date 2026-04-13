@@ -25,6 +25,7 @@ COPY scripts/ ./scripts/
 COPY static/ ./static/
 COPY extension/ ./extension/
 COPY server.py ./
+COPY templates/ ./templates/
 
 # 各種ディレクトリ作成
 RUN mkdir -p input/done output data
