@@ -343,3 +343,47 @@ def list_saved_carts(uid: str, job_id: str = None) -> list:
             d["created_at"] = d["created_at"].isoformat()
         result.append(d)
     return result
+
+
+# ─── ユーザー設定（Phase 12） ────────────────────────────────────────────────
+
+def get_user_settings(uid: str) -> dict:
+    """users/{uid}/settings/gemini を取得。存在しない場合は空 dict を返す"""
+    _init()
+    doc = _db.collection("users").document(uid).collection("settings").document("gemini").get()
+    if not doc.exists:
+        return {}
+    return doc.to_dict()
+
+
+def save_user_settings(uid: str, api_key: str = None, needs_api_auto_cart: bool = None):
+    """users/{uid}/settings/gemini を更新（指定フィールドのみ上書き）"""
+    _init()
+    update: dict = {}
+    if api_key is not None:
+        update["encrypted_api_key"] = api_key  # Firebase が保存時に暗号化
+    if needs_api_auto_cart is not None:
+        update["needs_api_auto_cart"] = needs_api_auto_cart
+    if update:
+        _db.collection("users").document(uid).collection("settings").document("gemini").set(
+            update, merge=True
+        )
+
+
+# ─── Gemini 解析結果（Phase 12） ────────────────────────────────────────────
+
+def get_gemini_results(uid: str, job_id: str) -> dict:
+    """analyses/{job_id} の gemini_results を取得。存在しない場合は空 dict"""
+    _init()
+    doc = _db.collection("users").document(uid).collection("analyses").document(job_id).get()
+    if not doc.exists:
+        return {}
+    return doc.to_dict().get("gemini_results") or {}
+
+
+def save_gemini_results(uid: str, job_id: str, results: dict):
+    """gemini_results を analyses/{job_id} にマージ保存"""
+    _init()
+    _db.collection("users").document(uid).collection("analyses").document(job_id).set(
+        {"gemini_results": results}, merge=True
+    )

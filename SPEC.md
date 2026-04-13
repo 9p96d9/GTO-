@@ -411,15 +411,15 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 ### 実装順序（推奨）
 
 ```
-1. classify.py: value_success にリネーム + Firestoreテストデータ削除
-2. /start_ai 廃止・推定解析時間削除
-3. result画面: カートUI実装（追加/削除/ドロワー）
-4. /api/cart エンドポイント群（Firestore連携）
-5. needs_api 自動カート追加
-6. /api/user/settings（APIキー保存）
-7. /api/cart/{job_id}/analyze（SSE + バッチGemini）
-8. result画面: 🤖 AI解析セクション表示
-9. PDF: AI込みバージョン対応
+1. classify.py: value_success にリネーム + Firestoreテストデータ削除  ✅
+2. /start_ai 廃止・推定解析時間削除                                   ✅
+3. result画面: カートUI実装（追加/削除/ドロワー）                      ✅
+4. /api/cart エンドポイント群（Firestore連携）                         ✅
+5. needs_api 自動カート追加（サーバー設定連携）                        ✅
+6. /api/user/settings（APIキー保存・カートドロワー内UI）               ✅
+7. /api/cart/{job_id}/analyze（SSE + バッチGemini）                   ✅
+8. result画面: 🤖 AI解析セクション表示（JS動的描画・リロード復元）     ✅
+9. PDF: AI込みバージョン対応                                          ⬜未着手
 10. ローカルテストで速度・バッチサイズ調整
 ```
 

@@ -2172,6 +2172,13 @@ body {{
 .cart-add-btn:hover {{ background: #e8f0ff; border-color: #0055CC; color: #0055CC; }}
 .hand-card.in-cart .cart-add-btn {{ background: #0055CC; border-color: #0055CC; color: #fff; }}
 
+/* ─── AI解析結果セクション ─── */
+.ai-result-item {{ padding: 12px 16px; border-bottom: 1px solid #eef; }}
+.ai-result-item:last-child {{ border-bottom: none; }}
+.ai-result-head {{ display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }}
+.ai-hand-num {{ font-weight: 700; font-size: 13px; color: #1a1a2e; }}
+.ai-category {{ font-size: 11px; background: #f0f0f0; padding: 2px 7px; border-radius: 10px; color: #555; }}
+.ai-result-text {{ font-size: 12px; color: #333; line-height: 1.7; white-space: pre-wrap; }}
 /* ─── カート FAB ─── */
 .cart-fab {{ position: fixed; bottom: 80px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #1a1a2e; color: #fff; border: none; font-size: 22px; cursor: pointer; box-shadow: 0 3px 14px rgba(0,0,0,0.35); z-index: 300; display: flex; align-items: center; justify-content: center; transition: transform .15s; }}
 .cart-fab:hover {{ transform: scale(1.08); }}
@@ -2332,6 +2339,19 @@ body.design-c .cart-panel.open {{ right: 0; }}
 <div class="tab-panel active" id="tab-hands">
 <div class="content">
 
+<!-- 🤖 AI解析結果（JS で動的に挿入・解析済み時のみ表示） -->
+<div id="ai-section" style="display:none">
+  <div class="section">
+    <div class="section-header" onclick="toggleSection('ai-results-body')">
+      🤖 AI解析結果 <span id="ai-count" style="font-weight:400;font-size:13px"></span>
+      <span class="toggle-btn">&#x25B2;</span>
+    </div>
+    <div class="accordion-body" id="ai-results-body">
+      <div id="ai-results-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- カテゴリ内訳 -->
 <div class="section">
   <div class="section-header" onclick="toggleSection('cat-body')">
@@ -2375,11 +2395,11 @@ body.design-c .cart-panel.open {{ right: 0; }}
       <button type="submit" class="btn-primary">&#x1F4CA; PDFを生成</button>
     </form>
   </div>
-  <div class="action-card" style="opacity:0.6">
+  <div class="action-card">
     <div class="action-icon">&#x1F6D2;</div>
-    <div class="action-title">解析カート (準備中)</div>
-    <div class="action-desc">気になったハンドだけGemini解析<br>Phase 12 で実装予定</div>
-    <button type="button" class="btn-secondary" disabled>🛒 カートに追加</button>
+    <div class="action-title">AI 解析カート</div>
+    <div class="action-desc">気になったハンドを選んで<br>Gemini に GTO 評価させる</div>
+    <button type="button" class="btn-secondary" onclick="toggleCartPanel()">🛒 カートを開く</button>
   </div>
 </div>
 
@@ -2413,7 +2433,16 @@ body.design-c .cart-panel.open {{ right: 0; }}
     <div id="cart-items"></div>
   </div>
   <div class="cart-panel-foot">
-    <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行（準備中）</button>
+    <div id="api-key-section" style="display:none;padding:10px 0 6px">
+      <div style="font-size:11px;color:#555;margin-bottom:6px;font-weight:600">Gemini APIキー</div>
+      <div style="display:flex;gap:6px">
+        <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off"
+          style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #ccc;border-radius:4px;min-width:0" />
+        <button class="cart-btn" onclick="saveApiKey()" style="white-space:nowrap;flex-shrink:0">保存</button>
+      </div>
+      <div id="api-key-status" style="font-size:11px;margin-top:5px;color:#888"></div>
+    </div>
+    <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行</button>
   </div>
 </div>
 
@@ -2423,7 +2452,7 @@ body.design-c .cart-panel.open {{ right: 0; }}
     <button type="submit" class="btn-primary" style="width:100%">&#x1F4CA; PDFを生成</button>
   </form>
   <div style="flex:1">
-    <button type="button" class="btn-secondary" style="width:100%;opacity:0.5" disabled>🛒 解析カート（準備中）</button>
+    <button type="button" class="btn-secondary" style="width:100%" onclick="toggleCartPanel()">🛒 解析カート<span id="footer-cart-badge"></span></button>
   </div>
 </div>
 
@@ -2511,9 +2540,15 @@ import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasej
 const JOB_ID = '{job_id}';
 let _auth = null;
 let _user = null;
-let cartSet = new Set();  // hand_numbers in cart
+let cartSet = new Set();
 let _syncTimer = null;
-let _cartLabels = {{}};  // hand_number -> category label
+let _cartLabels = {{}};
+let _userSettings = {{}};
+let _geminiResults = {{}};
+
+function esc(s) {{
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
 
 // ── Firebase 初期化（既存アプリがあれば再利用） ──────────────────
 (async () => {{
@@ -2531,8 +2566,7 @@ let _cartLabels = {{}};  // hand_number -> category label
       _user = user;
       if (user) {{
         buildHandLabels();
-        await loadCart();
-        autoAddNeedsApi();
+        await Promise.all([loadCart(), loadSettings()]);
       }}
     }});
   }} catch(e) {{ console.warn('Firebase init failed', e); }}
@@ -2563,14 +2597,34 @@ async function loadCart() {{
     }});
     const data = await r.json();
     cartSet = new Set((data.hand_numbers || []).map(Number));
+    if (data.gemini_results && Object.keys(data.gemini_results).length > 0) {{
+      _geminiResults = data.gemini_results;
+      renderAiSection();
+    }}
     renderCart();
   }} catch(e) {{ console.warn('cart load error', e); }}
 }}
 
+// ── ユーザー設定読み込み ──────────────────────────────────────────
+async function loadSettings() {{
+  const token = await getToken();
+  if (!token) return;
+  try {{
+    const r = await fetch('/api/user/settings', {{
+      headers: {{'Authorization': `Bearer ${{token}}`}}
+    }});
+    _userSettings = await r.json();
+    updateApiKeyUI();
+    if (_userSettings.needs_api_auto_cart !== false) {{
+      autoAddNeedsApi();
+    }}
+  }} catch(e) {{
+    autoAddNeedsApi();  // フォールバック
+  }}
+}}
+
 // ── needs_api 自動追加 ────────────────────────────────────────────
 function autoAddNeedsApi() {{
-  const autoAdd = localStorage.getItem('needs_api_auto_cart') !== 'off';
-  if (!autoAdd) return;
   let changed = false;
   document.querySelectorAll('.hand-card[data-needs-api="1"]').forEach(el => {{
     const num = parseInt(el.dataset.hnum);
@@ -2608,10 +2662,13 @@ async function syncCart() {{
 // ── レンダリング ─────────────────────────────────────────────────
 function renderCart() {{
   const count = cartSet.size;
-  // バッジ
+  // FABバッジ
   const badge = document.getElementById('cart-badge');
   badge.textContent = count || '';
   badge.classList.toggle('hidden', count === 0);
+  // フッターバッジ
+  const footerBadge = document.getElementById('footer-cart-badge');
+  if (footerBadge) footerBadge.textContent = count ? ` (${{count}})` : '';
 
   // ハンドカードのスタイル
   document.querySelectorAll('.hand-card[data-hnum]').forEach(el => {{
@@ -2640,14 +2697,84 @@ function renderCart() {{
     const pl    = el?.dataset.pl    || '';
     const plNum = parseFloat(el?.dataset.plNum || '0');
     const plCls = plNum > 0 ? 'pos' : plNum < 0 ? 'neg' : 'zero';
+    const hasAi = _geminiResults[String(n)] ? ' 🤖' : '';
     return `<div class="cart-item">
-      <span class="cart-item-num">H${{n}}</span>
+      <span class="cart-item-num">H${{n}}${{hasAi}}</span>
       <span class="cart-item-info"><span class="cart-item-pos">${{pos}}</span> ${{cards}}</span>
       <span class="cart-item-pl ${{plCls}}">${{pl}}</span>
       <button class="cart-item-del" onclick="toggleCart(${{n}})" title="削除">✕</button>
     </div>`;
   }}).join('');
 }}
+
+// ── AI解析結果セクション描画 ────────────────────────────────────
+function renderAiSection() {{
+  const keys = Object.keys(_geminiResults);
+  if (!keys.length) return;
+  const section = document.getElementById('ai-section');
+  section.style.display = '';
+  document.getElementById('ai-count').textContent = `(${{keys.length}}手)`;
+  const list = document.getElementById('ai-results-list');
+  list.innerHTML = keys.sort((a,b) => parseInt(a)-parseInt(b)).map(k => {{
+    const r = _geminiResults[k];
+    const text = r.text || '評価なし';
+    const cat  = r.category || '';
+    return `<div class="ai-result-item">
+      <div class="ai-result-head">
+        <span class="ai-hand-num">H${{k}}</span>
+        ${{cat ? `<span class="ai-category">${{esc(cat)}}</span>` : ''}}
+      </div>
+      <div class="ai-result-text">${{esc(text)}}</div>
+    </div>`;
+  }}).join('');
+}}
+
+// ── APIキー UI 更新 ──────────────────────────────────────────────
+function updateApiKeyUI() {{
+  const section = document.getElementById('api-key-section');
+  const statusEl = document.getElementById('api-key-status');
+  if (!section) return;
+  section.style.display = '';
+  if (_userSettings.has_key) {{
+    statusEl.textContent = `設定済み: ${{_userSettings.key_masked || '****'}}`;
+    statusEl.style.color = '#2e7d32';
+  }} else {{
+    statusEl.textContent = 'APIキーを設定してください';
+    statusEl.style.color = '#c0392b';
+  }}
+}}
+
+// ── APIキー保存 ──────────────────────────────────────────────────
+window.saveApiKey = async function() {{
+  const key = document.getElementById('api-key-input')?.value.trim();
+  if (!key) return;
+  const token = await getToken();
+  if (!token) {{ alert('ログインしてください'); return; }}
+  const statusEl = document.getElementById('api-key-status');
+  statusEl.textContent = '保存中...';
+  statusEl.style.color = '#888';
+  try {{
+    const r = await fetch('/api/user/settings', {{
+      method: 'PUT',
+      headers: {{'Authorization': `Bearer ${{token}}`, 'Content-Type': 'application/json'}},
+      body: JSON.stringify({{api_key: key}})
+    }});
+    const d = await r.json();
+    if (d.ok) {{
+      _userSettings.has_key = true;
+      _userSettings.key_masked = '****' + key.slice(-4);
+      document.getElementById('api-key-input').value = '';
+      statusEl.textContent = `設定済み: ${{_userSettings.key_masked}}`;
+      statusEl.style.color = '#2e7d32';
+    }} else {{
+      statusEl.textContent = 'エラー: ' + (d.error || '保存失敗');
+      statusEl.style.color = '#c0392b';
+    }}
+  }} catch(e) {{
+    statusEl.textContent = 'エラー: ' + e.message;
+    statusEl.style.color = '#c0392b';
+  }}
+}};
 
 // ── ドロワー開閉 ─────────────────────────────────────────────────
 window.toggleCartPanel = () => {{
@@ -2661,8 +2788,79 @@ window.closeCartPanel = () => {{
   document.getElementById('cart-overlay').classList.remove('open');
 }};
 
-window.startAnalyze = () => {{
-  alert('解析カート機能は Phase 12 で実装予定です');
+// ── Gemini 解析実行 ──────────────────────────────────────────────
+window.startAnalyze = async function() {{
+  const token = await getToken();
+  if (!token) {{ alert('ログインしてください'); return; }}
+
+  const btn = document.getElementById('cart-analyze-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 解析中...';
+
+  try {{
+    const resp = await fetch(`/api/cart/${{JOB_ID}}/analyze`, {{
+      method: 'POST',
+      headers: {{'Authorization': `Bearer ${{token}}`}}
+    }});
+
+    if (!resp.ok) {{
+      let errMsg = resp.statusText;
+      try {{ errMsg = (await resp.json()).error || errMsg; }} catch(_) {{}}
+      if (errMsg.includes('APIキー')) {{
+        updateApiKeyUI();
+        document.getElementById('cart-panel')?.classList.add('open');
+        document.getElementById('cart-overlay')?.classList.add('open');
+      }} else {{
+        alert('エラー: ' + errMsg);
+      }}
+      btn.disabled = false;
+      btn.textContent = '⚡ 解析を実行';
+      return;
+    }}
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let doneCount = 0;
+    let totalCount = '?';
+
+    while (true) {{
+      const {{done, value}} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {{stream: true}});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {{
+        if (!line.startsWith('data: ')) continue;
+        let ev;
+        try {{ ev = JSON.parse(line.slice(6)); }} catch(_) {{ continue; }}
+        if (ev.type === 'batch') {{
+          totalCount = ev.total || totalCount;
+          for (const r of (ev.results || [])) {{
+            _geminiResults[String(r.hand_number)] = {{text: r.text, category: r.category}};
+            doneCount++;
+          }}
+          btn.textContent = `⏳ ${{doneCount}}/${{totalCount}} 解析中...`;
+          renderAiSection();
+          renderCart();
+        }} else if (ev.type === 'done') {{
+          btn.textContent = '✅ 解析完了';
+          btn.disabled = false;
+          renderAiSection();
+          renderCart();
+          // AI込みPDFボタンがあれば表示
+          const aiPdfArea = document.getElementById('ai-pdf-area');
+          if (aiPdfArea) aiPdfArea.style.display = '';
+        }} else if (ev.type === 'error') {{
+          throw new Error(ev.message || '解析エラー');
+        }}
+      }}
+    }}
+  }} catch(e) {{
+    alert('解析エラー: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '⚡ 解析を実行';
+  }}
 }};
 
 // ── デザイン切替 ─────────────────────────────────────────────────
@@ -3584,15 +3782,18 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
 
 @app.get("/api/cart/{job_id}")
 async def api_get_cart(job_id: str, request: Request):
-    """アクティブカート取得"""
+    """アクティブカート取得（gemini_results も含む）"""
     try:
         uid = _get_uid_from_request(request)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
-    from scripts.firebase_utils import is_firebase_enabled, get_cart
+    from scripts.firebase_utils import is_firebase_enabled, get_cart, get_gemini_results
     if not is_firebase_enabled():
-        return JSONResponse({"hand_numbers": []})
-    return JSONResponse({"hand_numbers": get_cart(uid, job_id)})
+        return JSONResponse({"hand_numbers": [], "gemini_results": {}})
+    return JSONResponse({
+        "hand_numbers": get_cart(uid, job_id),
+        "gemini_results": get_gemini_results(uid, job_id),
+    })
 
 
 @app.post("/api/cart/{job_id}/hands")
@@ -3638,6 +3839,156 @@ async def api_list_carts(request: Request, job_id: str = None):
     if not is_firebase_enabled():
         return JSONResponse({"carts": []})
     return JSONResponse({"carts": list_saved_carts(uid, job_id)})
+
+
+@app.post("/api/cart/{job_id}/analyze")
+async def api_analyze_cart(job_id: str, request: Request):
+    """カート内ハンドを Gemini で解析し SSE で結果を逐次返却"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+
+    from scripts.firebase_utils import (
+        is_firebase_enabled, get_cart, get_user_settings,
+        get_analysis, save_gemini_results,
+    )
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    # APIキー取得（ユーザー設定 → 環境変数フォールバック）
+    settings = get_user_settings(uid)
+    api_key = (settings.get("encrypted_api_key") or "").strip()
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return JSONResponse(
+            {"error": "Gemini APIキーが設定されていません。カートの設定から登録してください。"},
+            status_code=400,
+        )
+
+    # カート取得
+    hand_numbers = get_cart(uid, job_id)
+    if not hand_numbers:
+        return JSONResponse({"error": "カートが空です"}, status_code=400)
+
+    # ハンドデータ取得（メモリ → Firestore フォールバック）
+    classified_data = None
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job and job.get("classified_path"):
+        try:
+            with open(job["classified_path"], encoding="utf-8") as f:
+                classified_data = json.load(f)
+        except Exception:
+            pass
+
+    if not classified_data:
+        analysis = get_analysis(uid, job_id)
+        if analysis and analysis.get("classified_snapshot"):
+            try:
+                classified_data = json.loads(analysis["classified_snapshot"])
+            except Exception:
+                pass
+
+    if not classified_data:
+        return JSONResponse(
+            {"error": "解析データが見つかりません。ページをリロードしてください。"},
+            status_code=404,
+        )
+
+    hand_map = {
+        h.get("hand_number"): h
+        for h in classified_data.get("hands", [])
+        if h.get("hand_number") is not None
+    }
+    cart_hands = [(n, hand_map[n]) for n in hand_numbers if n in hand_map]
+    if not cart_hands:
+        return JSONResponse({"error": "カートのハンドが見つかりません"}, status_code=400)
+
+    from sse_starlette.sse import EventSourceResponse as _ESR
+    import asyncio as _asyncio
+    from scripts.analyze import evaluate_batch, BATCH_SIZE
+    from google import genai as _genai
+
+    total = len(cart_hands)
+    batches = [cart_hands[i:i + BATCH_SIZE] for i in range(0, len(cart_hands), BATCH_SIZE)]
+
+    async def generate():
+        client = _genai.Client(api_key=api_key)
+        all_results: dict = {}
+        done_count = 0
+        loop = _asyncio.get_event_loop()
+
+        for batch in batches:
+            try:
+                result_map = await loop.run_in_executor(None, evaluate_batch, client, batch)
+            except Exception as e:
+                yield {"data": json.dumps({"type": "error", "message": str(e)[:200]}, ensure_ascii=False)}
+                return
+
+            batch_results = []
+            for hnum, hand in batch:
+                text = result_map.get(hnum, "評価エラー")
+                category = hand.get("bluered_classification", {}).get("category", "")
+                all_results[str(hnum)] = {"text": text, "category": category}
+                batch_results.append({"hand_number": hnum, "text": text, "category": category})
+                done_count += 1
+
+            yield {"data": json.dumps({
+                "type": "batch",
+                "results": batch_results,
+                "done": done_count,
+                "total": total,
+            }, ensure_ascii=False)}
+
+        # Firestoreに保存
+        try:
+            await loop.run_in_executor(None, save_gemini_results, uid, job_id, all_results)
+        except Exception as e:
+            print(f"[WARN] gemini_results 保存失敗: {e}", file=sys.stderr)
+
+        yield {"data": json.dumps({"type": "done", "total": total}, ensure_ascii=False)}
+
+    return _ESR(generate())
+
+
+@app.get("/api/user/settings")
+async def api_get_user_settings(request: Request):
+    """ユーザー設定取得（APIキーはマスク表示）"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    from scripts.firebase_utils import is_firebase_enabled, get_user_settings
+    if not is_firebase_enabled():
+        return JSONResponse({"has_key": False, "needs_api_auto_cart": True})
+    settings = get_user_settings(uid)
+    api_key = settings.get("encrypted_api_key", "")
+    has_key = bool(api_key)
+    key_masked = ("****" + api_key[-4:]) if has_key and len(api_key) >= 4 else ("*" * len(api_key) if has_key else "")
+    return JSONResponse({
+        "has_key": has_key,
+        "key_masked": key_masked,
+        "needs_api_auto_cart": settings.get("needs_api_auto_cart", True),
+    })
+
+
+@app.put("/api/user/settings")
+async def api_put_user_settings(request: Request):
+    """ユーザー設定更新（api_key / needs_api_auto_cart）"""
+    try:
+        uid = _get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    from scripts.firebase_utils import is_firebase_enabled, save_user_settings
+    if not is_firebase_enabled():
+        return JSONResponse({"ok": False, "error": "Firebase未設定"})
+    body = await request.json()
+    api_key = body.get("api_key")  # None = 変更しない、"" = 削除
+    needs_api_auto_cart = body.get("needs_api_auto_cart")
+    save_user_settings(uid, api_key=api_key, needs_api_auto_cart=needs_api_auto_cart)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/analyses")
