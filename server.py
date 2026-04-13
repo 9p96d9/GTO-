@@ -2551,7 +2551,38 @@ window.toggleCart = function(handNum) {{
   if (badge) {{ badge.textContent = count || ''; badge.classList.toggle('hidden', !count); }}
   var fb = document.getElementById('footer-cart-badge');
   if (fb) fb.textContent = count ? ' (' + count + ')' : '';
+  _renderCartDrawer();
   if (typeof window._fullRenderCart === 'function') window._fullRenderCart();
+}};
+function _renderCartDrawer() {{
+  var count = window._cartSet.size;
+  var emptyEl = document.getElementById('cart-empty');
+  var itemsEl = document.getElementById('cart-items');
+  var analyzeBtn = document.getElementById('cart-analyze-btn');
+  if (!itemsEl) return;
+  if (count === 0) {{
+    if (emptyEl) emptyEl.style.display = '';
+    itemsEl.innerHTML = '';
+    if (analyzeBtn) analyzeBtn.disabled = true;
+    return;
+  }}
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (analyzeBtn) analyzeBtn.disabled = false;
+  var sorted = Array.from(window._cartSet).sort(function(a,b){{return a-b;}});
+  itemsEl.innerHTML = sorted.map(function(n) {{
+    var el = document.querySelector('.hand-card[data-hnum="' + n + '"]');
+    var pos   = el ? (el.dataset.pos   || '?') : '?';
+    var cards = el ? (el.dataset.cards || '') : '';
+    var pl    = el ? (el.dataset.pl    || '') : '';
+    var plNum = el ? parseFloat(el.dataset.plNum || '0') : 0;
+    var plCls = plNum > 0 ? 'pos' : plNum < 0 ? 'neg' : 'zero';
+    return '<div class="cart-item">'
+      + '<span class="cart-item-num">H' + n + '</span>'
+      + '<span class="cart-item-info"><span class="cart-item-pos">' + pos + '</span> ' + cards + '</span>'
+      + '<span class="cart-item-pl ' + plCls + '">' + pl + '</span>'
+      + '<button class="cart-item-del" onclick="toggleCart(' + n + ')" title="削除">✕</button>'
+      + '</div>';
+  }}).join('');
 }};
 window.toggleCartPanel = function() {{
   document.getElementById('cart-panel').classList.toggle('open');
