@@ -6,3 +6,4 @@ python-dotenv
 sse-starlette
 treys
 firebase-admin
+jinja2
