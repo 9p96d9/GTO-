@@ -3157,7 +3157,8 @@ async def api_analyze_cart(job_id: str, request: Request):
             try:
                 result_map = await loop.run_in_executor(None, evaluate_batch, client, batch)
             except Exception as e:
-                yield {"data": json.dumps({"type": "error", "message": str(e)[:200]}, ensure_ascii=False)}
+                key_hint = f"（キー末尾: ...{api_key[-4:]}）" if api_key else ""
+                yield {"data": json.dumps({"type": "error", "message": str(e)[:300] + key_hint}, ensure_ascii=False)}
                 return
 
             batch_results = []

@@ -15,7 +15,7 @@ from google import genai
 
 load_dotenv()
 
-MODEL      = "gemini-2.0-flash"
+MODEL      = "gemini-1.5-flash"
 BATCH_SIZE = 10          # 1リクエストあたりのハンド数（50ハンド→5リクエスト）
 RETRY_WAIT = 5.0         # 429エラー時の待機秒数
 MAX_RETRY  = 3
