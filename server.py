@@ -1852,6 +1852,7 @@ def classify_result_page(
             f' data-pos="{_esc(hero_pos)}"'
             f' data-cards="{_esc(_cards_str)}"'
             f' data-pl="{_esc(_pl_str)}"'
+            f' data-pl-num="{pl:.2f}"'
         )
         cart_btn = (
             f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
@@ -2189,7 +2190,10 @@ body {{
 .cart-item-num {{ font-weight: 700; color: #333; min-width: 32px; }}
 .cart-item-info {{ flex: 1; color: #555; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .cart-item-pos {{ display: inline-block; background: #e8f0fe; color: #1a6abf; border-radius: 3px; padding: 0 4px; font-weight: 700; font-size: 10px; }}
-.cart-item-pl {{ font-weight: 700; font-size: 11px; color: #888; white-space: nowrap; }}
+.cart-item-pl {{ font-weight: 700; font-size: 11px; white-space: nowrap; }}
+.cart-item-pl.pos {{ color: #2e7d32; }}
+.cart-item-pl.neg {{ color: #c0392b; }}
+.cart-item-pl.zero {{ color: #888; }}
 .cart-item-del {{ background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 0 2px; }}
 .cart-item-del:hover {{ color: #e74c3c; }}
 .cart-empty {{ text-align: center; color: #aaa; font-size: 12px; padding: 30px 0; }}
@@ -2634,11 +2638,12 @@ function renderCart() {{
     const pos   = el?.dataset.pos   || '?';
     const cards = el?.dataset.cards || '';
     const pl    = el?.dataset.pl    || '';
-    const na    = el?.dataset.needsApi === '1' ? ' ★' : '';
+    const plNum = parseFloat(el?.dataset.plNum || '0');
+    const plCls = plNum > 0 ? 'pos' : plNum < 0 ? 'neg' : 'zero';
     return `<div class="cart-item">
       <span class="cart-item-num">H${{n}}</span>
-      <span class="cart-item-info"><span class="cart-item-pos">${{pos}}</span> ${{cards}}${{na}}</span>
-      <span class="cart-item-pl">${{pl}}</span>
+      <span class="cart-item-info"><span class="cart-item-pos">${{pos}}</span> ${{cards}}</span>
+      <span class="cart-item-pl ${{plCls}}">${{pl}}</span>
       <button class="cart-item-del" onclick="toggleCart(${{n}})" title="削除">✕</button>
     </div>`;
   }}).join('');
