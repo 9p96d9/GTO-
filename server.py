@@ -2532,6 +2532,37 @@ function switchTab(id, btn) {{
 }}
 </script>
 
+<!-- ─── カート基本動作（Firebase モジュール非依存・常に動作） ─── -->
+<script>
+window._cartSet = new Set();
+window.toggleCart = function(handNum) {{
+  handNum = parseInt(handNum);
+  if (window._cartSet.has(handNum)) window._cartSet.delete(handNum);
+  else window._cartSet.add(handNum);
+  var inCart = window._cartSet.has(handNum);
+  var card = document.querySelector('.hand-card[data-hnum="' + handNum + '"]');
+  if (card) {{
+    card.classList.toggle('in-cart', inCart);
+    var btn = card.querySelector('.cart-add-btn');
+    if (btn) btn.textContent = inCart ? '✓カート' : '🛒';
+  }}
+  var count = window._cartSet.size;
+  var badge = document.getElementById('cart-badge');
+  if (badge) {{ badge.textContent = count || ''; badge.classList.toggle('hidden', !count); }}
+  var fb = document.getElementById('footer-cart-badge');
+  if (fb) fb.textContent = count ? ' (' + count + ')' : '';
+  if (typeof window._fullRenderCart === 'function') window._fullRenderCart();
+}};
+window.toggleCartPanel = function() {{
+  document.getElementById('cart-panel').classList.toggle('open');
+  document.getElementById('cart-overlay').classList.toggle('open');
+}};
+window.closeCartPanel = function() {{
+  document.getElementById('cart-panel').classList.remove('open');
+  document.getElementById('cart-overlay').classList.remove('open');
+}};
+</script>
+
 <!-- ─── Firebase + Cart JS ─── -->
 <script type="module">
 import {{ initializeApp, getApps, getApp }} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -2540,7 +2571,7 @@ import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasej
 const JOB_ID = '{job_id}';
 let _auth = null;
 let _user = null;
-let cartSet = new Set();
+const cartSet = window._cartSet;  // 非モジュールスクリプトと共有
 let _syncTimer = null;
 let _cartLabels = {{}};
 let _userSettings = {{}};
@@ -2706,6 +2737,9 @@ function renderCart() {{
     </div>`;
   }}).join('');
 }}
+
+// 非モジュールスクリプトからフル renderCart を呼べるよう公開
+window._fullRenderCart = renderCart;
 
 // ── AI解析結果セクション描画 ────────────────────────────────────
 function renderAiSection() {{
