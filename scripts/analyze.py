@@ -15,7 +15,7 @@ from google import genai
 
 load_dotenv()
 
-MODEL      = "gemini-2.5-flash"
+MODEL      = "gemini-2.5-flash-preview-04-17"
 BATCH_SIZE = 10          # 1リクエストあたりのハンド数（50ハンド→5リクエスト）
 RETRY_WAIT = 5.0         # 429エラー時の待機秒数
 MAX_RETRY  = 3
@@ -41,21 +41,24 @@ def get_hand_summary(hand: dict) -> str:
 
 def format_action_summary(hand: dict) -> str:
     lines = []
-    preflop = hand["streets"].get("preflop", [])
+    streets = hand.get("streets") or {}
+    preflop = streets.get("preflop") or []
     if preflop:
         lines.append("【プリフロップ】")
         for a in preflop:
-            amt = f" {a['amount_bb']}bb" if "amount_bb" in a else ""
-            lines.append(f"  {a['position']} {a['name']}: {a['action']}{amt}")
+            amt = f" {a.get('amount_bb')}bb" if a.get("amount_bb") is not None else ""
+            pos = a.get("position") or a.get("name", "?")
+            lines.append(f"  {pos}: {a.get('action', '?')}{amt}")
 
     for street in ("flop", "turn", "river"):
-        s = hand["streets"].get(street)
-        if s:
-            board = " ".join(s.get("board", []))
+        s = streets.get(street)
+        if s and isinstance(s, dict):
+            board = " ".join(s.get("board") or [])
             lines.append(f"【{street.capitalize()}】{board} (ポット: {s.get('pot_bb', 0)}bb)")
-            for a in s.get("actions", []):
-                amt = f" {a['amount_bb']}bb" if "amount_bb" in a else ""
-                lines.append(f"  {a['position']} {a['name']}: {a['action']}{amt}")
+            for a in (s.get("actions") or []):
+                amt = f" {a.get('amount_bb')}bb" if a.get("amount_bb") is not None else ""
+                pos = a.get("position") or a.get("name", "?")
+                lines.append(f"  {pos}: {a.get('action', '?')}{amt}")
 
     return "\n".join(lines)
 
@@ -142,9 +145,8 @@ def evaluate_batch(client: genai.Client, indexed_hands: list) -> dict:
                 print(f"  [429] バッチ{ids}: レート制限 — {RETRY_WAIT}秒後リトライ ({retries}/{MAX_RETRY})", file=sys.stderr)
                 time.sleep(RETRY_WAIT)
                 continue
-            ids = [idx for idx, _ in indexed_hands]
-            print(f"  [ERROR] バッチ{ids}: {e}", file=sys.stderr)
-            return {idx: "評価エラー" for idx, _ in indexed_hands}
+            # 429以外はそのまま raise して呼び出し元にエラーを伝える
+            raise
 
 
 # ─── フラグ設定 ───────────────────────────────────────────────────────────────
