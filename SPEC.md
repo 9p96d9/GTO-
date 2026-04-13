@@ -1,6 +1,6 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 5.1
+**バージョン:** 6.0
 **最終更新:** 2026-04-13
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
@@ -22,6 +22,7 @@
 | Phase 9 | 拡張機能UX改善（設定・バッジ・非干渉通知） | ✅ 完了 |
 | Phase 10 | Web出力リデザイン（白背景・アコーディオン・可変表示） | ✅ 完了 |
 | Phase 11 | 対戦相手統計DB ＋ SNS共有 | ⬜ 未着手 |
+| **Phase 12** | **解析カート & AI解析インライン表示（Gemini刷新）** | 🔄 設計完了・実装待ち |
 
 ---
 
@@ -36,7 +37,8 @@ T4ポーカーサイトのハンドログをリアルタイム自動取得し、
 | **リアルタイム解析（メイン）** | 拡張機能自動取得 → hand_converter → classify → Web結果画面 | 不要 |
 | **classifyモード（レガシー）** | テキストアップロード → parse → classify → Web結果画面 | 不要 |
 | **NoAPI PDF** | 分類結果からAPIなしでPDFを生成（Web結果画面からオプション） | 不要 |
-| **AI PDF** | 分類結果にGemini分析を追加してPDFを生成（Web結果画面からオプション） | 必要（BYOK） |
+| **解析カート → AI解析** | 結果画面で気になったハンドをカートに追加 → 選択ハンドのみGemini解析 → 同ページに結果を追記 | 必要（Firestoreに暗号化保存） |
+| **AI込みPDF** | AI解析結果を含む結果画面をまとめてPDF化 | 不要（解析済みデータを使用） |
 
 ### 画面構成
 
@@ -131,7 +133,7 @@ postflopなし:
 
 postflopあり:
   ショーダウンあり:
-    勝ち+Hero最終アグレッサー → value_or_bluff_success（青）
+    勝ち+Hero最終アグレッサー → value_success（青）  ※旧: value_or_bluff_success
     勝ち+相手最終アグレッサー → bluff_catch（青）
     負け+Hero最終アグレッサー → bluff_failed（青）
     負け+相手最終アグレッサー → call_lost（青）
@@ -139,6 +141,9 @@ postflopあり:
     Hero勝ち → hero_aggression_won（赤・needs_api）
     Hero負け: treysで判定可 → bad_fold / nice_fold（赤） / 判定不能 → fold_unknown（赤・needs_api）
 ```
+
+> **命名変更メモ:** ショーダウンしている時点でヒーローのカードは表になっており、ブラフではない。
+> `value_or_bluff_success` → `value_success` に修正済み（Phase 12対応時にFirestoreテストデータも削除）
 
 ### 3-3. hand_converter.py
 
@@ -160,7 +165,8 @@ postflopあり:
 | GET | `/classify_progress/{job_id}` | 分類進捗画面（SSE接続） |
 | GET | `/classify_result/{job_id}` | 分類結果Web画面（Firestoreから復元対応） |
 | POST | `/generate_pdf/{job_id}` | NoAPI PDF生成 |
-| POST | `/start_ai/{job_id}` | AI分析+PDF生成（BYOKキー） |
+| POST | `/generate_pdf/{job_id}?include_ai=true` | AI結果込みPDF生成（Phase 12） |
+| ~~POST~~ | ~~`/start_ai/{job_id}`~~ | ~~全ハンドAI解析+PDF（廃止・Phase 12で削除）~~ |
 | GET | `/sessions` | セッション画面（ログイン必須） |
 | GET | `/api/firebase-config` | Firebase public設定 |
 | GET | `/api/extension.zip` | 拡張機能ZIPダウンロード |
@@ -173,6 +179,14 @@ postflopあり:
 | DELETE | `/api/sessions/{session_id}` | セッション削除 |
 | POST | `/api/sessions/analyze-multi` | 複数セッション結合解析 |
 | POST | `/api/sessions/download-text` | セッションtxtダウンロード |
+| GET | `/api/cart/{job_id}` | アクティブカートの取得（Phase 12） |
+| POST | `/api/cart/{job_id}/hands` | カートへのハンド追加/削除（Phase 12） |
+| POST | `/api/cart/{job_id}/save` | カートを名前付き保存（Phase 12） |
+| GET | `/api/carts` | 保存済みカート一覧（Phase 12） |
+| GET | `/api/carts/{cart_id}` | 保存済みカートの取得（Phase 12） |
+| POST | `/api/cart/{job_id}/analyze` | カート内ハンドをGemini解析・SSEで順次返却（Phase 12） |
+| GET | `/api/user/settings` | ユーザー設定取得（APIキー含む）（Phase 12） |
+| PUT | `/api/user/settings` | ユーザー設定更新（Phase 12） |
 
 ---
 
@@ -189,7 +203,26 @@ users/{uid}/analyses/{job_id}   # Phase 8: 解析結果永続化
   ├── created_at:   timestamp
   ├── hand_count / blue_count / red_count / pf_count: number
   ├── categories:   object       # カテゴリ別内訳
-  └── classified_snapshot: string  # classified.json（900KB上限、超過時は省略）
+  ├── classified_snapshot: string  # classified.json（900KB上限、超過時は省略）
+  ├── active_cart:  [42, 17, 88]   # アクティブカートのhand_number配列（Phase 12）
+  └── gemini_results: {           # Gemini解析結果（Phase 12）
+        "42": {
+          text:        string      # AIの解析テキスト
+          category:    string      # fold_unknown など
+          analyzed_at: timestamp
+        }
+      }
+
+users/{uid}/carts/{cartId}      # 名前付き保存カート（Phase 12）
+  ├── job_id:       string
+  ├── name:         string        # ユーザーが付けた名前（デフォルト: 日付）
+  ├── created_at:   timestamp
+  ├── hand_numbers: [42, 17, 88]
+  └── status:       "saved" | "analyzed"
+
+users/{uid}/settings/gemini     # ユーザー設定（Phase 12）
+  ├── encrypted_api_key: string  # Firestoreのセキュリティルール＋転送・保存時暗号化で保護
+  └── needs_api_auto_cart: bool  # デフォルト: true
 
 users/{uid}/sessions/{sessionId}   # レガシー手動アップロード
   ├── raw_text, filename, hand_count
@@ -214,8 +247,7 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 | `background.js` | Service Worker。Firebase Auth管理・HAND_COMPLETE受信・自動解析トリガー |
 | `interceptor.js` | WebSocket傍受（MAIN world）。フォールド時のカード退避ロジック含む |
 | `content.js` | CustomEventをbackground.jsに転送（ISOLATED world） |
-| `popup.html/js` | ポップアップUI |
-| `options.html/js` | 設定画面（Phase 9で追加） |
+| `popup.html/js` | ポップアップUI（設定もインライン表示・Phase 9で刷新） |
 
 **自動解析トリガー:** `handCounter` が閾値（デフォルト100）に達したら `/api/hands/analyze` をバックグラウンドで実行。完了後はバッジ通知（Phase 9実装）。
 
@@ -225,12 +257,14 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 
 | 変数名 | 説明 | 必須 |
 |---|---|---|
-| `GEMINI_API_KEY` | Gemini APIキー | AIモードのみ |
+| `GEMINI_API_KEY` | サーバー側デフォルトGemini APIキー（Phase 12以降は不要・ユーザーがFirestoreに保存） | 任意 |
 | `PORT` | サーバーポート（デフォルト: 5000） | 任意 |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | FirebaseサービスアカウントキーJSON | Firebase機能を使う場合 |
 | `FIREBASE_API_KEY` | Firebase Web API Key | Firebase機能を使う場合 |
 | `FIREBASE_AUTH_DOMAIN` | `{project-id}.firebaseapp.com` | Firebase機能を使う場合 |
 | `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase機能を使う場合 |
+
+**ローカル開発:** `.env` ファイルに上記を記載し `uvicorn server:app --reload` で起動可能。`.env` は `.gitignore` 対象。
 
 ---
 
@@ -277,7 +311,123 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 
 ---
 
-## 9. Phase 11: 対戦相手統計DB & SNS共有（未着手）
+## 9. Phase 12: 解析カート & AI解析インライン表示（設計完了・実装待ち）
+
+### 概要
+
+`classify_result/{job_id}` 画面上で気になったハンドだけを「解析カート」に入れ、
+選択分のみ Gemini で解析。結果は同じページの最上部に追記表示される。
+全ハンドまとめてAI解析する `/start_ai/{job_id}` は**廃止**。
+
+### 結果ページのレイアウト（AI解析後）
+
+```
+┌──────────────────────────────────────────────────────┐
+│ ヘッダー（収支サマリー）                               │
+│ [🛒 カート N件]  [⬇ PDFにする（分類のみ）]            │
+│                  [⬇ PDFにする（AI込み）] ← 解析済み時のみ│
+├──────────────────────────────────────────────────────┤
+│ 🤖 AI解析結果（N手）  ← 解析済みの場合のみ表示・最上部  │
+│  H42 fold_unknown | BTN | AA                         │
+│  「このハンドは〇〇の理由でフォールドが...」            │
+│  H17 hero_aggression_won | CO                        │
+│  「ターンでのベットサイズは...」                       │
+├──────────────────────────────────────────────────────┤
+│ ① 青線ハンド詳細（変更なし）                           │
+├──────────────────────────────────────────────────────┤
+│ ② 赤線ハンド詳細（変更なし）                           │
+├──────────────────────────────────────────────────────┤
+│ ③ 全ハンド一覧（変更なし。AI解析済みハンドに🤖マーク）  │
+└──────────────────────────────────────────────────────┘
+```
+
+### カートUI
+
+- 各ハンドカードに `[+🛒]` ボタン（ホバーで表示）
+- `preflop_only` ハンドはカート追加不可（分析素材不足）
+- 画面右下に浮くカートアイコン（バッジで件数表示）
+- クリックでカートドロワー（右からスライド）
+
+```
+┌─────────────────────────────┐
+│ 解析カート               🛒 3│
+│─────────────────────────────│
+│ H42 fold_unknown  BTN   [✕] │
+│ H17 hero_agg_won  CO    [✕] │
+│ H88 bad_fold      SB    [✕] │
+│─────────────────────────────│
+│ カート名: [2026-04-13______] │
+│ [📌 名前をつけて保存]        │
+│ [過去のカートを読み込む ▾]   │
+│ [⚡ 解析を実行]              │
+└─────────────────────────────┘
+```
+
+### カート保存の仕様
+
+| 操作 | 動作 |
+|---|---|
+| ハンド追加/削除 | Firestore に即時反映（自動保存）→ タブを閉じても消えない |
+| 「名前をつけて保存」 | スナップショットを `carts/{cartId}` に保存 |
+| 「過去のカートを読み込む」 | 保存済みカート一覧から選択 → カートを復元 |
+| カートは job 単位 | 1 job_id につき 1 アクティブカート |
+
+### needs_api ハンドの自動カート追加
+
+- ユーザー設定 `needs_api_auto_cart`（Firestoreに保存）
+- デフォルト: **ON**（結果ページを開いた時点で自動追加）
+- ON/OFF はカートドロワー内またはユーザー設定から切替
+
+### Gemini解析の仕様
+
+- エンドポイント: `POST /api/cart/{job_id}/analyze`（SSE）
+- バッチサイズ: `BATCH_SIZE = 10`（カートが少数の場合は1バッチで完結）
+- バッチ完了ごとにSSEで結果を返却 → ページの「🤖 AI解析結果」セクションに順次追記
+- 再解析: 同じハンドを再送した場合は上書き
+- 解析結果は `analyses/{job_id}/gemini_results` に保存（ページリロード後も復元）
+- 推定解析時間の表示: **廃止**（実測後に再設計）
+
+### Gemini APIキーの保管
+
+- ユーザーが `/api/user/settings` に登録
+- Firestore の `users/{uid}/settings/gemini/encrypted_api_key` に保存
+- Firebaseのセキュリティルールで本人のみアクセス可（Firebase転送・保存時暗号化を利用）
+- 表示はマスキング（末尾4文字のみ）
+
+### PDFの仕様
+
+| ボタン | 対象 | 生成内容 |
+|---|---|---|
+| ⬇ PDFにする（分類のみ） | 常に表示 | 青・赤・全ハンド（現状と同じ） |
+| ⬇ PDFにする（AI込み） | AI解析済み時のみ | 🤖 AI解析セクション ＋ 青・赤・全ハンド |
+
+### 廃止するもの
+
+| 対象 | 対応 |
+|---|---|
+| `POST /start_ai/{job_id}` | 削除 |
+| `scripts/generate.js`（AI PDF生成） | 削除またはAI込みPDF生成に統合 |
+| classify_progress画面の推定解析時間表示 | 削除 |
+| `value_or_bluff_success` カテゴリ名 | `value_success` に修正・Firestoreテストデータ削除 |
+
+### 実装順序（推奨）
+
+```
+1. classify.py: value_success にリネーム + Firestoreテストデータ削除
+2. /start_ai 廃止・推定解析時間削除
+3. result画面: カートUI実装（追加/削除/ドロワー）
+4. /api/cart エンドポイント群（Firestore連携）
+5. needs_api 自動カート追加
+6. /api/user/settings（APIキー保存）
+7. /api/cart/{job_id}/analyze（SSE + バッチGemini）
+8. result画面: 🤖 AI解析セクション表示
+9. PDF: AI込みバージョン対応
+10. ローカルテストで速度・バッチサイズ調整
+```
+
+---
+
+## 10. Phase 11: 対戦相手統計DB & SNS共有（未着手）
 
 ### 11-1. 対戦相手統計DB
 - hand_jsonから自動算出（VPIP/PFR/3BET%/CBet%/フォールドto3BET/SD勝率）→ Firestore保存
@@ -301,7 +451,24 @@ if (typeof raw === "string" && raw.startsWith("42")) {
 
 ---
 
-## 10. 注意事項
+## 11. ユーザー管理ページ（将来フェーズ・設計スタブ）
+
+**URL:** `/settings`（ログイン必須）
+
+将来的に一元管理する場所として設計を想定しておく。
+
+| セクション | 内容 |
+|---|---|
+| 👤 アカウント | メール・ログイン方法・表示名 |
+| 🔬 解析設定 | needs_api自動カート追加 ON/OFF |
+| 🧩 拡張機能設定 | 自動解析トリガー・閾値・プレイ時間通知（ポップアップと同期） |
+| 🔑 APIキー管理 | Gemini APIキー登録・変更・削除（マスキング表示） |
+| 🛒 カート履歴 | 名前付き保存カードの一覧・読み込み・削除 |
+| 🗄 データ管理 | 蓄積ハンド数・期間確認 / 全ハンド削除（確認ダイアログ付き） |
+
+---
+
+## 12. 注意事項
 
 - `data/` フォルダのJSONは削除しない
 - `.env` / サービスアカウントキーJSONはGitにコミットしない
