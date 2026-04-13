@@ -2498,8 +2498,8 @@ function switchTab(id, btn) {{
 
 <!-- ─── Firebase + Cart JS ─── -->
 <script type="module">
-import {{ initializeApp }} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import {{ initializeApp, getApps, getApp }} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {{ getAuth, onAuthStateChanged }} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const JOB_ID = '{job_id}';
 let _auth = null;
@@ -2508,12 +2508,17 @@ let cartSet = new Set();  // hand_numbers in cart
 let _syncTimer = null;
 let _cartLabels = {{}};  // hand_number -> category label
 
-// ── Firebase 初期化 ──────────────────────────────────────────────
+// ── Firebase 初期化（既存アプリがあれば再利用） ──────────────────
 (async () => {{
   try {{
-    const r = await fetch('/api/firebase-config');
-    const cfg = await r.json();
-    const app = initializeApp(cfg);
+    let app;
+    if (getApps().length > 0) {{
+      app = getApp();
+    }} else {{
+      const r = await fetch('/api/firebase-config');
+      const cfg = await r.json();
+      app = initializeApp(cfg);
+    }}
     _auth = getAuth(app);
     onAuthStateChanged(_auth, async user => {{
       _user = user;
