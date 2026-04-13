@@ -145,6 +145,53 @@ def parse_action_history(action_history: list, pos_to_name: dict) -> dict:
     return {"streets": streets, "result": result, "is_3bet_pot": is_3bet_pot}
 
 
+def _calc_hero_investment(streets: dict, hero_pos: str) -> float:
+    """
+    アクション履歴からHeroの総投資額を計算する。
+    GGPokerがフォールドプレイヤーのprofitを0で返す場合の補正用。
+    """
+    # ブラインドポスト（プリフロップ開始前の強制投資）
+    if hero_pos == "BB":
+        total = 1.0
+    elif hero_pos == "SB":
+        total = 0.5
+    else:
+        total = 0.0
+
+    # プリフロップ: フェイシングベットを追跡し、Hero の最終コミットを記録
+    facing = 1.0  # BB が 1bb をポストしているため最低ベットは 1bb
+    for a in streets.get("preflop", []):
+        action = a.get("action", "")
+        amount = a.get("amount_bb", 0.0)
+        if action in ("Raise", "Bet") and amount > 0:
+            facing = amount
+        if a.get("position") == hero_pos and action in ("Raise", "Bet", "Call"):
+            committed = amount if amount > 0 else facing
+            total = max(total, committed)
+
+    # ポストフロップ（フロップ/ターン/リバー）
+    for st_key in ("flop", "turn", "river"):
+        s = streets.get(st_key)
+        if not s or not isinstance(s, dict):
+            continue
+        st_facing = 0.0
+        st_invested = 0.0
+        for a in s.get("actions", []):
+            action = a.get("action", "")
+            amount = a.get("amount_bb", 0.0)
+            if action in ("Raise", "Bet") and amount > 0:
+                st_facing = amount
+            if a.get("position") == hero_pos:
+                if action in ("Bet", "Raise"):
+                    st_invested = amount
+                    st_facing = amount
+                elif action == "Call":
+                    st_invested = amount if amount > 0 else st_facing
+        total += st_invested
+
+    return total
+
+
 def convert_hand_json(hand_json: dict, captured_at: str, hand_index: int = 1) -> dict:
     """fastFoldTableState → parse.py 出力形式の dict に変換する"""
 
@@ -208,6 +255,15 @@ def convert_hand_json(hand_json: dict, captured_at: str, hand_index: int = 1) ->
     hero_position = hero["position"] if hero else ""
     hero_cards = hero["hole_cards"] if hero else []
     hero_result_bb = hero["result_bb"] if hero else 0.0
+
+    # GGPokerはフォールドしたプレイヤーのprofitを0で返すことがある。
+    # Hero が勝者でなく profit==0 の場合、アクション履歴から投資額を補正する。
+    hero_is_winner = hero and any(
+        w.get("name") == (hero.get("name") or hero_position)
+        for w in result.get("winners", [])
+    )
+    if hero and hero_result_bb == 0.0 and not hero_is_winner:
+        hero_result_bb = -_calc_hero_investment(streets, hero_position)
 
     # result.winners が actionHistory でパースできなかった場合 handResults で補完
     if not result["winners"]:

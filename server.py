@@ -552,6 +552,14 @@ async def classify_result_view(job_id: str):
         return HTMLResponse("<h1>データが見つかりません</h1>", status_code=404)
 
     hands = data.get("hands", [])
+
+    # 後方互換: value_or_bluff_success → value_success に正規化（旧スナップショット対応）
+    for hand in hands:
+        clf = hand.get("bluered_classification", {})
+        if clf.get("category") == "value_or_bluff_success":
+            clf["category"] = "value_success"
+            clf["category_label"] = "バリュー成功"
+
     blue_count = red_count = pf_count = 0
     categories: dict = {}
 
@@ -1837,6 +1845,14 @@ def classify_result_page(
         hnum = h.get("hand_number", "")
         line = h.get("bluered_classification", {}).get("line", "")
         na_attr = ' data-needs-api="1"' if needs_api else ""
+        # カート用データ属性
+        _cards_str = "".join(h.get("hero_cards", []))
+        _pl_str    = f"{_fmt_bb(pl)}bb"
+        data_attrs = (
+            f' data-pos="{_esc(hero_pos)}"'
+            f' data-cards="{_esc(_cards_str)}"'
+            f' data-pl="{_esc(_pl_str)}"'
+        )
         cart_btn = (
             f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
             f'data-hnum="{hnum}" title="カートに追加/削除">🛒</button>'
@@ -1844,7 +1860,7 @@ def classify_result_page(
         )
 
         return (
-            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{na_attr}>'
+            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{na_attr}{data_attrs}>'
             f'<div class="hand-card-head">'
             f'{badge_ai}'
             f'<span class="hand-num">H{hnum}</span>'
@@ -2169,28 +2185,21 @@ body {{
 .cart-panel-title {{ font-weight: 700; font-size: 14px; flex: 1; }}
 .cart-panel-close {{ background: none; border: none; font-size: 20px; cursor: pointer; color: #666; padding: 0 4px; }}
 .cart-panel-body {{ flex: 1; overflow-y: auto; padding: 10px; }}
-.cart-item {{ display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid #e8e8e8; border-radius: 5px; margin-bottom: 6px; background: #fafafa; font-size: 12px; }}
-.cart-item-num {{ font-weight: 700; color: #333; min-width: 36px; }}
-.cart-item-cat {{ flex: 1; color: #666; font-size: 11px; }}
+.cart-item {{ display: flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid #e8e8e8; border-radius: 5px; margin-bottom: 6px; background: #fafafa; font-size: 12px; }}
+.cart-item-num {{ font-weight: 700; color: #333; min-width: 32px; }}
+.cart-item-info {{ flex: 1; color: #555; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.cart-item-pos {{ display: inline-block; background: #e8f0fe; color: #1a6abf; border-radius: 3px; padding: 0 4px; font-weight: 700; font-size: 10px; }}
+.cart-item-pl {{ font-weight: 700; font-size: 11px; color: #888; white-space: nowrap; }}
 .cart-item-del {{ background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 0 2px; }}
 .cart-item-del:hover {{ color: #e74c3c; }}
 .cart-empty {{ text-align: center; color: #aaa; font-size: 12px; padding: 30px 0; }}
 .cart-panel-foot {{ padding: 10px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }}
-.cart-name-row {{ display: flex; gap: 6px; }}
-.cart-name-input {{ flex: 1; border: 1px solid #ddd; border-radius: 5px; padding: 6px 8px; font-size: 12px; outline: none; }}
-.cart-name-input:focus {{ border-color: #0055CC; }}
 .cart-btn {{ width: 100%; padding: 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 700; cursor: pointer; }}
 .cart-btn.primary {{ background: #1a1a2e; color: #fff; }}
 .cart-btn.primary:hover {{ background: #2a2a4e; }}
 .cart-btn.secondary {{ background: transparent; border: 1px solid #ccc; color: #444; }}
 .cart-btn.secondary:hover {{ background: #f5f5f5; }}
 .cart-btn:disabled {{ opacity: .5; cursor: not-allowed; }}
-.cart-load-btn {{ font-size: 11px; color: #0055CC; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }}
-.cart-saved-list {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 5px; padding: 6px; margin-top: 4px; max-height: 160px; overflow-y: auto; }}
-.cart-saved-item {{ display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; }}
-.cart-saved-item:hover {{ background: #eef4ff; }}
-.cart-saved-name {{ flex: 1; font-weight: 600; }}
-.cart-saved-meta {{ color: #888; }}
 
 /* ─── デザインA: 右ドロワー ─── */
 body.design-a .cart-panel {{ position: fixed; top: 0; right: -320px; width: 300px; height: 100vh; box-shadow: -4px 0 20px rgba(0,0,0,0.15); border-radius: 0; }}
@@ -2400,12 +2409,6 @@ body.design-c .cart-panel.open {{ right: 0; }}
     <div id="cart-items"></div>
   </div>
   <div class="cart-panel-foot">
-    <button class="cart-load-btn" id="saved-toggle" onclick="toggleSavedList()">▾ 保存済みカートを読み込む</button>
-    <div class="cart-saved-list" id="saved-list" style="display:none"></div>
-    <div class="cart-name-row">
-      <input class="cart-name-input" id="cart-name" type="text" placeholder="カート名（省略可）">
-      <button class="cart-btn secondary" style="width:auto;padding:6px 12px" onclick="saveCartNamed()">📌 保存</button>
-    </div>
     <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行（準備中）</button>
   </div>
 </div>
@@ -2627,12 +2630,15 @@ function renderCart() {{
   document.getElementById('cart-analyze-btn').disabled = false;
   const sorted = [...cartSet].sort((a,b) => a-b);
   itemsEl.innerHTML = sorted.map(n => {{
-    const label = _cartLabels[n] || '';
     const el = document.querySelector(`.hand-card[data-hnum="${{n}}"]`);
-    const na = el?.dataset.needsApi === '1' ? ' ★' : '';
+    const pos   = el?.dataset.pos   || '?';
+    const cards = el?.dataset.cards || '';
+    const pl    = el?.dataset.pl    || '';
+    const na    = el?.dataset.needsApi === '1' ? ' ★' : '';
     return `<div class="cart-item">
       <span class="cart-item-num">H${{n}}</span>
-      <span class="cart-item-cat">${{label}}${{na}}</span>
+      <span class="cart-item-info"><span class="cart-item-pos">${{pos}}</span> ${{cards}}${{na}}</span>
+      <span class="cart-item-pl">${{pl}}</span>
       <button class="cart-item-del" onclick="toggleCart(${{n}})" title="削除">✕</button>
     </div>`;
   }}).join('');
@@ -2648,50 +2654,6 @@ window.toggleCartPanel = () => {{
 window.closeCartPanel = () => {{
   document.getElementById('cart-panel').classList.remove('open');
   document.getElementById('cart-overlay').classList.remove('open');
-}};
-
-// ── 保存済みカート ───────────────────────────────────────────────
-let _savedLoaded = false;
-window.toggleSavedList = async () => {{
-  const el = document.getElementById('saved-list');
-  const show = el.style.display === 'none';
-  el.style.display = show ? '' : 'none';
-  if (show && !_savedLoaded) {{
-    _savedLoaded = true;
-    const token = await getToken();
-    if (!token) {{ el.innerHTML = '<div style="color:#aaa;font-size:11px;padding:6px">ログインが必要です</div>'; return; }}
-    const r = await fetch(`/api/carts?job_id=${{JOB_ID}}`, {{headers:{{'Authorization':`Bearer ${{token}}`}}}});
-    const data = await r.json();
-    if (!data.carts?.length) {{ el.innerHTML = '<div style="color:#aaa;font-size:11px;padding:6px">保存済みカートなし</div>'; return; }}
-    el.innerHTML = data.carts.map(c => `
-      <div class="cart-saved-item" onclick="loadSavedCart(${{JSON.stringify(c.hand_numbers)}}, '${{c.name}}')">
-        <span class="cart-saved-name">${{c.name}}</span>
-        <span class="cart-saved-meta">${{c.hand_numbers.length}}手</span>
-      </div>`).join('');
-  }}
-}};
-
-window.loadSavedCart = (nums, name) => {{
-  cartSet = new Set(nums.map(Number));
-  document.getElementById('cart-name').value = name;
-  document.getElementById('saved-list').style.display = 'none';
-  _savedLoaded = false;
-  renderCart();
-  scheduleSync();
-}};
-
-window.saveCartNamed = async () => {{
-  if (!cartSet.size) {{ alert('カートが空です'); return; }}
-  const token = await getToken();
-  if (!token) {{ alert('ログインが必要です'); return; }}
-  const name = document.getElementById('cart-name').value.trim();
-  await fetch(`/api/cart/${{JOB_ID}}/save`, {{
-    method: 'POST',
-    headers: {{'Authorization': `Bearer ${{token}}`, 'Content-Type': 'application/json'}},
-    body: JSON.stringify({{name, hand_numbers: [...cartSet]}})
-  }});
-  _savedLoaded = false;
-  alert(`「${{name || 'カート'}}」を保存しました`);
 }};
 
 window.startAnalyze = () => {{
