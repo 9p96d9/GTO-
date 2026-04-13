@@ -2668,7 +2668,8 @@ async function loadCart() {{
       headers: {{'Authorization': `Bearer ${{token}}`}}
     }});
     const data = await r.json();
-    cartSet = new Set((data.hand_numbers || []).map(Number));
+    cartSet.clear();
+    (data.hand_numbers || []).map(Number).forEach(n => cartSet.add(n));
     if (data.gemini_results && Object.keys(data.gemini_results).length > 0) {{
       _geminiResults = data.gemini_results;
       renderAiSection();
