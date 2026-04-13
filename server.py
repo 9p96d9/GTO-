@@ -804,7 +804,7 @@ async def download_extension():
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=pokergto-extension.zip"},
+        headers={"Content-Disposition": "attachment; filename=pokergto-extension-v2.2.0.zip"},
     )
 
 
@@ -921,7 +921,7 @@ body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
   <div class="hero-icon">🃏</div>
   <h1>Poker<span>GTO</span></h1>
   <p>Chrome拡張機能をインストールするだけで、T4のハンドを自動収集。プレイ後すぐにGTO分析レポートを生成できます。</p>
-  <a href="/download-extension" class="btn-primary">⬇ 拡張機能をダウンロード</a>
+  <a href="/download-extension" class="btn-primary">⬇ 拡張機能をダウンロード <span style="font-size:0.75em;opacity:0.8">v2.2.0</span></a>
   <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
 </div>
 
