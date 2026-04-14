@@ -18,8 +18,8 @@
 
 | フェーズ | 状態 |
 |---|---|
-| Phase 1〜4, 7, 8, 9, 10 | ✅ 完了 |
-| **Phase 12** | 🔄 実装中（AI解析SSE・APIキー設定完了・PDF AI込みのみ未着手） |
+| Phase 1〜4, 7〜10, 12, 14 | ✅ 完了 |
+| **Phase 13** | ⬜ 次回（AI解析品質向上・進捗表示・PDF AI込み） |
 | Phase 5, 6, 11 | ⬜ 未着手 |
 
 ---
@@ -54,7 +54,12 @@ hand_results = hand_json.get("handResults") or []
 
 ```bash
 # 構文チェック（必須）
-python -c "import ast; ast.parse(open('server.py').read()); print('OK')"
+python -c "
+import ast, pathlib
+for f in ['server.py','state.py','pipelines.py','routes/pages.py','routes/api.py','routes/cart.py','routes/legacy.py','html/pages.py']:
+    p = pathlib.Path(f)
+    if p.exists(): ast.parse(p.read_text(encoding='utf-8')); print(f'OK: {f}')
+"
 
 # コミット & プッシュ（Railway が main ブランチを自動デプロイ）
 git add <files>

@@ -1,0 +1,2461 @@
+"""
+html/pages.py - HTML生成関数・定数
+Jinja2本格移行（Phase 13）まで classify_result_page() 等のHTML組み立てはここで管理
+"""
+
+import json as _json
+import os
+import re as _re
+from pathlib import Path
+
+_TEMPLATES_DIR = str(Path(__file__).parent.parent / "templates")
+
+
+def _esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+LANDING_PAGE = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO - リアルタイムGTO分析</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+.hero { text-align: center; padding: 80px 24px 60px; }
+.hero-icon { font-size: 56px; margin-bottom: 16px; }
+.hero h1 { font-size: 42px; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 12px; }
+.hero h1 span { color: #e94560; }
+.hero p { font-size: 17px; color: #aaa; max-width: 520px; margin: 0 auto 40px; line-height: 1.7; }
+.btn-primary {
+  display: inline-block; padding: 16px 40px;
+  background: #e94560; color: #fff;
+  border-radius: 12px; font-size: 17px; font-weight: 700;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn-primary:hover { background: #c73652; transform: translateY(-1px); }
+.btn-secondary {
+  display: inline-block; padding: 14px 32px;
+  background: transparent; color: #e0e0e0;
+  border: 1.5px solid #444; border-radius: 12px;
+  font-size: 15px; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  margin-left: 12px;
+}
+.btn-secondary:hover { border-color: #e94560; color: #e94560; }
+
+.steps { max-width: 800px; margin: 0 auto; padding: 0 24px 80px; }
+.steps h2 { text-align: center; font-size: 22px; color: #fff; margin-bottom: 40px; font-weight: 700; }
+.step-list { display: flex; flex-direction: column; gap: 20px; }
+.step {
+  display: flex; align-items: flex-start; gap: 20px;
+  background: #10172a; border: 1px solid #1e2a45;
+  border-radius: 14px; padding: 24px;
+}
+.step-num {
+  width: 40px; height: 40px; min-width: 40px;
+  background: #e94560; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800; color: #fff;
+}
+.step-body h3 { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.step-body p { font-size: 14px; color: #999; line-height: 1.6; }
+.step-body a { color: #e94560; text-decoration: none; }
+.step-body a:hover { text-decoration: underline; }
+
+.footer-links {
+  text-align: center; padding: 32px 24px;
+  border-top: 1px solid #1e2a45;
+  font-size: 13px; color: #666;
+}
+.footer-links a { color: #666; text-decoration: none; margin: 0 12px; }
+.footer-links a:hover { color: #aaa; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-icon">🃏</div>
+  <h1>Poker<span>GTO</span></h1>
+  <p>Chrome拡張機能をインストールするだけで、T4のハンドを自動収集。プレイ後すぐにGTO分析レポートを生成できます。</p>
+  <a href="/download-extension" class="btn-primary">⬇ 拡張機能をダウンロード <span style="font-size:0.75em;opacity:0.8">v2.2.0</span></a>
+  <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
+</div>
+
+<div class="steps">
+  <h2>使い方</h2>
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>拡張機能をインストール</h3>
+        <p>上の「拡張機能をダウンロード」からZIPを取得し、解凍後に Chrome の拡張機能管理ページ（<code>chrome://extensions</code>）で「パッケージ化されていない拡張機能を読み込む」から追加してください。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Googleアカウントでログイン</h3>
+        <p>拡張機能のポップアップを開いてGoogleログインを行います。PokerGTOアカウントと紐づけることでハンドログがクラウドに保存されます。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>T4でプレイするだけ</h3>
+        <p>拡張機能を入れた状態で <a href="https://tenfour-poker.com" target="_blank">tenfour-poker.com</a> にアクセスしてプレイすれば、ハンドが自動でクラウドに保存されます。手動操作は一切不要です。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>セッション画面で解析</h3>
+        <p><a href="/sessions">セッション一覧</a> を開いて「⚡ リアルタイム解析」ボタンを押すと、蓄積されたハンドをGTO観点で分類・分析してレポートを生成します。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-links">
+  <a href="/sessions">セッション一覧</a>
+  <a href="/legacy">手動アップロード解析（旧版）</a>
+  <a href="/login">ログイン</a>
+</div>
+
+</body>
+</html>"""
+
+
+
+UPLOAD_PAGE = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ポーカーGTO</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}}
+.card {{
+  background: #16213e;
+  border-radius: 16px;
+  padding: 40px 48px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}}
+h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
+.sub {{ font-size: 13px; color: #888; margin-bottom: 28px; }}
+.dropzone {{
+  border: 2px dashed #e94560;
+  border-radius: 12px;
+  padding: 32px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 16px;
+  position: relative;
+}}
+.dropzone:hover, .dropzone.dragover {{ background: rgba(233,69,96,0.08); }}
+.dropzone input[type=file] {{
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}}
+.dropzone-icon {{ font-size: 36px; margin-bottom: 8px; }}
+.dropzone-label {{ font-size: 14px; color: #aaa; }}
+.dropzone-label span {{ color: #e94560; font-weight: bold; }}
+.file-name {{ font-size: 13px; color: #4caf93; margin-top: 6px; min-height: 18px; }}
+.field-group {{ margin-bottom: 16px; text-align: left; }}
+.field-group label {{ font-size: 12px; color: #888; display: block; margin-bottom: 6px; }}
+.field-group input[type=password] {{
+  width: 100%;
+  padding: 10px 12px;
+  background: #0f0f1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}}
+.field-group input:focus {{ border-color: #e94560; }}
+.key-hint {{ font-size: 11px; color: #555; margin-top: 4px; }}
+.key-hint a {{ color: #e94560; text-decoration: none; }}
+.btn-primary {{
+  width: 100%;
+  padding: 14px;
+  background: #e94560;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 8px;
+}}
+.btn-primary:hover {{ background: #c73652; }}
+.btn-primary:disabled {{ background: #555; cursor: not-allowed; }}
+.btn-guide {{
+  width: 100%;
+  padding: 11px;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 10px;
+}}
+.btn-guide:hover {{ border-color: #e94560; color: #e94560; }}
+/* ─── モーダル ─── */
+.modal-overlay {{
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}}
+.modal-overlay.open {{ display: flex; }}
+.modal {{
+  background: #16213e;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}}
+.modal-header {{
+  padding: 24px 28px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}}
+.modal-header h2 {{ font-size: 17px; color: #e94560; }}
+.modal-close {{
+  background: none; border: none; color: #666;
+  font-size: 22px; cursor: pointer; padding: 0 4px;
+  transition: color 0.2s;
+}}
+.modal-close:hover {{ color: #eee; }}
+.step-indicator {{
+  display: flex;
+  align-items: center;
+  padding: 20px 28px 0;
+  gap: 0;
+}}
+.step-dot {{
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #0f0f1a;
+  border: 2px solid #333;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: bold; color: #555;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}}
+.step-dot.active {{ border-color: #e94560; color: #e94560; background: rgba(233,69,96,0.1); }}
+.step-dot.done  {{ border-color: #4caf93; color: #fff; background: #4caf93; }}
+.step-line {{ flex: 1; height: 2px; background: #333; transition: background 0.3s; }}
+.step-line.done {{ background: #4caf93; }}
+.modal-body {{ padding: 20px 28px 28px; }}
+.step-panel {{ display: none; }}
+.step-panel.active {{ display: block; }}
+.step-title {{ font-size: 15px; font-weight: bold; margin-bottom: 16px; color: #eee; }}
+.guide-steps {{ list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }}
+.guide-steps li {{
+  display: flex; gap: 12px; align-items: flex-start;
+  background: #0f0f1a; border-radius: 8px; padding: 12px 14px;
+  font-size: 13px; line-height: 1.5; color: #ccc;
+}}
+.guide-steps li .num {{
+  background: #e94560; color: #fff;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: bold; flex-shrink: 0; margin-top: 1px;
+}}
+.skip-row {{
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 20px; font-size: 13px; color: #888; cursor: pointer;
+}}
+.skip-row input {{ accent-color: #e94560; width: 16px; height: 16px; cursor: pointer; }}
+.dl-btn {{
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  background: rgba(233,69,96,0.12);
+  border: 1px solid #e94560;
+  border-radius: 8px;
+  color: #e94560;
+  text-decoration: none;
+  font-size: 14px; font-weight: bold;
+  margin-bottom: 20px;
+  transition: background 0.2s;
+}}
+.dl-btn:hover {{ background: rgba(233,69,96,0.22); }}
+.info-box {{
+  background: #0f0f1a; border-radius: 8px; padding: 14px 16px;
+  font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 20px;
+}}
+.info-box code {{
+  background: #1e2a3a; padding: 1px 6px; border-radius: 4px;
+  font-size: 12px; color: #7ec8e3;
+}}
+.modal-footer {{
+  display: flex; gap: 10px; justify-content: flex-end;
+}}
+.btn-back-modal {{
+  padding: 10px 20px;
+  background: transparent; color: #aaa;
+  border: 1px solid #444; border-radius: 6px;
+  font-size: 14px; cursor: pointer; transition: all 0.2s;
+}}
+.btn-back-modal:hover {{ border-color: #e94560; color: #e94560; }}
+.btn-next-modal {{
+  padding: 10px 24px;
+  background: #e94560; color: #fff;
+  border: none; border-radius: 6px;
+  font-size: 14px; font-weight: bold; cursor: pointer;
+  transition: background 0.2s;
+}}
+.btn-next-modal:hover {{ background: #c73652; }}
+@media (max-width: 540px) {{
+  .card {{ padding: 28px 16px; }}
+  .modal-body {{ padding: 16px 16px 24px; }}
+  .modal-header {{ padding: 20px 16px 0; }}
+  .step-indicator {{ padding: 16px 16px 0; }}
+  .mode-btns {{ flex-direction: column; gap: 8px; }}
+  .btn-mode {{ padding: 12px 10px; }}
+  .dropzone {{ min-height: 120px; padding: 24px 16px; }}
+  .btn-primary {{ padding: 16px; min-height: 44px; font-size: 15px; }}
+}}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>&#x1F0A1; ポーカーGTO</h1>
+  <p class="sub">TenFourのハンド履歴をアップロードして分析</p>
+  <form id="form" method="post" enctype="multipart/form-data" action="/upload">
+    <div class="dropzone" id="drop">
+      <input type="file" name="file" id="file" accept=".txt" required>
+      <div class="dropzone-icon">&#x1F4C4;</div>
+      <div class="dropzone-label"><span>ファイルを選択</span>またはドロップ</div>
+      <div class="file-name" id="fname"></div>
+    </div>
+    <button type="submit" id="btn" class="btn-primary" disabled>ファイルを選択してください</button>
+  </form>
+  <button class="btn-guide" id="open-guide">&#x1F4D6; はじめての方 — ハンド履歴の取得方法</button>
+</div>
+
+<!-- ウィザードモーダル -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>ハンド履歴の取得方法</h2>
+      <button class="modal-close" id="modal-close">&#x2715;</button>
+    </div>
+
+    <!-- ステップインジケーター -->
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1">1</div>
+      <div class="step-line" id="line1"></div>
+      <div class="step-dot" id="dot2">2</div>
+      <div class="step-line" id="line2"></div>
+      <div class="step-dot" id="dot3">3</div>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- STEP 1: 拡張機能インストール -->
+      <div class="step-panel active" id="panel1">
+        <p class="step-title">STEP 1 — Chrome拡張機能をインストール</p>
+        <label class="skip-row">
+          <input type="checkbox" id="already-installed">
+          すでにインストール済み（スキップ）
+        </label>
+        <div id="install-guide">
+          <a class="dl-btn" href="/static/tenfour-scraper.zip" download>
+            &#x2B07; tenfour-scraper.zip をダウンロード
+          </a>
+          <ul class="guide-steps">
+            <li><span class="num">1</span>ダウンロードしたZIPを解凍して <code>tenfour-scraper</code> フォルダを取り出す</li>
+            <li><span class="num">2</span>Chromeのアドレスバーに <code>chrome://extensions</code> と入力して開く</li>
+            <li><span class="num">3</span>右上の「デベロッパーモード」をONにする</li>
+            <li><span class="num">4</span>「パッケージ化されていない拡張機能を読み込む」をクリックして <code>tenfour-scraper</code> フォルダを選択</li>
+            <li><span class="num">5</span>アドレスバー右の &#x1F9E9; アイコン → TenFour Scraper の &#x1F4CC; ピンをクリックしてツールバーに表示</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-next-modal" id="next1">次へ &#x2192;</button>
+        </div>
+      </div>
+
+      <!-- STEP 2: ハンド履歴の取得 -->
+      <div class="step-panel" id="panel2">
+        <p class="step-title">STEP 2 — TenFourからハンド履歴を取得</p>
+        <ul class="guide-steps">
+          <li><span class="num">1</span>tenfour-poker.com を開き、ブックマークタブを表示する</li>
+          <li><span class="num">2</span>ツールバーの 🃏 TenFour Scraper アイコンをクリック</li>
+          <li><span class="num">3</span>「&#x25B6; ハンド履歴を取得」ボタンを押す</li>
+          <li><span class="num">4</span>進捗バーが完了したら <code>hand_history_YYYY-MM-DD.txt</code> が自動ダウンロードされる</li>
+        </ul>
+        <div class="info-box">
+          取得対象はブックマーク済みのハンドのみです（最大100件）。<br>
+          分析したいハンドを事前にTenFourでブックマークしておいてください。
+        </div>
+        <div class="modal-footer">
+          <button class="btn-back-modal" id="back2">&#x2190; 戻る</button>
+          <button class="btn-next-modal" id="next2">次へ &#x2192;</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: アップロード -->
+      <div class="step-panel" id="panel3">
+        <p class="step-title">STEP 3 — ファイルをアップロードして分析</p>
+        <div class="info-box">
+          ダウンロードした <code>hand_history_*.txt</code> をモーダルを閉じて<br>
+          メイン画面にドロップするか、「ファイルを選択」からアップロードしてください。
+        </div>
+        <div class="modal-footer">
+          <button class="btn-back-modal" id="back3">&#x2190; 戻る</button>
+          <button class="btn-next-modal" id="close-final">&#x2705; 準備完了 — 閉じる</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const file = document.getElementById('file');
+const fname = document.getElementById('fname');
+const drop = document.getElementById('drop');
+const btn = document.getElementById('btn');
+const form = document.getElementById('form');
+
+function onFileSelected() {{
+  const name = file.files[0]?.name || '';
+  fname.textContent = name;
+  if (name) {{
+    btn.disabled = false;
+    btn.textContent = '&#x1F4CA; 解析を開始';
+  }} else {{
+    btn.disabled = true;
+    btn.textContent = 'ファイルを選択してください';
+  }}
+}}
+
+file.addEventListener('change', onFileSelected);
+drop.addEventListener('dragover', e => {{ e.preventDefault(); drop.classList.add('dragover'); }});
+drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+drop.addEventListener('drop', e => {{
+  e.preventDefault(); drop.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) {{
+    const dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    file.files = dt.files;
+    onFileSelected();
+  }}
+}});
+form.addEventListener('submit', () => {{ btn.disabled = true; }});
+
+// ─── ウィザード ───
+const modal = document.getElementById('modal');
+let currentStep = 1;
+
+function openModal() {{
+  modal.classList.add('open');
+  goStep(1);
+}}
+function closeModal() {{
+  modal.classList.remove('open');
+}}
+function goStep(n) {{
+  currentStep = n;
+  [1,2,3].forEach(i => {{
+    document.getElementById('panel' + i).classList.toggle('active', i === n);
+    const dot = document.getElementById('dot' + i);
+    dot.classList.remove('active', 'done');
+    if (i < n) dot.classList.add('done'), dot.textContent = '✓';
+    else if (i === n) dot.classList.add('active'), dot.textContent = i;
+    else dot.textContent = i;
+    if (i < 3) {{
+      document.getElementById('line' + i).classList.toggle('done', i < n);
+    }}
+  }});
+}}
+
+document.getElementById('open-guide').addEventListener('click', openModal);
+document.getElementById('modal-close').addEventListener('click', closeModal);
+modal.addEventListener('click', e => {{ if (e.target === modal) closeModal(); }});
+
+document.getElementById('already-installed').addEventListener('change', e => {{
+  document.getElementById('install-guide').style.display = e.target.checked ? 'none' : '';
+}});
+
+document.getElementById('next1').addEventListener('click', () => goStep(2));
+document.getElementById('back2').addEventListener('click', () => goStep(1));
+document.getElementById('next2').addEventListener('click', () => goStep(3));
+document.getElementById('back3').addEventListener('click', () => goStep(2));
+document.getElementById('close-final').addEventListener('click', closeModal);
+</script>
+</body>
+</html>"""
+
+
+
+def progress_page(job_id: str, mode: str = "api") -> str:
+    label2 = "青線/赤線を分類" if mode == "noapi" else "GTO分析（Gemini API）"
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>処理中... - ポーカーGTO</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e; color: #eee;
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}}
+.card {{
+  background: #16213e; border-radius: 16px;
+  padding: 48px 56px; width: 100%; max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
+}}
+h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
+.status-msg {{ font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }}
+.progress-bar-wrap {{
+  background: #0f0f1a; border-radius: 99px;
+  height: 6px; overflow: hidden; margin-bottom: 6px;
+}}
+.progress-bar {{
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.5s ease; width: 5%;
+}}
+.elapsed {{ font-size: 12px; color: #555; margin-bottom: 24px; }}
+.steps {{ display: flex; flex-direction: column; gap: 10px; text-align: left; }}
+.step {{
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px; border-radius: 8px;
+  background: #0f0f1a; font-size: 14px; color: #555;
+  transition: all 0.3s; border-left: 3px solid transparent;
+}}
+.step.active {{ background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }}
+.step.done   {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
+.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }}
+.step-body {{ flex: 1; }}
+.step-label {{ display: block; }}
+.spinner {{
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid #444; border-top-color: #e94560;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+/* バッチ進捗 */
+.batch-detail {{ display: none; margin-top: 8px; }}
+.batch-bar-wrap {{
+  background: rgba(0,0,0,0.35); border-radius: 99px;
+  height: 4px; overflow: hidden; margin-bottom: 6px;
+}}
+.batch-bar {{
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.4s ease; width: 0%;
+}}
+.batch-text {{ font-size: 11px; color: #a0a0b8; font-family: monospace; }}
+.hand-text  {{ font-size: 10px; color: #666; margin-top: 3px; font-style: italic; }}
+@media (max-width: 540px) {{
+  .card {{ padding: 28px 16px; }}
+}}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>&#x1F0A1; レポート生成中...</h1>
+  <p class="status-msg" id="msg">処理を開始しています...</p>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
+  <p class="elapsed" id="elapsed"></p>
+  <div class="steps">
+    <div class="step" id="step1">
+      <span class="step-icon" id="icon1">1</span>
+      <div class="step-body"><span class="step-label" id="label1">ハンド履歴をパース</span></div>
+    </div>
+    <div class="step" id="step2">
+      <span class="step-icon" id="icon2">2</span>
+      <div class="step-body">
+        <span class="step-label" id="label2">{label2}</span>
+        <div class="batch-detail" id="batch-detail">
+          <div class="batch-bar-wrap"><div class="batch-bar" id="batch-bar"></div></div>
+          <div class="batch-text" id="batch-text"></div>
+          <div class="hand-text"  id="hand-text"></div>
+        </div>
+      </div>
+    </div>
+    <div class="step" id="step3">
+      <span class="step-icon" id="icon3">3</span>
+      <div class="step-body"><span class="step-label" id="label3">PDFを生成</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const JOB_ID = '{job_id}';
+let startTime = Date.now();
+let sseActive = false;
+
+setInterval(() => {{
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  document.getElementById('elapsed').textContent =
+    m > 0 ? `経過時間: ${{m}}分${{sec}}秒` : `経過時間: ${{sec}}秒`;
+}}, 1000);
+
+function blocks(pct, len=12) {{
+  const f = Math.round(pct / 100 * len);
+  return '\u2588'.repeat(f) + '\u2591'.repeat(len - f) + ' ' + pct + '%';
+}}
+function setPbar(pct) {{ document.getElementById('pbar').style.width = pct + '%'; }}
+
+function markDone(n, txt) {{
+  const el = document.getElementById('step' + n);
+  el.className = 'step done';
+  document.getElementById('icon' + n).textContent = '\u2713';
+  if (txt) document.getElementById('label' + n).textContent = txt;
+}}
+function markActive(n, txt) {{
+  const el = document.getElementById('step' + n);
+  el.className = 'step active';
+  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
+  if (txt) document.getElementById('label' + n).textContent = txt;
+}}
+function markIdle(n) {{
+  document.getElementById('step' + n).className = 'step';
+  document.getElementById('icon' + n).textContent = n;
+}}
+
+// ─── SSE ──────────────────────────────────────────────────────────────────
+const es = new EventSource('/stream/' + JOB_ID);
+
+// 10秒以内にSSEイベントが届かなければポーリングへフォールバック
+const fallbackTimer = setTimeout(() => {{
+  if (!sseActive) {{ es.close(); pollFallback(); }}
+}}, 10000);
+
+es.onmessage = function(e) {{
+  sseActive = true;
+  clearTimeout(fallbackTimer);
+  const d = JSON.parse(e.data);
+
+  if (d.type === 'parse_done') {{
+    markDone(1, `ハンド履歴を解析しました（${{d.hands_total}}ハンド検出）`);
+    markActive(2);
+    setPbar(20);
+    document.getElementById('msg').textContent = 'GTO分析中（Gemini API）...';
+
+  }} else if (d.type === 'batch_progress') {{
+    const pct = Math.round(d.hands_done / d.hands_total * 100);
+    setPbar(20 + Math.round(pct * 0.5));
+    document.getElementById('batch-detail').style.display = 'block';
+    document.getElementById('batch-bar').style.width = pct + '%';
+    document.getElementById('batch-text').textContent =
+      `バッチ ${{d.batch_current}}/${{d.batch_total}} 完了  ${{blocks(pct)}}  (${{d.hands_done}}/${{d.hands_total}}ハンド)`;
+    if (d.current_hand_info)
+      document.getElementById('hand-text').textContent = '\u2192 ' + d.current_hand_info;
+
+  }} else if (d.type === 'generate_start') {{
+    markDone(2, 'GTO分析が完了しました');
+    markActive(3, 'PDFを生成中...');
+    document.getElementById('batch-detail').style.display = 'none';
+    setPbar(72);
+    document.getElementById('msg').textContent = 'PDFを生成中...';
+
+  }} else if (d.type === 'done') {{
+    markDone(1); markDone(2); markDone(3);
+    setPbar(100);
+    document.getElementById('msg').textContent = '完了！レポートを表示します...';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/report/' + d.pdf; }}, 800);
+
+  }} else if (d.type === 'error') {{
+    document.getElementById('msg').textContent = 'エラーが発生しました';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/error/' + JOB_ID; }}, 1000);
+  }}
+}};
+
+es.onerror = function() {{
+  if (sseActive) return;
+  es.close();
+  clearTimeout(fallbackTimer);
+  pollFallback();
+}};
+
+// ─── ポーリングフォールバック ──────────────────────────────────────────────
+const POLL_PROGRESS = [0, 10, 30, 85, 100];
+const POLL_MSGS     = ['', 'ハンド履歴をパース中...', 'GTO分析中（Gemini API）...', 'PDFを生成中...', '完了！'];
+
+async function pollFallback() {{
+  if (sseActive) return;
+  try {{
+    const res  = await fetch('/status/' + JOB_ID);
+    const data = await res.json();
+    if (data.status === 'done') {{
+      markDone(1); markDone(2); markDone(3);
+      setPbar(100);
+      document.getElementById('msg').textContent = '完了！レポートを表示します...';
+      setTimeout(() => {{ window.location.href = '/report/' + data.pdf; }}, 800);
+      return;
+    }}
+    if (data.status === 'error') {{
+      window.location.href = '/error/' + JOB_ID;
+      return;
+    }}
+    const s = data.step || 0;
+    setPbar(POLL_PROGRESS[s]);
+    if (POLL_MSGS[s]) document.getElementById('msg').textContent = POLL_MSGS[s];
+    for (let i = 1; i <= 3; i++) {{
+      if (i < s) markDone(i);
+      else if (i === s) markActive(i);
+      else markIdle(i);
+    }}
+  }} catch(_) {{}}
+  if (!sseActive) setTimeout(pollFallback, 3000);
+}}
+</script>
+</body>
+</html>"""
+
+
+
+def classify_progress_page(job_id: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>解析中... - ポーカーGTO</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e; color: #eee;
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}}
+.card {{
+  background: #16213e; border-radius: 16px;
+  padding: 48px 56px; width: 100%; max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
+}}
+h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
+.status-msg {{ font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }}
+.progress-bar-wrap {{
+  background: #0f0f1a; border-radius: 99px;
+  height: 6px; overflow: hidden; margin-bottom: 6px;
+}}
+.progress-bar {{
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.5s ease; width: 5%;
+}}
+.elapsed {{ font-size: 12px; color: #555; margin-bottom: 24px; }}
+.steps {{ display: flex; flex-direction: column; gap: 10px; text-align: left; }}
+.step {{
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px; border-radius: 8px;
+  background: #0f0f1a; font-size: 14px; color: #555;
+  transition: all 0.3s; border-left: 3px solid transparent;
+}}
+.step.active {{ background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }}
+.step.done   {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
+.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }}
+.step-body {{ flex: 1; }}
+.spinner {{
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid #444; border-top-color: #e94560;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+@media (max-width: 540px) {{ .card {{ padding: 28px 16px; }} }}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>&#x1F0A1; 解析中...</h1>
+  <p class="status-msg" id="msg">処理を開始しています...</p>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
+  <p class="elapsed" id="elapsed"></p>
+  <div class="steps">
+    <div class="step active" id="step1">
+      <span class="step-icon" id="icon1"><span class="spinner"></span></span>
+      <div class="step-body"><span id="label1">ハンド履歴をパース中...</span></div>
+    </div>
+    <div class="step" id="step2">
+      <span class="step-icon" id="icon2">2</span>
+      <div class="step-body"><span id="label2">青線/赤線を分類</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const JOB_ID = '{job_id}';
+let startTime = Date.now();
+let sseActive = false;
+
+setInterval(() => {{
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  document.getElementById('elapsed').textContent =
+    m > 0 ? `経過時間: ${{m}}分${{sec}}秒` : `経過時間: ${{sec}}秒`;
+}}, 1000);
+
+function setPbar(pct) {{ document.getElementById('pbar').style.width = pct + '%'; }}
+function markDone(n) {{
+  document.getElementById('step' + n).className = 'step done';
+  document.getElementById('icon' + n).textContent = '✓';
+}}
+function markActive(n) {{
+  document.getElementById('step' + n).className = 'step active';
+  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
+}}
+
+const es = new EventSource('/stream/' + JOB_ID);
+const fallbackTimer = setTimeout(() => {{
+  if (!sseActive) {{ es.close(); pollFallback(); }}
+}}, 10000);
+
+es.onmessage = function(e) {{
+  sseActive = true;
+  clearTimeout(fallbackTimer);
+  const d = JSON.parse(e.data);
+
+  if (d.type === 'parse_done') {{
+    markDone(1);
+    document.getElementById('label1').textContent =
+      `ハンド履歴を解析しました（${{d.hands_total}}ハンド検出）`;
+    markActive(2);
+    setPbar(50);
+    document.getElementById('msg').textContent = '青線/赤線を分類中...';
+
+  }} else if (d.type === 'classify_done' || d.type === 'done') {{
+    markDone(1); markDone(2);
+    setPbar(100);
+    document.getElementById('msg').textContent = '完了！結果を表示します...';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/classify_result/' + JOB_ID; }}, 500);
+
+  }} else if (d.type === 'error') {{
+    document.getElementById('msg').textContent = 'エラーが発生しました';
+    es.close();
+    setTimeout(() => {{ window.location.href = '/error/' + JOB_ID; }}, 1000);
+  }}
+}};
+
+es.onerror = function() {{
+  if (sseActive) return;
+  es.close();
+  clearTimeout(fallbackTimer);
+  pollFallback();
+}};
+
+async function pollFallback() {{
+  if (sseActive) return;
+  try {{
+    const res  = await fetch('/status/' + JOB_ID);
+    const data = await res.json();
+    if (data.status === 'done') {{
+      window.location.href = '/classify_result/' + JOB_ID;
+      return;
+    }}
+    if (data.status === 'error') {{
+      window.location.href = '/error/' + JOB_ID;
+      return;
+    }}
+    const s = data.step || 0;
+    setPbar(s >= 2 ? 50 : 10);
+    if (s >= 1) markDone(1);
+    if (s >= 2) markActive(2);
+  }} catch(_) {{}}
+  if (!sseActive) setTimeout(pollFallback, 2000);
+}}
+</script>
+</body>
+</html>"""
+
+
+
+def classify_result_page(
+    job_id: str,
+    total_hands: int,
+    blue_count: int,
+    red_count: int,
+    pf_count: int,
+    categories: dict,
+    allin_ev_diffs: dict,
+    classified_path: str,
+    json_path: str,
+    hands: list = None,
+) -> str:
+    import re as _re
+
+    # カテゴリ行HTML（白背景グリッドスタイル）
+    cat_rows = ""
+    _CAT_CLS_MAP = {
+        "バリュー/ブラフ成功": "cat-blue",
+        "ブラフキャッチ": "cat-blue",
+        "アグレッション勝利": "cat-blue",
+        "ブラフ失敗": "cat-red",
+        "コール負け": "cat-red",
+        "バッドフォールド": "cat-red",
+        "ナイスフォールド": "cat-gray",
+        "フォールド(要確認)": "cat-warn",
+        "プリフロップのみ": "cat-gray",
+    }
+    for label, count in sorted(categories.items(), key=lambda x: -x[1]):
+        cc = _CAT_CLS_MAP.get(label, "cat-gray")
+        cat_rows += f'<div class="cat-item {cc}"><span class="cat-label">{_esc(label)}</span><span class="cat-count">{count}</span></div>\n'
+
+    # オールインEV差HTML（Heroのみ表示）
+    ev_html = ""
+    if allin_ev_diffs:
+        player, diff = next(iter(allin_ev_diffs.items()))
+        # オールイン発生ハンド数をhands引数から算出
+        ev_count = sum(
+            1 for h in (hands or [])
+            for p in h.get("players", [])
+            if p.get("is_hero") and h.get("result", {}).get("allin_ev", {})
+        )
+        sign = "+" if diff >= 0 else ""
+        if diff > 0:
+            ev_color = "#e94560"
+            ev_verdict = "運が悪かった（EV より実収支が悪い）"
+            ev_detail = f"Heroはオールインで期待値通りなら {sign}{diff:.2f}bb 多く取れていた"
+        else:
+            ev_color = "#4caf93"
+            ev_verdict = "運が良かった（EV より実収支が良い）"
+            ev_detail = f"Heroはオールインで期待値より {abs(diff):.2f}bb 多く得た"
+        ev_color_txt = "#c0392b" if diff > 0 else "#2e7d32"
+        ev_html = f"""
+  <div class="summary-ev" style="padding:8px 20px;background:#fff;border-bottom:1px solid #e8e8e8;font-size:12px;color:#333">
+    &#x1F3B2; All-in EV差 <strong style="color:{ev_color_txt}">{sign}{diff:.2f}bb</strong>
+    <span style="color:#555">（{_esc(ev_verdict)}）</span>
+    <span style="color:#888;font-size:11px">{_esc(ev_detail)}（{ev_count}手）</span>
+  </div>"""
+
+    # ─── 青線/赤線 ハンド一覧 ──────────────────────────────────────────────
+    # 4色スート（ドイツ式）
+    _SUIT_COLORS = {'♠': '#1a1a1a', '♥': '#d32f2f', '♦': '#1565c0', '♣': '#2e7d32'}
+    def _card_html(s):
+        if not s: return ""
+        def _r(m):
+            c = _SUIT_COLORS.get(m.group(2), '#000')
+            return f'{_esc(m.group(1))}<span style="color:{c}">{m.group(2)}</span>'
+        return _re.sub(r'([23456789TJQKA]{1,2})([\u2660\u2665\u2666\u2663])', _r, str(s))
+
+    def _fmt_bb(val):
+        try:
+            n = float(val)
+            if n > 0: return f"+{n:.2f}"
+            if n < 0: return f"{n:.2f}"
+            return "0"
+        except Exception: return "—"
+
+    def _opp_cards(hand):
+        others = [p for p in hand.get("players", []) if not p.get("is_hero")]
+        if not others: return ""
+        winners = [w.get("name") for w in hand.get("result", {}).get("winners", [])]
+        opp = next((p for p in others if p.get("name") in winners), others[0])
+        return "".join(opp.get("hole_cards", []))
+
+    def _board_at(hand, last_st):
+        order = ["flop", "turn", "river"]
+        if last_st == "preflop": return ""
+        idx = order.index(last_st) if last_st in order else len(order) - 1
+        cards = []
+        for s in order[:idx + 1]:
+            board = hand.get("streets", {}).get(s, {}).get("board", [])
+            cards.extend(c for c in board if c and c != "-")
+        return " ".join(cards)
+
+    _ST_JP = {"preflop": "PF", "flop": "F", "turn": "T", "river": "R"}
+    _BLUE_ORDER = ["value_success", "bluff_catch", "bluff_failed", "call_lost"]
+    _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
+
+    # 白背景向けカテゴリサブヘッダークラス
+    _CAT_CLASS = {
+        "value_success": "blue",
+        "bluff_catch":            "blue",
+        "bluff_failed":           "red",
+        "call_lost":              "red",
+        "hero_aggression_won":    "red",
+        "bad_fold":               "red",
+        "nice_fold":              "",
+        "fold_unknown":           "warn",
+    }
+
+    def _fmt_actions(actions):
+        """アクションリストを '›' 区切りの HTML 文字列に変換（ポジション名を使用）"""
+        parts = []
+        for a in actions:
+            pos = a.get("position") or a.get("name", "?")
+            act = a.get("action", "")
+            amt = a.get("amount_bb")
+            amt_s = f"&nbsp;{amt}bb" if amt else ""
+            if act == "Fold":
+                parts.append(f'<span class="act-fold">{pos}&nbsp;F</span>')
+            elif act == "Check":
+                parts.append(f'<span class="act-check">{pos}&nbsp;X</span>')
+            elif act == "Call":
+                parts.append(f'<span class="act-call">{pos}&nbsp;Call{amt_s}</span>')
+            elif act == "Raise":
+                parts.append(f'<span class="act-raise">{pos}&nbsp;Raise{amt_s}</span>')
+            elif act == "Bet":
+                parts.append(f'<span class="act-bet">{pos}&nbsp;Bet{amt_s}</span>')
+            elif act:
+                parts.append(f'<span>{pos}&nbsp;{act}</span>')
+        sep = ' <span class="act-sep">›</span> '
+        return sep.join(parts)
+
+    def _build_hand_card(h):
+        """1ハンドの詳細カードHTMLを返す（白背景スタイル）"""
+        clf = h.get("bluered_classification", {})
+        hero_cards = "".join(h.get("hero_cards", []))
+        hero_pos   = h.get("hero_position", "?")
+        is_3bet    = h.get("is_3bet_pot", False)
+        pl         = float(h.get("hero_result_bb", 0))
+        pl_cls     = "pos" if pl > 0 else "neg" if pl < 0 else "zero"
+        needs_api  = clf.get("needs_api", False)
+
+        badge_3bet = '<span class="badge-3bet">3BET</span> ' if is_3bet else ""
+        badge_ai   = '<span class="badge-ai">★</span> ' if needs_api else ""
+        card_cls   = "hand-card needs-ai" if needs_api else "hand-card"
+
+        # 相手プレイヤーのカード（ポジション付き）
+        opp_parts = []
+        for p in h.get("players", []):
+            if not p.get("is_hero"):
+                cards = "".join(p.get("hole_cards", []))
+                pos   = p.get("position", "?")
+                if cards:
+                    opp_parts.append(f'<span class="opp-pos">{pos}</span>&nbsp;{_card_html(cards)}')
+                else:
+                    opp_parts.append(f'<span class="opp-pos">{pos}</span>')
+        opp_html = "&ensp;".join(opp_parts) if opp_parts else "—"
+
+        hero_c_html = _card_html(hero_cards) if hero_cards else "—"
+
+        # ストリート別アクション
+        streets = h.get("streets", {})
+        st_lines = []
+
+        pf = streets.get("preflop", [])
+        if pf:
+            acts = _fmt_actions(pf)
+            if acts:
+                st_lines.append(
+                    f'<div class="street-line">'
+                    f'<span class="street-label">PF</span>'
+                    f'<span>{acts}</span></div>'
+                )
+
+        for st_key, st_lbl in [("flop","F"), ("turn","T"), ("river","R")]:
+            s = streets.get(st_key)
+            if not s or not isinstance(s, dict): continue
+            board_cards = [c for c in s.get("board", []) if c and c != "-"]
+            pot         = s.get("pot_bb", 0)
+            actions     = s.get("actions", [])
+            board_part  = f'<span class="board-cards">{_card_html(" ".join(board_cards))}</span> ' if board_cards else ""
+            pot_part    = f'<span class="pot-label">({pot}bb)</span>'
+            acts        = _fmt_actions(actions)
+            line = (
+                f'<div class="street-line">'
+                f'<span class="street-label">{st_lbl}</span>'
+                f'{board_part}{pot_part}'
+            )
+            if acts:
+                line += f' <span>{acts}</span>'
+            line += '</div>'
+            st_lines.append(line)
+
+        streets_html = "".join(st_lines)
+
+        hnum = h.get("hand_number", "")
+        line = h.get("bluered_classification", {}).get("line", "")
+        na_attr = ' data-needs-api="1"' if needs_api else ""
+        # カート用データ属性
+        _cards_str = "".join(h.get("hero_cards", []))
+        _pl_str    = f"{_fmt_bb(pl)}bb"
+        data_attrs = (
+            f' data-pos="{_esc(hero_pos)}"'
+            f' data-cards="{_esc(_cards_str)}"'
+            f' data-pl="{_esc(_pl_str)}"'
+            f' data-pl-num="{pl:.2f}"'
+        )
+        cart_btn = (
+            f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
+            f'data-hnum="{hnum}" title="カートに追加/削除">🛒</button>'
+            if line != "preflop_only" else ""
+        )
+
+        return (
+            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{na_attr}{data_attrs}>'
+            f'<div class="hand-card-head">'
+            f'{badge_ai}'
+            f'<span class="hand-num">H{hnum}</span>'
+            f'{badge_3bet}'
+            f'<span class="hero-pos">{hero_pos}</span>'
+            f'<span class="hero-label">(Hero)</span>'
+            f'<span class="hero-cards">{hero_c_html}</span>'
+            f'<span class="vs-label">vs</span>'
+            f'<span class="opp-cards">{opp_html}</span>'
+            f'<span class="hand-pl {pl_cls}">{_fmt_bb(pl)}bb</span>'
+            f'{cart_btn}'
+            f'</div>'
+            f'<div class="hand-card-body">{streets_html}</div>'
+            f'</div>'
+        )
+
+    def _build_hand_section(filtered_hands, cat_order):
+        html = ""
+        for cat in cat_order:
+            cat_hands = [h for h in filtered_hands
+                         if h.get("bluered_classification", {}).get("category") == cat]
+            # 3BETポット優先、次にラストストリート順、次にハンド番号順
+            cat_hands.sort(key=lambda h: (
+                0 if h.get("is_3bet_pot") else 1,
+                ["preflop","flop","turn","river"].index(
+                    h.get("bluered_classification", {}).get("last_street", "preflop")
+                ),
+                h.get("hand_number", 0)
+            ))
+            if not cat_hands: continue
+            cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
+            cat_pl    = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
+            pl_cls    = "pos" if cat_pl > 0 else "neg" if cat_pl < 0 else ""
+            cc        = _CAT_CLASS.get(cat, "")
+            needs_api_cnt = sum(1 for h in cat_hands if h.get("bluered_classification", {}).get("needs_api"))
+            ai_badge  = f' <span class="ai-badge">★ 要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
+            pl_sign   = "+" if cat_pl > 0 else ""
+
+            # cat-subheaderのクラス: blue/red/warn のみCSS定義あり; 空の場合はデフォルト
+            sub_cls = f"cat-subheader {cc}" if cc else "cat-subheader"
+            html += (
+                f'<div style="padding:0 10px">'
+                f'<div class="{sub_cls}">'
+                f'{_esc(cat_label)} <span style="font-weight:400;color:#555">{len(cat_hands)}手</span>'
+                f'<span class="cat-sub-pl {pl_cls}">{pl_sign}{cat_pl:.2f}bb</span>'
+                f'{ai_badge}</div>\n'
+            )
+            for h in cat_hands:
+                html += _build_hand_card(h)
+            html += '</div>\n'
+        return html
+
+    # ─── ポジション別統計 ────────────────────────────────────────────
+    _POS_ORDER = ["UTG", "UTG+1", "LJ", "HJ", "CO", "BTN", "SB", "BB"]
+    pos_stats_html = ""
+    if hands:
+        pos_map = {}
+        for h in hands:
+            pos = h.get("hero_position", "?")
+            if pos not in pos_map:
+                pos_map[pos] = {"total": 0, "pl": 0.0, "blue": 0, "red": 0, "pf": 0, "won": 0, "vpip": 0, "pfr": 0, "tbet": 0}
+            s = pos_map[pos]
+            s["total"] += 1
+            s["pl"] += float(h.get("hero_result_bb", 0))
+            line = h.get("bluered_classification", {}).get("line", "preflop_only")
+            if line == "blue":   s["blue"] += 1
+            elif line == "red":  s["red"] += 1
+            else:                s["pf"] += 1
+            winners = {w["name"] for w in h.get("result", {}).get("winners", [])}
+            hero_name2 = next((p.get("name","") for p in h.get("players",[]) if p.get("is_hero")), "")
+            if hero_name2 and hero_name2 in winners:
+                s["won"] += 1
+            # VPIP: Heroが PF で Call or Raise
+            pf_acts = h.get("streets", {}).get("preflop", [])
+            hero_acts = [a for a in pf_acts if a.get("name") == hero_name2]
+            if any(a.get("action") in ("Call","Raise") for a in hero_acts):
+                s["vpip"] += 1
+            if any(a.get("action") == "Raise" for a in hero_acts):
+                s["pfr"] += 1
+            if h.get("is_3bet_pot") and any(a.get("action") == "Raise" for a in hero_acts):
+                s["tbet"] += 1
+
+        rows_pos = ""
+        ordered_pos = [p for p in _POS_ORDER if p in pos_map] + [p for p in pos_map if p not in _POS_ORDER]
+        for pos in ordered_pos:
+            s = pos_map[pos]
+            n = s["total"]
+            pl = s["pl"]
+            pl_c = "#2e7d32" if pl > 0 else "#c0392b" if pl < 0 else "#888"
+            pl_s = ("+" if pl > 0 else "") + f"{pl:.2f}"
+            avg = pl / n
+            avg_c = "#2e7d32" if avg > 0 else "#c0392b" if avg < 0 else "#888"
+            avg_s = ("+" if avg > 0 else "") + f"{avg:.2f}"
+            red_r = f'{s["red"]/n*100:.0f}%' if n else "—"
+            rows_pos += f"""<tr>
+  <td style="font-weight:700">{_esc(pos)}</td>
+  <td style="text-align:center">{n}</td>
+  <td style="text-align:center">{s['vpip']/n*100:.0f}%</td>
+  <td style="text-align:center">{s['pfr']/n*100:.0f}%</td>
+  <td style="text-align:center">{s['tbet']/n*100:.0f}%</td>
+  <td style="text-align:center"><span style="color:#1a6abf">{s['blue']}</span> / <span style="color:#c0392b">{s['red']}</span> / <span style="color:#888">{s['pf']}</span></td>
+  <td style="text-align:right;color:{pl_c};font-weight:700">{pl_s}bb</td>
+  <td style="text-align:right;color:{avg_c}">{avg_s}bb</td>
+</tr>"""
+        pos_stats_html = f"""<div style="padding:16px 20px 24px">
+<table style="width:100%;border-collapse:collapse;font-size:12px">
+  <thead><tr style="background:#f0f0f0">
+    <th style="padding:7px 8px;text-align:left;border-bottom:2px solid #ddd">ポジション</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">手数</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">VPIP</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">PFR</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">3BET%</th>
+    <th style="padding:7px 8px;text-align:center;border-bottom:2px solid #ddd">青/赤/PF</th>
+    <th style="padding:7px 8px;text-align:right;border-bottom:2px solid #ddd">合計損益</th>
+    <th style="padding:7px 8px;text-align:right;border-bottom:2px solid #ddd">平均損益/手</th>
+  </tr></thead>
+  <tbody>{rows_pos}</tbody>
+</table>
+<p style="font-size:10px;color:#aaa;margin-top:8px">VPIP=自発的投資率 / PFR=プリフロップレイズ率 / 3BET%=3BETポット参加率</p>
+</div>"""
+
+    # ─── チップ推移データ（JS用JSON） ───────────────────────────────
+    chip_data_json = "[]"
+    if hands:
+        chip_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
+        cumulative = 0.0
+        points = []
+        for h in chip_sorted:
+            cumulative += float(h.get("hero_result_bb", 0))
+            points.append({
+                "x": h.get("hand_number", 0),
+                "y": round(cumulative, 2),
+                "line": h.get("bluered_classification", {}).get("line", "preflop_only"),
+            })
+        import json as _json
+        chip_data_json = _json.dumps(points)
+
+    hands_html = ""
+    if hands:
+        blue_hands = [h for h in hands if h.get("bluered_classification", {}).get("line") == "blue"]
+        red_hands  = [h for h in hands if h.get("bluered_classification", {}).get("line") == "red"]
+        pf_hands   = [h for h in hands if h.get("bluered_classification", {}).get("line") == "preflop_only"]
+        blue_pl    = sum(float(h.get("hero_result_bb", 0)) for h in blue_hands)
+        red_pl     = sum(float(h.get("hero_result_bb", 0)) for h in red_hands)
+        blue_pl_c  = "pos" if blue_pl > 0 else "neg" if blue_pl < 0 else ""
+        red_pl_c   = "pos" if red_pl  > 0 else "neg" if red_pl  < 0 else ""
+        blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
+        red_section  = _build_hand_section(red_hands,  _RED_ORDER)
+
+        # 全ハンド一覧（青+赤+PFのみ、ハンド番号順）
+        all_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
+        _LINE_BADGE = {
+            "blue":         '<span class="badge-line-blue">青</span>',
+            "red":          '<span class="badge-line-red">赤</span>',
+            "preflop_only": '<span class="badge-line-pf">PF</span>',
+        }
+        all_rows = ""
+        for h in all_sorted:
+            clf      = h.get("bluered_classification", {})
+            line     = clf.get("line", "preflop_only")
+            pl       = float(h.get("hero_result_bb", 0))
+            pl_color = "#2e7d32" if pl > 0 else "#c0392b" if pl < 0 else "#999"
+            hero_pos = h.get("hero_position", "?")
+            hero_c   = "".join(h.get("hero_cards", []))
+            badge    = _LINE_BADGE.get(line, "")
+            badge3   = '<span class="badge-3bet" style="font-size:9px;padding:1px 4px">3B</span> ' if h.get("is_3bet_pot") else ""
+            opp_parts2 = []
+            for p in h.get("players", []):
+                if not p.get("is_hero"):
+                    cards2 = "".join(p.get("hole_cards", []))
+                    pos2   = p.get("position", "?")
+                    if cards2:
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>&nbsp;{_card_html(cards2)}')
+                    else:
+                        opp_parts2.append(f'<span class="opp-pos">{pos2}</span>')
+            opp2 = "&ensp;".join(opp_parts2) if opp_parts2 else "—"
+            pf_acts = _fmt_actions(h.get("streets", {}).get("preflop", []))
+            all_rows += (
+                f'<tr>'
+                f'<td style="white-space:nowrap">{badge} H{h.get("hand_number","")}</td>'
+                f'<td><span style="font-weight:700">{_esc(hero_pos)} (H)</span> {badge3}'
+                f'{_card_html(hero_c) if hero_c else "—"}'
+                f' <span style="color:#bbb;font-size:10px">vs</span> {opp2}</td>'
+                f'<td style="font-size:10px">{pf_acts}</td>'
+                f'<td style="text-align:right;color:{pl_color};font-weight:700;white-space:nowrap">{_fmt_bb(pl)}bb</td>'
+                f'</tr>'
+            )
+
+        blue_pl_str = ("+" if blue_pl > 0 else "") + f"{blue_pl:.2f}"
+        red_pl_str  = ("+" if red_pl  > 0 else "") + f"{red_pl:.2f}"
+
+        hands_html = f"""
+<div class="section">
+  <div class="section-header" onclick="toggleSection('hand-list-body')">
+    &#x1F4CB; 青線 / 赤線 ハンド一覧
+    <span class="toggle-btn">&#x25B2;</span>
+  </div>
+  <div class="accordion-body" id="hand-list-body">
+    <div class="line-header">
+      <span class="line-title blue">&#x1F535; 青線（ショーダウン）</span>
+      <span class="line-count">{len(blue_hands)}手</span>
+      <span class="line-pl {blue_pl_c}">{blue_pl_str}bb</span>
+    </div>
+    {blue_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+    <div class="line-header" style="border-top:2px solid #eee;margin-top:8px">
+      <span class="line-title red">&#x1F534; 赤線（ノーショーダウン）</span>
+      <span class="line-count">{len(red_hands)}手</span>
+      <span class="line-pl {red_pl_c}">{red_pl_str}bb</span>
+    </div>
+    {red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" onclick="toggleSection('all-hands-body')">
+    &#x1F5C2; 全ハンド一覧（{len(all_sorted)}手）
+    <span class="toggle-btn">&#x25BC;</span>
+  </div>
+  <div class="accordion-body collapsed" id="all-hands-body">
+    <div class="section-body" style="overflow-x:auto">
+      <table class="all-hands-table">
+        <thead><tr>
+          <th>分類 / H#</th>
+          <th>ポジション / ホールカード</th>
+          <th>PFアクション</th>
+          <th style="text-align:right">損益(bb)</th>
+        </tr></thead>
+        <tbody>{all_rows}</tbody>
+      </table>
+    </div>
+  </div>
+</div>"""
+
+    # Jinja2テンプレートでレンダリング
+    from jinja2 import Environment, FileSystemLoader as _FSL
+    _env = Environment(loader=_FSL(_TEMPLATES_DIR), autoescape=False)
+    return _env.get_template('classify_result.html').render(
+        job_id=job_id,
+        total_hands=total_hands,
+        blue_count=blue_count,
+        red_count=red_count,
+        pf_count=pf_count,
+        ev_html=ev_html,
+        cat_rows=cat_rows,
+        hands_html=hands_html,
+        pos_stats_html=pos_stats_html,
+        chip_data_json=chip_data_json,
+    )
+
+
+
+def report_page(pdf_name: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTO レポート</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}}
+.toolbar {{
+  background: #16213e;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}}
+.toolbar h1 {{ font-size: 15px; color: #e94560; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.btn-download {{
+  padding: 10px 20px; min-height: 44px;
+  background: #e94560;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: background 0.2s;
+}}
+.btn-download:hover {{ background: #c73652; }}
+.btn-back {{
+  padding: 10px 16px; min-height: 44px;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: border-color 0.2s, color 0.2s;
+}}
+.btn-back:hover {{ border-color: #e94560; color: #e94560; }}
+iframe {{ flex: 1; width: 100%; border: none; }}
+.mobile-hint {{
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px 20px;
+  text-align: center;
+}}
+.mobile-hint p {{ color: #888; font-size: 14px; margin-bottom: 8px; }}
+@media (max-width: 600px) {{
+  iframe {{ display: none; }}
+  .mobile-hint {{ display: flex; }}
+  .toolbar h1 {{ font-size: 13px; }}
+}}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h1>&#x1F0A1; GTO レポート — {pdf_name}</h1>
+  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <a class="btn-download" href="/download/{pdf_name}" download="{pdf_name}">&#x2B07; ダウンロード</a>
+</div>
+<iframe src="/pdf/{pdf_name}" type="application/pdf"></iframe>
+<div class="mobile-hint">
+  <p>スマートフォンではPDFビューアを直接表示できません。<br>下のボタンからダウンロードしてご確認ください。</p>
+  <a class="btn-download" href="/download/{pdf_name}" download="{pdf_name}">&#x2B07; PDFをダウンロード</a>
+</div>
+</body>
+</html>"""
+
+
+
+ERROR_PAGE = """<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><title>エラー</title>
+<style>
+body {{ font-family: monospace; background: #1a1a2e; color: #eee; padding: 40px; }}
+h2 {{ color: #e94560; margin-bottom: 16px; }}
+pre {{ background: #0f0f1a; padding: 20px; border-radius: 8px; white-space: pre-wrap; color: #f88; font-size: 12px; }}
+a {{ color: #e94560; }}
+</style></head><body>
+<h2>&#x274C; エラーが発生しました</h2>
+<pre>{log}</pre>
+<p><a href="/">&#x2190; 戻る</a></p>
+</body></html>"""
+
+
+
+def dashboard_page(result: dict) -> str:
+    import json as _json
+    data_json = _json.dumps(result, ensure_ascii=False)
+    hero = result.get("hero_name", "Hero")
+    summary = result.get("summary", {})
+    total_hands = summary.get("total_hands", 0)
+    total_bb    = summary.get("total_bb", 0)
+    bb_per_100  = summary.get("bb_per_100", 0)
+    bb_color    = "#4caf93" if total_bb >= 0 else "#e94560"
+    bb100_color = "#4caf93" if bb_per_100 >= 0 else "#e94560"
+
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>クイック解析 — ポーカーGTO</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Meiryo',sans-serif;background:#1a1a2e;color:#eee;min-height:100vh}}
+.topbar{{background:#16213e;padding:12px 24px;display:flex;align-items:center;gap:16px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);position:sticky;top:0;z-index:100}}
+.topbar h1{{font-size:16px;color:#e94560;flex:1}}
+.btn-pdf{{padding:8px 20px;background:#e94560;color:#fff;border:none;border-radius:6px;
+  font-size:13px;font-weight:bold;cursor:pointer;transition:background .2s}}
+.btn-pdf:hover{{background:#c73652}}
+.btn-back{{padding:8px 16px;background:transparent;color:#aaa;border:1px solid #444;
+  border-radius:6px;font-size:13px;text-decoration:none;transition:border-color .2s,color .2s}}
+.btn-back:hover{{border-color:#e94560;color:#e94560}}
+.container{{max-width:1200px;margin:0 auto;padding:24px 20px}}
+/* サマリー */
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}}
+.stat-card{{background:#16213e;border-radius:12px;padding:20px 24px;text-align:center}}
+.stat-label{{font-size:12px;color:#888;margin-bottom:8px}}
+.stat-value{{font-size:32px;font-weight:bold}}
+.stat-sub{{font-size:11px;color:#555;margin-top:4px}}
+/* グリッド */
+.grid-2{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}}
+.grid-1{{margin-bottom:20px}}
+.card{{background:#16213e;border-radius:12px;padding:20px 24px}}
+.card-title{{font-size:14px;font-weight:bold;color:#e94560;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px}}
+.chart-wrap{{position:relative;height:260px}}
+/* EV計算機 */
+.ev-grid{{display:flex;flex-direction:column;gap:16px}}
+.ev-row{{display:flex;flex-direction:column;gap:6px}}
+.ev-row label{{font-size:12px;color:#aaa}}
+.ev-slider-row{{display:flex;align-items:center;gap:12px}}
+.ev-slider-row input[type=range]{{flex:1;accent-color:#e94560}}
+.ev-slider-val{{font-size:14px;font-weight:bold;color:#eee;width:52px;text-align:right}}
+.ev-results{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}}
+.ev-stat{{background:#0f0f1a;border-radius:8px;padding:12px;text-align:center}}
+.ev-stat span{{display:block;font-size:11px;color:#888;margin-bottom:6px}}
+.ev-stat strong{{font-size:18px;font-weight:bold}}
+/* ヒートマップ */
+.heatmap-wrap{{overflow-x:auto}}
+.heatmap{{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;min-width:520px}}
+.hm-cell{{
+  aspect-ratio:1;border-radius:3px;display:flex;align-items:center;
+  justify-content:center;font-size:9px;font-weight:bold;cursor:pointer;
+  transition:transform .15s;position:relative
+}}
+.hm-cell:hover{{transform:scale(1.15);z-index:10}}
+.hm-label{{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;
+  min-width:520px;margin-bottom:4px}}
+.hm-lbl{{text-align:center;font-size:10px;color:#555}}
+/* ツールチップ */
+.tooltip{{
+  display:none;position:fixed;background:#16213e;border:1px solid #333;
+  border-radius:8px;padding:10px 14px;font-size:12px;z-index:999;
+  pointer-events:none;line-height:1.7;min-width:150px
+}}
+.tooltip.show{{display:block}}
+/* レスポンシブ */
+@media(max-width:700px){{
+  .summary{{grid-template-columns:1fr 1fr}}
+  .grid-2{{grid-template-columns:1fr}}
+  .ev-results{{grid-template-columns:1fr}}
+  .stat-value{{font-size:24px}}
+}}
+@media(max-width:400px){{.summary{{grid-template-columns:1fr}}}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>&#x1F0A1; クイック解析 — {_esc(hero)}</h1>
+  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <button class="btn-pdf" onclick="exportPDF()">&#x1F4C4; PDFとして保存</button>
+</div>
+
+<div class="container" id="dashboard">
+
+  <!-- サマリー -->
+  <div class="summary">
+    <div class="stat-card">
+      <div class="stat-label">総ハンド数</div>
+      <div class="stat-value" style="color:#7ec8e3">{total_hands}</div>
+      <div class="stat-sub">hands</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">総収支</div>
+      <div class="stat-value" style="color:{bb_color}">{'+' if total_bb >= 0 else ''}{total_bb}</div>
+      <div class="stat-sub">bb</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">bb/100</div>
+      <div class="stat-value" style="color:{bb100_color}">{'+' if bb_per_100 >= 0 else ''}{bb_per_100}</div>
+      <div class="stat-sub">bb per 100 hands</div>
+    </div>
+  </div>
+
+  <!-- 1. タイムライン -->
+  <div class="grid-1 card">
+    <div class="card-title">&#x1F4C8; セッション損益推移</div>
+    <div class="chart-wrap"><canvas id="chartTimeline"></canvas></div>
+  </div>
+
+  <!-- 2. ストリート / 3. ベットサイジング -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">&#x1F3AF; ストリート別決着率</div>
+      <div class="chart-wrap"><canvas id="chartStreets"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x1F4B0; ベットサイジング分析</div>
+      <div class="chart-wrap"><canvas id="chartBetSizing"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 4. 勝利パターン / 5. EV計算機 -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">&#x1F3C6; 勝利パターン分析</div>
+      <div class="chart-wrap"><canvas id="chartWinTypes"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x1F9EE; EV計算機 <span style="font-size:11px;color:#555;font-weight:normal">(APIなし・即時計算)</span></div>
+      <div class="ev-grid">
+        <div class="ev-row">
+          <label>ポットサイズ (bb)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evPot" min="1" max="200" value="10">
+            <span class="ev-slider-val" id="evPotVal">10</span>
+          </div>
+        </div>
+        <div class="ev-row">
+          <label>コール額 (bb)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evCall" min="1" max="100" value="5">
+            <span class="ev-slider-val" id="evCallVal">5</span>
+          </div>
+        </div>
+        <div class="ev-row">
+          <label>相手のブラフ頻度 (%)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evBluff" min="0" max="100" value="30">
+            <span class="ev-slider-val" id="evBluffVal">30%</span>
+          </div>
+        </div>
+        <div class="ev-results">
+          <div class="ev-stat"><span>ポットオッズ</span><strong id="evOdds">—</strong></div>
+          <div class="ev-stat"><span>ブレークイーブン勝率</span><strong id="evBE">—</strong></div>
+          <div class="ev-stat"><span>EV (コール)</span><strong id="evResult">—</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. コンボヒートマップ -->
+  <div class="grid-1 card">
+    <div class="card-title">&#x1F0CF; 169コンボ ヒートマップ
+      <span style="font-size:11px;color:#555;font-weight:normal">
+        上三角=スーテッド / 下三角=オフスート / 対角=ペア　|　5サンプル未満はグレー
+      </span>
+    </div>
+    <div class="heatmap-wrap">
+      <div class="hm-label" id="hmLabels"></div>
+      <div class="heatmap"  id="heatmap"></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const DATA = {data_json};
+const RANKS = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+
+// ─── Chart.js 共通設定 ─────────────────────────────────────────────────
+Chart.defaults.color = '#888';
+Chart.defaults.font.family = 'Meiryo, sans-serif';
+
+// ─── 1. タイムライン ───────────────────────────────────────────────────
+(function(){{
+  const tl = DATA.timeline || [];
+  const labels = tl.map(d => d.hand);
+  const values = tl.map(d => d.cumulative);
+  new Chart(document.getElementById('chartTimeline'), {{
+    type: 'line',
+    data: {{
+      labels,
+      datasets: [{{
+        label: '累積収支 (bb)',
+        data: values,
+        borderColor: '#4caf93',
+        backgroundColor: 'rgba(76,175,147,.12)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }}]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{ legend: {{ display: false }}, tooltip: {{ mode: 'index', intersect: false }} }},
+      scales: {{
+        x: {{ grid: {{ color: '#222' }}, ticks: {{ maxTicksLimit: 10 }} }},
+        y: {{ grid: {{ color: '#222' }},
+          ticks: {{ callback: v => (v >= 0 ? '+' : '') + v + 'bb' }} }}
+      }}
+    }}
+  }});
+}})();
+
+// ─── 2. ストリート別決着率 ────────────────────────────────────────────
+(function(){{
+  const sc = DATA.streets?.counts  || {{}};
+  const sd = DATA.streets?.showdown || {{}};
+  const labels = ['Preflop','Flop','Turn','River'];
+  const keys   = ['preflop','flop','turn','river'];
+  const noSD = keys.map(k => (sc[k] || 0) - (sd[k] || 0));
+  const withSD = keys.map(k => sd[k] || 0);
+  new Chart(document.getElementById('chartStreets'), {{
+    type: 'bar',
+    data: {{
+      labels,
+      datasets: [
+        {{ label: 'ショーダウンなし', data: noSD,   backgroundColor: 'rgba(233,69,96,.7)'   }},
+        {{ label: 'ショーダウンあり', data: withSD, backgroundColor: 'rgba(126,200,227,.7)' }},
+      ]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{ legend: {{ labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }} }},
+      scales: {{
+        x: {{ stacked: true, grid: {{ color: '#222' }} }},
+        y: {{ stacked: true, grid: {{ color: '#222' }},
+          ticks: {{ stepSize: 1 }} }}
+      }}
+    }}
+  }});
+}})();
+
+// ─── 3. ベットサイジング ──────────────────────────────────────────────
+(function(){{
+  const bs = DATA.bet_sizing || [];
+  const labels = bs.map(d => d.range);
+  const wr  = bs.map(d => d.winrate != null ? Math.round(d.winrate * 100) : null);
+  const cnt = bs.map(d => d.count);
+  new Chart(document.getElementById('chartBetSizing'), {{
+    type: 'bar',
+    data: {{
+      labels,
+      datasets: [
+        {{
+          label: '勝率 (%)',
+          data: wr,
+          backgroundColor: wr.map(v => v == null ? '#333' : v >= 50 ? 'rgba(76,175,147,.8)' : 'rgba(233,69,96,.8)'),
+          yAxisID: 'y',
+        }},
+      ]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            afterBody: (items) => {{
+              const i = items[0].dataIndex;
+              const d = bs[i];
+              const lines = [`サンプル: ${{d.count}}件`];
+              if (d.avg_bb != null) lines.push(`平均収支: ${{d.avg_bb >= 0 ? '+' : ''}}${{d.avg_bb}}bb`);
+              else lines.push('サンプル不足 (5件未満)');
+              return lines;
+            }}
+          }}
+        }}
+      }},
+      scales: {{
+        x: {{ grid: {{ color: '#222' }} }},
+        y: {{ grid: {{ color: '#222' }}, min: 0, max: 100,
+          ticks: {{ callback: v => v + '%' }} }}
+      }}
+    }}
+  }});
+}})();
+
+// ─── 4. 勝利パターン ──────────────────────────────────────────────────
+(function(){{
+  const wt = DATA.win_types || {{}};
+  const labels = ['バリュー', 'ブラフ', 'ブラフキャッチ', 'その他'];
+  const keys   = ['value', 'bluff', 'bluff_catch', 'other'];
+  const values = keys.map(k => wt[k] || 0);
+  new Chart(document.getElementById('chartWinTypes'), {{
+    type: 'doughnut',
+    data: {{
+      labels,
+      datasets: [{{
+        data: values,
+        backgroundColor: ['rgba(76,175,147,.85)','rgba(233,69,96,.85)','rgba(126,200,227,.85)','rgba(100,100,120,.7)'],
+        borderWidth: 0,
+      }}]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      cutout: '58%',
+      plugins: {{
+        legend: {{ position: 'right', labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }},
+        tooltip: {{
+          callbacks: {{
+            label: ctx => ` ${{ctx.label}}: ${{ctx.raw}}件`
+          }}
+        }}
+      }}
+    }}
+  }});
+}})();
+
+// ─── 5. EV計算機 ─────────────────────────────────────────────────────
+function calcEV(){{
+  const pot   = parseFloat(document.getElementById('evPot').value);
+  const call  = parseFloat(document.getElementById('evCall').value);
+  const bluff = parseFloat(document.getElementById('evBluff').value) / 100;
+  document.getElementById('evPotVal').textContent   = pot;
+  document.getElementById('evCallVal').textContent  = call;
+  document.getElementById('evBluffVal').textContent = Math.round(bluff * 100) + '%';
+  const potOdds = call / (pot + call);
+  const ev = bluff * pot - (1 - bluff) * call;
+  document.getElementById('evOdds').textContent   = (potOdds * 100).toFixed(1) + '%';
+  document.getElementById('evBE').textContent     = (potOdds * 100).toFixed(1) + '%';
+  const evEl = document.getElementById('evResult');
+  evEl.textContent = (ev >= 0 ? '+' : '') + ev.toFixed(2) + 'bb';
+  evEl.style.color = ev >= 0 ? '#4caf93' : '#e94560';
+}}
+['evPot','evCall','evBluff'].forEach(id =>
+  document.getElementById(id).addEventListener('input', calcEV));
+calcEV();
+
+// ─── 6. ヒートマップ ──────────────────────────────────────────────────
+(function(){{
+  const combos = DATA.combos || {{}};
+  const tooltip = document.getElementById('tooltip');
+
+  function getKey(r, c){{
+    if (r === c) return RANKS[r] + RANKS[r];
+    if (r < c)   return RANKS[r] + RANKS[c] + 's';
+    return RANKS[c] + RANKS[r] + 'o';
+  }}
+
+  function cellColor(bb, count){{
+    if (!count || count < 5) return '#1e1e30';
+    const cap = 20;
+    if (bb > 0){{
+      const t = Math.min(bb / cap, 1);
+      return `rgba(76,175,147,${{(0.25 + t * 0.75).toFixed(2)}})`;
+    }} else {{
+      const t = Math.min(-bb / cap, 1);
+      return `rgba(233,69,96,${{(0.25 + t * 0.75).toFixed(2)}})`;
+    }}
+  }}
+
+  // ラベル行
+  const lblWrap = document.getElementById('hmLabels');
+  RANKS.forEach(r => {{
+    const d = document.createElement('div');
+    d.className = 'hm-lbl'; d.textContent = r;
+    lblWrap.appendChild(d);
+  }});
+
+  // セルグリッド
+  const wrap = document.getElementById('heatmap');
+  for (let row = 0; row < 13; row++){{
+    for (let col = 0; col < 13; col++){{
+      const key = getKey(row, col);
+      const d   = combos[key] || {{}};
+      const count = d.count || 0;
+      const bb    = d.bb || 0;
+      const wr    = d.winrate || 0;
+
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = cellColor(bb, count);
+      cell.textContent = count >= 5 ? key : (count > 0 ? key : '');
+      cell.style.color = count >= 5 ? '#fff' : '#444';
+      cell.style.fontSize = key.length <= 2 ? '9px' : '8px';
+
+      cell.addEventListener('mousemove', e => {{
+        if (count === 0) {{ tooltip.classList.remove('show'); return; }}
+        tooltip.innerHTML =
+          `<b>${{key}}</b><br>` +
+          `試行: ${{count}}回<br>` +
+          (count >= 5
+            ? `勝率: ${{(wr * 100).toFixed(1)}}%<br>収益: ${{bb >= 0 ? '+' : ''}}${{bb.toFixed(2)}}bb`
+            : `<span style="color:#888">サンプル不足</span>`);
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top  = (e.clientY - 10) + 'px';
+        tooltip.classList.add('show');
+      }});
+      cell.addEventListener('mouseleave', () => tooltip.classList.remove('show'));
+
+      wrap.appendChild(cell);
+    }}
+  }}
+}})();
+
+// ─── PDF出力 ──────────────────────────────────────────────────────────
+async function exportPDF(){{
+  const btn = document.querySelector('.btn-pdf');
+  btn.textContent = '生成中...'; btn.disabled = true;
+  try{{
+    const canvas = await html2canvas(document.getElementById('dashboard'), {{
+      backgroundColor: '#1a1a2e', scale: 1.5, useCORS: true,
+    }});
+    const {{ jsPDF }} = window.jspdf;
+    const pdf = new jsPDF({{ orientation: 'p', unit: 'mm', format: 'a4' }});
+    const W = pdf.internal.pageSize.getWidth();
+    const H = pdf.internal.pageSize.getHeight();
+    const imgW = W;
+    const imgH = canvas.height * imgW / canvas.width;
+    const img = canvas.toDataURL('image/png');
+    let y = 0;
+    while (y < imgH){{
+      if (y > 0) pdf.addPage();
+      pdf.addImage(img, 'PNG', 0, -y, imgW, imgH);
+      y += H;
+    }}
+    pdf.save('poker_quick_report.pdf');
+  }} catch(e){{
+    alert('PDF生成に失敗しました: ' + e.message);
+  }} finally{{
+    btn.textContent = '&#x1F4C4; PDFとして保存'; btn.disabled = false;
+  }}
+}}
+</script>
+</body>
+</html>"""
+
+
+
+_LOGIN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO ログイン</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 48px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}
+h1 { font-size: 22px; color: #e94560; margin-bottom: 8px; }
+.sub { font-size: 13px; color: #888; margin-bottom: 32px; }
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  background: #fff;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-google:hover { background: #f0f0f0; }
+.btn-google img { width: 20px; height: 20px; }
+.status { margin-top: 16px; font-size: 13px; color: #888; min-height: 20px; }
+.error { color: #e94560; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🃏 PokerGTO</h1>
+  <p class="sub">Googleアカウントでログインしてください</p>
+  <button class="btn-google" id="btn-login">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+    Googleでログイン
+  </button>
+  <p class="status" id="status"></p>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  // すでにログイン済みならセッション一覧へ
+  onAuthStateChanged(auth, user => {
+    if (user) window.location.href = "/sessions";
+  });
+
+  document.getElementById("btn-login").addEventListener("click", async () => {
+    const st = document.getElementById("status");
+    st.textContent = "ログイン中...";
+    st.classList.remove("error");
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged が /sessions にリダイレクトする
+    } catch (e) {
+      st.textContent = "ログイン失敗: " + e.message;
+      st.classList.add("error");
+    }
+  });
+</script>
+</body>
+</html>"""
+
+
+_RESTORE_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>解析結果を復元中...</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Meiryo', sans-serif; background: #1a1a2e; color: #eee;
+       display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.box { text-align: center; }
+.spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #e94560;
+           border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.msg { font-size: 14px; color: #9ab; }
+.err { color: #e94560; font-size: 14px; margin-top: 16px; display: none; }
+.btn-back { display: inline-block; margin-top: 20px; padding: 8px 20px;
+            border: 1px solid #444; border-radius: 6px; color: #9ab;
+            text-decoration: none; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <div class="msg" id="msg">解析結果をFirestoreから復元中...</div>
+  <div class="err" id="err"></div>
+  <a class="btn-back" href="/sessions">← セッション一覧に戻る</a>
+</div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  function showErr(msg) {
+    document.getElementById("spinner").style.display = "none";
+    const e = document.getElementById("err");
+    e.textContent = msg; e.style.display = "block";
+  }
+
+  onAuthStateChanged(auth, async user => {
+    if (!user) { window.location.href = "/login"; return; }
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/analyses/{job_id}/restore", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showErr(d.error || "復元に失敗しました"); return;
+      }
+      window.location.href = "/classify_result/{job_id}";
+    } catch (e) {
+      showErr("エラー: " + e.message);
+    }
+  });
+</script>
+</body>
+</html>"""
+
+
+_SESSIONS_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO — ハンド解析</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+}
+/* ─── トップバー ─── */
+.topbar {
+  background: #12122a;
+  border-bottom: 1px solid #1e2535;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.topbar h1 { font-size: 16px; color: #e94560; flex: 1; }
+.user-email { font-size: 12px; color: #778; }
+.btn-logout {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #889;
+  cursor: pointer;
+  font-size: 11px;
+}
+.btn-logout:hover { border-color: #e94560; color: #e94560; }
+
+/* ─── メインコンテナ ─── */
+.container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
+
+/* ─── ハンド数カード ─── */
+.stats-card {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+.stats-loading { color: #778; font-size: 14px; }
+.stats-count {
+  font-size: 64px;
+  font-weight: 700;
+  color: #e94560;
+  line-height: 1.1;
+  letter-spacing: -2px;
+}
+.stats-unit { font-size: 20px; color: #9ab; margin-left: 4px; font-weight: 400; }
+.stats-range { font-size: 12px; color: #778; margin-top: 6px; }
+.stats-live {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: #4caf93;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ─── 解析パネル ─── */
+.analyze-panel {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 24px 28px;
+  margin-bottom: 16px;
+}
+.panel-title {
+  font-size: 13px;
+  color: #9ab;
+  font-weight: 600;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
+}
+
+.select-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.select-label {
+  font-size: 11px;
+  color: #778;
+  margin-bottom: 5px;
+}
+select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #0f1828;
+  border: 1px solid #2a3550;
+  border-radius: 8px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23778'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+select:focus { outline: none; border-color: #e94560; }
+
+.btn-analyze-main {
+  width: 100%;
+  padding: 16px;
+  background: #e94560;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-analyze-main:hover { background: #c73652; }
+.btn-analyze-main:active { transform: scale(0.98); }
+.btn-analyze-main:disabled { background: #3a2030; color: #666; cursor: not-allowed; }
+
+/* ─── サブリンク ─── */
+.sub-links {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.sub-link {
+  font-size: 12px;
+  color: #556;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.sub-link:hover { color: #9ab; }
+
+/* ─── アラート ─── */
+.alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+.alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
+
+/* ─── 解析履歴 ─── */
+.history-section {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-top: 20px;
+}
+.history-title {
+  font-size: 13px;
+  color: #9ab;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #1e2535;
+  font-size: 12px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-date { color: #778; min-width: 110px; font-size: 11px; }
+.history-counts { flex: 1; color: #ccd; }
+.history-link {
+  color: #e94560;
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.history-link:hover { text-decoration: underline; }
+.history-empty { color: #556; font-size: 12px; text-align: center; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🃏 PokerGTO</h1>
+  <span class="user-email" id="user-email"></span>
+  <button class="btn-logout" id="btn-logout">ログアウト</button>
+</div>
+
+<div class="container">
+  <div id="alert-area"></div>
+
+  <!-- ハンド数カード -->
+  <div class="stats-card" id="stats-card">
+    <div class="stats-loading">蓄積ハンド数を確認中...</div>
+  </div>
+
+  <!-- 解析パネル -->
+  <div class="analyze-panel">
+    <div class="panel-title">解析範囲を選択</div>
+    <div class="select-group">
+      <div>
+        <div class="select-label">件数</div>
+        <select id="sel-limit">
+          <option value="50">直近 50 手</option>
+          <option value="100" selected>直近 100 手</option>
+          <option value="200">直近 200 手</option>
+          <option value="500">直近 500 手</option>
+          <option value="9999">全て</option>
+        </select>
+      </div>
+      <div>
+        <div class="select-label">期間</div>
+        <select id="sel-period">
+          <option value="0" selected>全期間</option>
+          <option value="1">直近 1 時間</option>
+          <option value="6">直近 6 時間</option>
+          <option value="24">直近 24 時間</option>
+          <option value="168">直近 7 日</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn-analyze-main" id="btn-analyze" disabled>⚡ 解析する</button>
+  </div>
+
+  <div class="sub-links">
+    <a class="sub-link" href="/download-extension">⬇ 拡張機能ZIP</a>
+    <a class="sub-link" href="/legacy">手動アップロード（旧版）</a>
+    <a class="sub-link" href="/">トップ</a>
+  </div>
+
+  <!-- 解析履歴 -->
+  <div class="history-section" id="history-section" style="display:none">
+    <div class="history-title">📊 解析履歴</div>
+    <div id="history-list"><div class="history-empty">読み込み中...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+  let currentUser = null;
+
+  function showAlert(msg) {
+    document.getElementById("alert-area").innerHTML =
+      `<div class="alert alert-error">${msg}</div>`;
+  }
+
+  async function getIdToken() {
+    if (!currentUser) throw new Error("未ログイン");
+    return currentUser.getIdToken();
+  }
+
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
+  }
+
+  async function loadStats() {
+    const card = document.getElementById("stats-card");
+    const btn  = document.getElementById("btn-analyze");
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/hands/stats", {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "取得失敗");
+
+      const count = data.count || 0;
+      const rangeStr = (data.oldest && data.newest && data.oldest !== data.newest)
+        ? `${fmtDate(data.oldest)} 〜 ${fmtDate(data.newest)}`
+        : data.newest ? fmtDate(data.newest) : "—";
+
+      card.innerHTML = `
+        <div style="font-size:12px;color:#778;margin-bottom:8px">
+          <span class="stats-live"></span>自動取得中
+        </div>
+        <div>
+          <span class="stats-count">${count.toLocaleString()}</span>
+          <span class="stats-unit">手</span>
+        </div>
+        <div class="stats-range">${rangeStr}</div>
+      `;
+
+      // 件数ドロップダウンに「全て（N手）」を更新
+      const selLimit = document.getElementById("sel-limit");
+      const allOpt = selLimit.querySelector('option[value="9999"]');
+      if (allOpt) allOpt.textContent = `全て（${count.toLocaleString()}手）`;
+
+      if (count > 0) btn.disabled = false;
+      else {
+        btn.disabled = true;
+        card.innerHTML += `<div style="font-size:12px;color:#778;margin-top:12px">
+          T4でプレイしながら拡張機能を動かすと自動でハンドが蓄積されます
+        </div>`;
+      }
+    } catch (e) {
+      card.innerHTML = `<div class="stats-loading">取得失敗: ${e.message}</div>`;
+    }
+  }
+
+  document.getElementById("btn-analyze").addEventListener("click", async () => {
+    const btn       = document.getElementById("btn-analyze");
+    const limit     = parseInt(document.getElementById("sel-limit").value);
+    const sinceHours = parseInt(document.getElementById("sel-period").value);
+    btn.disabled = true;
+    btn.textContent = "解析を開始中...";
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/hands/analyze", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ limit, since_hours: sinceHours }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "⚡ 解析する"; return; }
+      window.location.href = data.progress_url;
+    } catch (e) {
+      showAlert("エラー: " + e.message);
+      btn.disabled = false;
+      btn.textContent = "⚡ 解析する";
+    }
+  });
+
+  document.getElementById("btn-logout").addEventListener("click", async () => {
+    await signOut(auth);
+    window.location.href = "/login";
+  });
+
+  async function loadHistory() {
+    try {
+      const token = await getIdToken();
+      const res = await fetch("/api/analyses", {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const analyses = data.analyses || [];
+      const section = document.getElementById("history-section");
+      const list    = document.getElementById("history-list");
+      if (analyses.length === 0) {
+        list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
+      } else {
+        list.innerHTML = analyses.map(a => `
+          <div class="history-item">
+            <div class="history-date">${fmtDate(a.created_at)}</div>
+            <div class="history-counts">
+              ${(a.hand_count||0).toLocaleString()}手
+              &nbsp;<span style="color:#4a9eff">&#11044;${a.blue_count||0}</span>
+              <span style="color:#e94560">&#11044;${a.red_count||0}</span>
+              <span style="color:#778">PF:${a.pf_count||0}</span>
+            </div>
+            <a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>
+          </div>
+        `).join("");
+      }
+      section.style.display = "block";
+    } catch (e) { /* silent */ }
+  }
+
+  onAuthStateChanged(auth, user => {
+    if (!user) { window.location.href = "/login"; return; }
+    currentUser = user;
+    document.getElementById("user-email").textContent = user.email || user.displayName || "";
+    loadStats();
+    loadHistory();
+  });
+</script>
+</body>
+</html>"""
+

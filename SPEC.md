@@ -22,7 +22,8 @@
 | Phase 9 | 拡張機能UX改善（設定・バッジ・非干渉通知） | ✅ 完了 |
 | Phase 10 | Web出力リデザイン（白背景・アコーディオン・可変表示） | ✅ 完了 |
 | Phase 11 | 対戦相手統計DB ＋ SNS共有 | ⬜ 未着手 |
-| **Phase 12** | **解析カート & AI解析インライン表示（Gemini刷新）** | 🔄 実装中 |
+| Phase 12 | 解析カート & AI解析インライン表示（Gemini刷新） | ✅ 完了 |
+| Phase 14 | server.py リファクタ（routes/ / pipelines.py / state.py 分割） | ✅ 完了 |
 
 ---
 
@@ -91,13 +92,23 @@ run_classify_pipeline_from_json（バックグラウンド）
 
 ```
 GTO-/
-├── server.py                   # FastAPI サーバー（全エンドポイント・HTMLテンプレート含む）
+├── server.py                   # FastAPI アプリ初期化・ミドルウェア・起動のみ（~150行）
+├── state.py                    # グローバル変数（jobs, event_queues 等）
+├── pipelines.py                # run_classify_pipeline_from_json 等のパイプライン関数
+├── routes/
+│   ├── pages.py                # 現役画面（/sessions /login /classify_result /classify_progress）
+│   ├── api.py                  # /api/hands/* /api/analyses/* /api/sessions/* /api/user/settings
+│   ├── cart.py                 # /api/cart/*（Phase 12）
+│   └── legacy.py               # 旧フロー（/upload /progress /report /dashboard 等）将来削除予定
+├── html/
+│   └── pages.py                # classify_result_page() 等の Python HTML 生成関数（Jinja2 本格移行まで）
+├── templates/
+│   └── classify_result.html    # 解析結果画面テンプレート（Jinja2）
 ├── scripts/
 │   ├── parse.py                # ハンド履歴パーサー（txt → JSON）
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
 │   ├── hand_converter.py       # fastFoldTableState JSON → parse.py互換JSON変換
 │   ├── analyze.py              # Gemini GTO分析
-│   ├── generate.js             # AI PDFレポート生成
 │   ├── generate_noapilist.js   # NoAPI PDFレポート生成
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ
 ├── extension/                  # Chrome拡張機能（MV3）
@@ -106,11 +117,13 @@ GTO-/
 │   ├── background.js           # Service Worker（Firebase Auth管理・自動解析トリガー）
 │   ├── interceptor.js          # WebSocket傍受（MAIN world）
 │   ├── content.js              # CustomEventをbackground.jsに転送
-│   ├── options.html / options.js  # 設定画面（Phase 9で追加）
 │   └── icons/
 └── static/
     └── css_test.html           # CSSモック確認用
 ```
+
+> **Phase 14 完了（2026-04-14）:** server.py（3900行）を上記構成に分割。server.py は45行に縮小。
+> `classify_result_page()` の Jinja2 本格移行（HTML 組み立てをテンプレート側に移す）は Phase 13 の表示改善と合わせて実施予定。
 
 ---
 

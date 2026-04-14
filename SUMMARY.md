@@ -32,8 +32,7 @@ T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → F
 
 | フェーズ | 内容 | 状態 |
 |---|---|---|
-| 1〜4, 7〜10 | 基盤・拡張機能・解析・UX | ✅ 完了 |
-| **Phase 12** | 解析カート & AI解析インライン（Gemini刷新） | ✅ ほぼ完了（PDF AI込みのみ未着手） |
+| 1〜4, 7〜10, 12, 14 | 基盤・拡張機能・解析・UX・カート&AI解析・リファクタ | ✅ 完了 |
 | **Phase 13** | AI解析品質向上・進捗表示復活・PDF AI込み | ⬜ 次回 |
 | Phase 5, 6, 11 | 管理者ダッシュボード・UX改善・対戦相手統計 | ⬜ 未着手 |
 
@@ -84,7 +83,16 @@ T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → F
 ## ファイル構成（主要）
 
 ```
-server.py                    # FastAPI 全エンドポイント
+server.py                    # FastAPI 初期化・ミドルウェアのみ（Phase 14 リファクタ後）
+state.py                     # グローバル変数（jobs, event_queues 等）
+pipelines.py                 # run_classify_pipeline_from_json 等
+routes/
+  pages.py                   # 現役画面ルート
+  api.py                     # /api/* ルート
+  cart.py                    # /api/cart/* ルート
+  legacy.py                  # 旧フロー（将来削除予定）
+html/
+  pages.py                   # Python HTML 生成関数（Jinja2 本格移行まで）
 templates/
   classify_result.html       # 解析結果画面テンプレート（Jinja2）
 scripts/
