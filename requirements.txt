@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 google-genai
+openai
 python-dotenv
 sse-starlette
 treys

@@ -139,21 +139,22 @@ async def api_analyze_cart(job_id: str, request: Request):
         return JSONResponse({"error": "カートのハンドが見つかりません"}, status_code=400)
 
     import asyncio as _asyncio
-    from scripts.analyze import evaluate_batch, BATCH_SIZE
-    from google import genai as _genai
+    from scripts.analyze2 import evaluate_batch, BATCH_SIZE, detect_provider, make_client, PROVIDERS
 
-    total   = len(cart_hands)
-    batches = [cart_hands[i:i + BATCH_SIZE] for i in range(0, len(cart_hands), BATCH_SIZE)]
+    provider = detect_provider(api_key)
+    model    = PROVIDERS[provider]["model"]
+    total    = len(cart_hands)
+    batches  = [cart_hands[i:i + BATCH_SIZE] for i in range(0, len(cart_hands), BATCH_SIZE)]
 
     async def generate():
-        client = _genai.Client(api_key=api_key)
+        client = make_client(provider, api_key)
         all_results: dict = {}
         done_count = 0
         loop = _asyncio.get_event_loop()
 
         for batch in batches:
             try:
-                result_map = await loop.run_in_executor(None, evaluate_batch, client, batch)
+                result_map = await loop.run_in_executor(None, evaluate_batch, client, model, batch)
             except Exception as e:
                 key_hint = f"（キー末尾: ...{api_key[-4:]}）" if api_key else ""
                 yield {"data": json.dumps({"type": "error", "message": str(e)[:300] + key_hint}, ensure_ascii=False)}
