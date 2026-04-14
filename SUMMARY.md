@@ -21,7 +21,7 @@ T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → F
 |---|---|
 | Backend | FastAPI + uvicorn / Python 3.11 |
 | Frontend | Jinja2 外部テンプレート（`templates/classify_result.html`） |
-| AI | Gemini 2.5 Flash（BYOK・Firestoreに保存） |
+| AI | Groq(llama-3.3-70b) / Gemini 2.5 Flash 自動切替（BYOK・`gsk_`キー→Groq） |
 | PDF | puppeteer（Chromium内蔵・Docker必須の原因） |
 | DB / 認証 | Firestore / Firebase Auth（Google） |
 | 拡張機能 | Chrome MV3 |
@@ -75,7 +75,8 @@ templates/
 scripts/
   classify.py                # 青線/赤線分類
   hand_converter.py          # fastFoldTableState → parse.py互換JSON
-  analyze.py                 # Gemini GTO分析（MODEL=gemini-2.5-flash）
+  analyze.py                 # Gemini専用（旧・現在は未使用）
+  analyze2.py                # Groq/Gemini両対応・detailモード既定（現用）
   generate_noapilist.js      # NoAPI PDF生成
   firebase_utils.py          # Firebase Admin SDK
 extension/
@@ -140,4 +141,13 @@ FIREBASE_API_KEY
 FIREBASE_AUTH_DOMAIN
 FIREBASE_PROJECT_ID
 GEMINI_API_KEY  # 任意（ユーザーBYOKが優先）
+GROQ_API_KEY    # 任意（gsk_ キー。設定するとGroq優先・Geminiフォールバック）
 ```
+
+**BYOKキー判定ロジック（`analyze2.py`）:**
+- `gsk_` で始まる → Groq (llama-3.3-70b-versatile)
+- それ以外 → Gemini (gemini-2.5-flash)
+
+**よくあるミス（Dockerfile）:**
+新ファイルを追加したら必ず `Dockerfile` の `COPY` に追記すること。
+Phase14リファクタ時に `state.py` / `pipelines.py` / `routes/` / `html/` の追記漏れで本番クラッシュした実績あり。
