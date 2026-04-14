@@ -15,6 +15,10 @@ analyze2.py - ハンドのGTO評価をOpenAI互換APIで生成する（Groq / Ge
 BYOKフロー（routes/cart.py から呼ばれる場合）:
   - キーが "gsk_" で始まる → Groq
   - それ以外 → Gemini
+
+解析モード:
+  MODE = "standard" : 数値あり・従来互換
+  MODE = "detail"   : 数値なし・rep（Hero表現レンジ）追加・システムプロンプト使用
 """
 
 import json
@@ -47,6 +51,22 @@ PROVIDERS = {
 BATCH_SIZE = 10
 RETRY_WAIT = 5.0
 MAX_RETRY  = 3
+
+# ─── 解析モード ───────────────────────────────────────────────────────────────
+
+MODE = "detail"  # "standard" or "detail"
+
+SYSTEM_PROMPT_DETAIL = """あなたはポーカーのGTOコーチです。
+各ハンドを以下の構造で必ず日本語で出力してください。
+
+- gto_eval: ✅良好 / ⚠️改善 / ❌ミス / 🎲クーラー のいずれか
+- detail: Heroのアクションの評価（述語で終わる1文・数値禁止）
+- hand_reading: 各ストリートで相手レンジがどう変化したか（1〜2文）
+- opp_gto_diff: 相手がGTOから外れている点（具体的なアクション名で）
+- kaizen: 別の有効なラインがあれば提示。良いプレイなら「このラインで十分」も可
+- rep: Heroが表現できるハンドを2〜3個列挙（例：ハートフラッシュ・セット88）
+
+数値（bb・%・EV）は一切出力しないこと。"""
 
 
 def resolve_provider() -> tuple[str, str, str]:
@@ -177,6 +197,42 @@ def reconstruct_evaluation(j: dict) -> str:
     return "\n".join(lines)
 
 
+# ─── detail モード ────────────────────────────────────────────────────────────
+
+def build_batch_prompt_detail(indexed_hands: list) -> str:
+    """システムプロンプト用のユーザーメッセージ（手順・フィールド定義はsystemに委譲）"""
+    blocks     = [build_hand_block(idx, hand) for idx, hand in indexed_hands]
+    hands_text = "\n\n".join(blocks)
+    n          = len(indexed_hands)
+
+    return f"""以下の{n}ハンドを評価してください。
+
+{hands_text}
+
+以下のJSON配列形式のみで回答してください（説明文・コードブロック記号なし）:
+[
+  {{
+    "id": <ハンド番号>,
+    "gto_eval": "✅良好 or ⚠️改善 or ❌ミス or 🎲クーラー",
+    "detail": "Heroアクションの評価（述語で終わる1文）",
+    "hand_reading": "各ストリートの相手レンジ変化（1〜2文）",
+    "opp_gto_diff": "相手のGTOずれ（具体的なアクション名で）",
+    "kaizen": "代替ライン or 「このラインで十分」",
+    "rep": "Heroが表現できるハンド2〜3個（例: ハートフラッシュ・セット88）"
+  }}
+]"""
+
+
+def reconstruct_evaluation_detail(j: dict) -> str:
+    lines = [f"GTO評価: {j.get('gto_eval', '?')}"]
+    if j.get("detail"):       lines.append(f"詳細: {j['detail']}")
+    if j.get("kaizen"):       lines.append(f"代替ライン: {j['kaizen']}")
+    if j.get("hand_reading"): lines.append(f"ハンドリーディング: {j['hand_reading']}")
+    if j.get("opp_gto_diff"): lines.append(f"相手GTOずれ: {j['opp_gto_diff']}")
+    if j.get("rep"):          lines.append(f"Heroレンジ: {j['rep']}")
+    return "\n".join(lines)
+
+
 # ─── API呼び出し（OpenAI互換） ────────────────────────────────────────────────
 
 def _parse_json_response(raw: str) -> list:
@@ -193,21 +249,32 @@ def _parse_json_response(raw: str) -> list:
         raise
 
 
-def evaluate_batch(client: OpenAI, model: str, indexed_hands: list) -> dict:
+def evaluate_batch(client: OpenAI, model: str, indexed_hands: list, mode: str = MODE) -> dict:
     """{hand_idx: evaluation_text} を返す"""
-    prompt  = build_batch_prompt(indexed_hands)
+    if mode == "detail":
+        prompt   = build_batch_prompt_detail(indexed_hands)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT_DETAIL},
+            {"role": "user",   "content": prompt},
+        ]
+        reconstruct = reconstruct_evaluation_detail
+    else:
+        prompt   = build_batch_prompt(indexed_hands)
+        messages = [{"role": "user", "content": prompt}]
+        reconstruct = reconstruct_evaluation
+
     retries = 0
 
     while True:
         try:
             response = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=0.3,
             )
             raw     = response.choices[0].message.content.strip()
             results = _parse_json_response(raw)
-            return {item["id"]: reconstruct_evaluation(item) for item in results}
+            return {item["id"]: reconstruct(item) for item in results}
 
         except Exception as e:
             err_str = str(e)

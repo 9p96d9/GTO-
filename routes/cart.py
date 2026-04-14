@@ -139,7 +139,7 @@ async def api_analyze_cart(job_id: str, request: Request):
         return JSONResponse({"error": "カートのハンドが見つかりません"}, status_code=400)
 
     import asyncio as _asyncio
-    from scripts.analyze2 import evaluate_batch, BATCH_SIZE, detect_provider, make_client, PROVIDERS
+    from scripts.analyze2 import evaluate_batch, BATCH_SIZE, detect_provider, make_client, PROVIDERS, MODE
 
     provider = detect_provider(api_key)
     model    = PROVIDERS[provider]["model"]
@@ -154,7 +154,9 @@ async def api_analyze_cart(job_id: str, request: Request):
 
         for batch in batches:
             try:
-                result_map = await loop.run_in_executor(None, evaluate_batch, client, model, batch)
+                result_map = await loop.run_in_executor(
+                    None, evaluate_batch, client, model, batch, MODE
+                )
             except Exception as e:
                 key_hint = f"（キー末尾: ...{api_key[-4:]}）" if api_key else ""
                 yield {"data": json.dumps({"type": "error", "message": str(e)[:300] + key_hint}, ensure_ascii=False)}

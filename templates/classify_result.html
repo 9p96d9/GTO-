@@ -788,6 +788,8 @@ function renderAiSection() {
         <div class="ai-collapse-body" id="${uid}-hr">${esc(handRead)}</div>` : ''}
       ${oppGto ? `<button class="ai-collapse-toggle" onclick="toggleAiCollapse('${uid}-og')">▶ 相手GTOずれ</button>
         <div class="ai-collapse-body" id="${uid}-og">${esc(oppGto)}</div>` : ''}
+      ${f['Heroレンジ'] ? `<button class="ai-collapse-toggle" onclick="toggleAiCollapse('${uid}-rep')">▶ Hero表現レンジ</button>
+        <div class="ai-collapse-body" id="${uid}-rep">${esc(f['Heroレンジ'])}</div>` : ''}
     </div>`;
   }).join('');
 }
