@@ -82,6 +82,33 @@ body {
 .ai-hand-num { font-weight: 700; font-size: 13px; color: #1a1a2e; }
 .ai-category { font-size: 11px; background: #f0f0f0; padding: 2px 7px; border-radius: 10px; color: #555; }
 .ai-result-text { font-size: 12px; color: #333; line-height: 1.7; white-space: pre-wrap; }
+/* GTO評価バッジ */
+.ai-rating-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.ai-rating-badge.good    { background: #dcfce7; color: #166534; }
+.ai-rating-badge.warn    { background: #fef9c3; color: #854d0e; }
+.ai-rating-badge.error   { background: #fee2e2; color: #991b1b; }
+.ai-rating-badge.cooler  { background: #ede9fe; color: #5b21b6; }
+/* ハンド情報ヘッダー */
+.ai-hand-info { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #555; margin-bottom: 8px; flex-wrap: wrap; }
+.ai-hand-info .ai-pos { font-weight: 700; color: #1a1a1a; background: #e8f0fe; border-radius: 3px; padding: 0 5px; }
+.ai-hand-info .ai-cards { font-weight: 700; color: #1a1a1a; font-size: 13px; }
+.ai-hand-info .ai-board { color: #444; }
+.ai-hand-info .ai-pl { font-weight: 700; margin-left: auto; }
+.ai-hand-info .ai-pl.pos { color: #166534; } .ai-hand-info .ai-pl.neg { color: #991b1b; } .ai-hand-info .ai-pl.zero { color: #888; }
+/* 詳細テキスト */
+.ai-detail { font-size: 12px; color: #333; line-height: 1.7; margin-bottom: 6px; }
+.ai-ichi { font-size: 12px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+/* 折りたたみセクション */
+.ai-collapse-toggle { display: flex; align-items: center; gap: 4px; background: none; border: none; font-size: 11px; color: #1a6abf; cursor: pointer; padding: 2px 0; margin-top: 4px; }
+.ai-collapse-toggle:hover { text-decoration: underline; }
+.ai-collapse-body { display: none; font-size: 11px; color: #444; line-height: 1.7; background: #f8f9fa; border-radius: 4px; padding: 7px 10px; margin-top: 4px; }
+.ai-collapse-body.open { display: block; }
+/* 改善アクション */
+.ai-kaizen { font-size: 11px; background: #fef9c3; border-left: 3px solid #ca8a04; padding: 5px 10px; border-radius: 0 4px 4px 0; margin-top: 6px; color: #854d0e; }
+/* 進捗バー */
+.ai-progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden; margin: 8px 16px 0; }
+.ai-progress-fill { height: 100%; background: #1a1a2e; border-radius: 2px; transition: width .4s; }
+.ai-progress-text { font-size: 11px; color: #666; padding: 4px 16px 8px; }
 /* ─── カート FAB ─── */
 .cart-fab { position: fixed; bottom: 80px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #1a1a2e; color: #fff; border: none; font-size: 22px; cursor: pointer; box-shadow: 0 3px 14px rgba(0,0,0,0.35); z-index: 300; display: flex; align-items: center; justify-content: center; transition: transform .15s; }
 .cart-fab:hover { transform: scale(1.08); }
@@ -248,6 +275,10 @@ body.design-c .cart-panel.open { right: 0; }
     <div class="section-header" onclick="toggleSection('ai-results-body')">
       🤖 AI解析結果 <span id="ai-count" style="font-weight:400;font-size:13px"></span>
       <span class="toggle-btn">&#x25B2;</span>
+    </div>
+    <div id="ai-progress-area" style="display:none">
+      <div class="ai-progress-bar"><div class="ai-progress-fill" id="ai-progress-fill" style="width:0%"></div></div>
+      <div class="ai-progress-text" id="ai-progress-text"></div>
     </div>
     <div class="accordion-body" id="ai-results-body">
       <div id="ai-results-list"></div>
@@ -684,6 +715,26 @@ function renderCart() {
 // 非モジュールスクリプトからフル renderCart を呼べるよう公開
 window._fullRenderCart = renderCart;
 
+// ── テキストをフィールドマップに分解 ────────────────────────────
+function parseAiText(text) {
+  const fields = {};
+  const lines = (text || '').split('\n');
+  for (const line of lines) {
+    const m = line.match(/^([^:]+):\s*(.*)/);
+    if (m) fields[m[1].trim()] = m[2].trim();
+  }
+  return fields;
+}
+
+function ratingClass(rating) {
+  if (!rating) return '';
+  if (rating.startsWith('✅')) return 'good';
+  if (rating.startsWith('⚠️')) return 'warn';
+  if (rating.startsWith('❌')) return 'error';
+  if (rating.startsWith('🎲')) return 'cooler';
+  return '';
+}
+
 // ── AI解析結果セクション描画 ────────────────────────────────────
 function renderAiSection() {
   const keys = Object.keys(_geminiResults);
@@ -693,18 +744,61 @@ function renderAiSection() {
   document.getElementById('ai-count').textContent = `(${keys.length}手)`;
   const list = document.getElementById('ai-results-list');
   list.innerHTML = keys.sort((a,b) => parseInt(a)-parseInt(b)).map(k => {
-    const r = _geminiResults[k];
+    const r    = _geminiResults[k];
     const text = r.text || '評価なし';
     const cat  = r.category || '';
+    const f    = parseAiText(text);
+
+    // ハンドカードからメタ情報取得
+    const el    = document.querySelector(`.hand-card[data-hnum="${k}"]`);
+    const pos   = el?.dataset.pos   || '';
+    const cards = el?.dataset.cards || '';
+    const plStr = el?.dataset.pl    || '';
+    const plNum = parseFloat(el?.dataset.plNum || '0');
+    const board = el?.dataset.board || '';
+    const plCls = plNum > 0 ? 'pos' : plNum < 0 ? 'neg' : 'zero';
+
+    const rating   = f['GTO評価'] || '';
+    const ichi     = f['一言'] || '';
+    const detail   = f['詳細'] || '';
+    const kaizen   = f['代替ライン'] || '';
+    const evLoss   = f['EV損失推定'] || '';
+    const handRead = f['ハンドリーディング'] || '';
+    const oppGto   = f['相手GTOずれ'] || '';
+    const rCls     = ratingClass(rating);
+
+    const uid = `ai-${k}`;
+
     return `<div class="ai-result-item">
       <div class="ai-result-head">
         <span class="ai-hand-num">H${k}</span>
+        ${rating ? `<span class="ai-rating-badge ${rCls}">${esc(rating)}</span>` : ''}
         ${cat ? `<span class="ai-category">${esc(cat)}</span>` : ''}
       </div>
-      <div class="ai-result-text">${esc(text)}</div>
+      ${(pos || cards || board) ? `<div class="ai-hand-info">
+        ${pos   ? `<span class="ai-pos">${esc(pos)}</span>` : ''}
+        ${cards ? `<span class="ai-cards">${esc(cards)}</span>` : ''}
+        ${board ? `<span class="ai-board">/ ${esc(board)}</span>` : ''}
+        ${plStr ? `<span class="ai-pl ${plCls}">${esc(plStr)}</span>` : ''}
+      </div>` : ''}
+      ${ichi   ? `<div class="ai-ichi">${esc(ichi)}</div>` : ''}
+      ${detail ? `<div class="ai-detail">${esc(detail)}</div>` : ''}
+      ${(kaizen || evLoss) ? `<div class="ai-kaizen">${kaizen ? esc(kaizen) : ''}${evLoss ? ` <b>(${esc(evLoss)})</b>` : ''}</div>` : ''}
+      ${handRead ? `<button class="ai-collapse-toggle" onclick="toggleAiCollapse('${uid}-hr')">▶ ハンドリーディング</button>
+        <div class="ai-collapse-body" id="${uid}-hr">${esc(handRead)}</div>` : ''}
+      ${oppGto ? `<button class="ai-collapse-toggle" onclick="toggleAiCollapse('${uid}-og')">▶ 相手GTOずれ</button>
+        <div class="ai-collapse-body" id="${uid}-og">${esc(oppGto)}</div>` : ''}
     </div>`;
   }).join('');
 }
+
+window.toggleAiCollapse = function(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+  const btn = el.previousElementSibling;
+  if (btn) btn.textContent = btn.textContent.replace(/^[▶▼]/, el.classList.contains('open') ? '▼' : '▶');
+};
 
 // ── APIキー UI 更新 ──────────────────────────────────────────────
 function updateApiKeyUI() {
@@ -808,7 +902,24 @@ window.startAnalyze = async function() {
     const decoder = new TextDecoder();
     let buffer = '';
     let doneCount = 0;
-    let totalCount = '?';
+    let totalCount = 0;
+    const startTime = Date.now();
+
+    // 進捗バー表示
+    const aiSec = document.getElementById('ai-section');
+    if (aiSec) aiSec.style.display = '';
+    const progressArea = document.getElementById('ai-progress-area');
+    const progressFill = document.getElementById('ai-progress-fill');
+    const progressText = document.getElementById('ai-progress-text');
+    if (progressArea) progressArea.style.display = '';
+
+    function updateProgress() {
+      const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      if (progressFill) progressFill.style.width = pct + '%';
+      if (progressText) progressText.textContent = `${doneCount}/${totalCount || '?'} 手完了 (${elapsed}秒経過)`;
+      btn.textContent = `⏳ ${doneCount}/${totalCount || '?'} 解析中...`;
+    }
 
     while (true) {
       const {done, value} = await reader.read();
@@ -826,10 +937,14 @@ window.startAnalyze = async function() {
             _geminiResults[String(r.hand_number)] = {text: r.text, category: r.category};
             doneCount++;
           }
-          btn.textContent = `⏳ ${doneCount}/${totalCount} 解析中...`;
+          updateProgress();
           renderAiSection();
           renderCart();
         } else if (ev.type === 'done') {
+          doneCount = ev.total || doneCount;
+          totalCount = ev.total || totalCount;
+          updateProgress();
+          if (progressArea) progressArea.style.display = 'none';
           btn.textContent = '✅ 解析完了';
           btn.disabled = false;
           renderAiSection();
@@ -839,7 +954,6 @@ window.startAnalyze = async function() {
           if (aiPdfArea) aiPdfArea.style.display = '';
           // カートを閉じてAI解析結果セクションへスクロール
           window.closeCartPanel();
-          const aiSec = document.getElementById('ai-section');
           if (aiSec) aiSec.scrollIntoView({behavior: 'smooth', block: 'start'});
         } else if (ev.type === 'error') {
           throw new Error(ev.message || '解析エラー');
@@ -847,6 +961,8 @@ window.startAnalyze = async function() {
       }
     }
   } catch(e) {
+    const progressArea = document.getElementById('ai-progress-area');
+    if (progressArea) progressArea.style.display = 'none';
     alert('解析エラー: ' + e.message);
     btn.disabled = false;
     btn.textContent = '⚡ 解析を実行';

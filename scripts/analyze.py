@@ -107,19 +107,23 @@ def build_batch_prompt(indexed_hands: list) -> str:
     "id": <ハンド番号>,
     "gto_rating": "✅良好 or ⚠️改善 or ❌エラー or 🎲クーラー",
     "ichi": "20字以内の結論",
-    "detail": "60字以内の詳細",
-    "kaizen": "❌⚠️の場合のみ正しいアクション40字以内、それ以外は空文字",
-    "ev_loss": "❌の場合のみ例: -15bb、それ以外は空文字"
+    "detail": "80字以内の詳細（なぜその評価か）",
+    "kaizen": "正しいアクションまたは代替ライン（✅🎲でも別の有効ラインを提示、❌⚠️は必須）50字以内",
+    "ev_loss": "❌の場合のみ例: -15bb、それ以外は空文字",
+    "hand_reading": "各ストリートの相手ハンドレンジ読み（例: Flop強いドロー多い、Turn 2pairをバリューベット）80字以内",
+    "opp_gto_diff": "相手のGTOからのずれと搾取ポイント（過剰なCbet、コールステーションなど、わからなければ空文字）60字以内"
   }}
 ]"""
 
 
 def reconstruct_evaluation(j: dict) -> str:
     lines = [f"GTO評価: {j['gto_rating']}"]
-    if j.get("ichi"):   lines.append(f"一言: {j['ichi']}")
-    if j.get("detail"): lines.append(f"詳細: {j['detail']}")
-    if j.get("kaizen"): lines.append(f"改善: {j['kaizen']}")
-    if j.get("ev_loss"):lines.append(f"EV損失推定: {j['ev_loss']}")
+    if j.get("ichi"):          lines.append(f"一言: {j['ichi']}")
+    if j.get("detail"):        lines.append(f"詳細: {j['detail']}")
+    if j.get("kaizen"):        lines.append(f"代替ライン: {j['kaizen']}")
+    if j.get("ev_loss"):       lines.append(f"EV損失推定: {j['ev_loss']}")
+    if j.get("hand_reading"):  lines.append(f"ハンドリーディング: {j['hand_reading']}")
+    if j.get("opp_gto_diff"):  lines.append(f"相手GTOずれ: {j['opp_gto_diff']}")
     return "\n".join(lines)
 
 

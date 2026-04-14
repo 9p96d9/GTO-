@@ -1,6 +1,6 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 6.1
+**バージョン:** 6.2
 **最終更新:** 2026-04-14
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
@@ -23,6 +23,7 @@
 | Phase 10 | Web出力リデザイン（白背景・アコーディオン・可変表示） | ✅ 完了 |
 | Phase 11 | 対戦相手統計DB ＋ SNS共有 | ⬜ 未着手 |
 | Phase 12 | 解析カート & AI解析インライン表示（Gemini刷新） | ✅ 完了 |
+| Phase 13 | AI解析品質向上・進捗表示・表示改善 | ✅ 完了 |
 | Phase 14 | server.py リファクタ（routes/ / pipelines.py / state.py 分割） | ✅ 完了 |
 
 ---

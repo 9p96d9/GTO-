@@ -1101,11 +1101,18 @@ def classify_result_page(
         # カート用データ属性
         _cards_str = "".join(h.get("hero_cards", []))
         _pl_str    = f"{_fmt_bb(pl)}bb"
+        _board_cards = []
+        for _st in ("flop", "turn", "river"):
+            _s = h.get("streets", {}).get(_st)
+            if _s and isinstance(_s, dict):
+                _board_cards.extend([c for c in _s.get("board", []) if c and c != "-"])
+        _board_str = " ".join(_board_cards)
         data_attrs = (
             f' data-pos="{_esc(hero_pos)}"'
             f' data-cards="{_esc(_cards_str)}"'
             f' data-pl="{_esc(_pl_str)}"'
             f' data-pl-num="{pl:.2f}"'
+            f' data-board="{_esc(_board_str)}"'
         )
         cart_btn = (
             f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
