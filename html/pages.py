@@ -107,6 +107,8 @@ body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
       <div class="step-body">
         <h3>Googleアカウントでログイン</h3>
         <p>拡張機能のポップアップを開いてGoogleログインを行います。PokerGTOアカウントと紐づけることでハンドログがクラウドに保存されます。</p>
+        <video src="/static/PR.mp4" controls preload="none"
+          style="margin-top:10px;width:100%;max-width:560px;border-radius:6px;display:block"></video>
       </div>
     </div>
     <div class="step">
