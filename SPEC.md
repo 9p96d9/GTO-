@@ -1,7 +1,7 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 6.2
-**最終更新:** 2026-04-14
+**バージョン:** 6.3
+**最終更新:** 2026-04-15
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
 
@@ -22,9 +22,10 @@
 | Phase 9 | 拡張機能UX改善（設定・バッジ・非干渉通知） | ✅ 完了 |
 | Phase 10 | Web出力リデザイン（白背景・アコーディオン・可変表示） | ✅ 完了 |
 | Phase 11 | 対戦相手統計DB ＋ SNS共有 | ⬜ 未着手 |
-| Phase 12 | 解析カート & AI解析インライン表示（Gemini刷新） | ✅ 完了 |
-| Phase 13 | AI解析品質向上・進捗表示・表示改善 | ✅ 完了 |
+| Phase 12 | 解析カート & AI解析インライン表示（Groq/Gemini BYOK） | ✅ 完了 |
+| Phase 13 | AI解析品質向上（analyze2.py・detailモード・explainモード） | ✅ 完了 |
 | Phase 14 | server.py リファクタ（routes/ / pipelines.py / state.py 分割） | ✅ 完了 |
+| **Phase 15** | UI/UX改善・Groq統合・トークン見積もり・ソート | ⬜ 次回 |
 
 ---
 
@@ -39,7 +40,7 @@ T4ポーカーサイトのハンドログをリアルタイム自動取得し、
 | **リアルタイム解析（メイン）** | 拡張機能自動取得 → hand_converter → classify → Web結果画面 | 不要 |
 | **classifyモード（レガシー）** | テキストアップロード → parse → classify → Web結果画面 | 不要 |
 | **NoAPI PDF** | 分類結果からAPIなしでPDFを生成（Web結果画面からオプション） | 不要 |
-| **解析カート → AI解析** | 結果画面で気になったハンドをカートに追加 → 選択ハンドのみGemini解析 → 同ページに結果を追記 | 必要（Firestoreに暗号化保存） |
+| **解析カート → AI解析** | 結果画面で気になったハンドをカートに追加 → 選択ハンドのみAI解析（Groq優先・Geminiフォールバック）→ 同ページに結果を追記 | 必要（Firestoreに暗号化保存） |
 | **AI込みPDF** | AI解析結果を含む結果画面をまとめてPDF化 | 不要（解析済みデータを使用） |
 
 ### 画面構成
@@ -81,7 +82,7 @@ run_classify_pipeline_from_json（バックグラウンド）
 |---|---|
 | Webフレームワーク | FastAPI + uvicorn |
 | 言語 | Python 3.11 / Node.js 20 |
-| AI | Google Gemini 2.5 Flash（オプション・BYOK） |
+| AI | Groq llama-3.3-70b（優先・BYOK）/ Gemini 2.5 Flash（フォールバック・レガシー互換） |
 | 手役評価 | treys ライブラリ（classify.py で使用） |
 | PDF生成 | puppeteer（Chromium内蔵） |
 | リアルタイム通信 | SSE（Server-Sent Events） |
@@ -109,7 +110,8 @@ GTO-/
 │   ├── parse.py                # ハンド履歴パーサー（txt → JSON）
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
 │   ├── hand_converter.py       # fastFoldTableState JSON → parse.py互換JSON変換
-│   ├── analyze.py              # Gemini GTO分析
+│   ├── analyze.py              # Gemini GTO分析（レガシー・フォールバック用に存置）
+│   ├── analyze2.py             # Groq/Gemini両対応・detailモード/explainモード（現用）
 │   ├── generate_noapilist.js   # NoAPI PDFレポート生成
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ
 ├── extension/                  # Chrome拡張機能（MV3）
@@ -198,9 +200,10 @@ postflopあり:
 | ~~POST~~ | ~~`/api/cart/{job_id}/save`~~ | ~~カートを名前付き保存（廃止）~~ |
 | ~~GET~~ | ~~`/api/carts`~~ | ~~保存済みカート一覧（廃止）~~ |
 | ~~GET~~ | ~~`/api/carts/{cart_id}`~~ | ~~保存済みカート取得（廃止）~~ |
-| POST | `/api/cart/{job_id}/analyze` | カート内ハンドをGemini解析・SSEで順次返却（Phase 12）⬜未実装 |
-| GET | `/api/user/settings` | ユーザー設定取得（APIキー含む）（Phase 12）⬜未実装 |
-| PUT | `/api/user/settings` | ユーザー設定更新（Phase 12）⬜未実装 |
+| POST | `/api/cart/{job_id}/analyze` | カート内ハンドをAI解析・SSEで順次返却（Phase 12）✅実装済 |
+| POST | `/api/cart/{job_id}/explain` | 1ハンドの詳細解説（explainモード）をオンデマンド生成（Phase 13）✅実装済 |
+| GET | `/api/user/settings` | ユーザー設定取得（APIキー含む）（Phase 12）✅実装済 |
+| PUT | `/api/user/settings` | ユーザー設定更新（Phase 12）✅実装済 |
 
 ---
 
@@ -219,10 +222,11 @@ users/{uid}/analyses/{job_id}   # Phase 8: 解析結果永続化
   ├── categories:   object       # カテゴリ別内訳
   ├── classified_snapshot: string  # classified.json（900KB上限、超過時は省略）
   ├── active_cart:  [42, 17, 88]   # アクティブカートのhand_number配列（Phase 12）
-  └── gemini_results: {           # Gemini解析結果（Phase 12）
+  └── gemini_results: {           # AI解析結果（Phase 12）※フィールド名はGroq使用時も維持（後方互換）
         "42": {
-          text:        string      # AIの解析テキスト
+          text:        string      # detailモード解析テキスト（GTO評価:\n詳細:\n... 形式）
           category:    string      # fold_unknown など
+          explain:     string      # explainモード長文解説（📖詳細解説ボタンで生成・Phase 13）
           analyzed_at: timestamp
         }
       }
@@ -235,7 +239,7 @@ users/{uid}/carts/{cartId}      # 名前付き保存カート（Phase 12）
   └── status:       "saved" | "analyzed"
 
 users/{uid}/settings/gemini     # ユーザー設定（Phase 12）
-  ├── encrypted_api_key: string  # Firestoreのセキュリティルール＋転送・保存時暗号化で保護
+  ├── encrypted_api_key: string  # Groq（gsk_...）またはGeminiキーを保存。ドキュメント名"gemini"は後方互換のため変更しない
   └── needs_api_auto_cart: bool  # デフォルト: true
 
 users/{uid}/sessions/{sessionId}   # レガシー手動アップロード
@@ -271,7 +275,8 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 
 | 変数名 | 説明 | 必須 |
 |---|---|---|
-| `GEMINI_API_KEY` | サーバー側デフォルトGemini APIキー（Phase 12以降は不要・ユーザーがFirestoreに保存） | 任意 |
+| `GROQ_API_KEY` | サーバー側デフォルトGroq APIキー（`gsk_`で始まる）。ユーザーBYOKが優先。設定するとGroq優先 | 任意 |
+| `GEMINI_API_KEY` | サーバー側デフォルトGemini APIキー。GROQ_API_KEY未設定時のフォールバック | 任意 |
 | `PORT` | サーバーポート（デフォルト: 5000） | 任意 |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | FirebaseサービスアカウントキーJSON | Firebase機能を使う場合 |
 | `FIREBASE_API_KEY` | Firebase Web API Key | Firebase機能を使う場合 |
@@ -327,10 +332,10 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 
 ## 9. Phase 12: 解析カート & AI解析インライン表示（実装中）
 
-### 概要
+### 概要（✅ 完了）
 
 `classify_result/{job_id}` 画面上で気になったハンドだけを「解析カート」に入れ、
-選択分のみ Gemini で解析。結果は同じページの最上部に追記表示される。
+選択分のみ AI解析（Groq優先・Geminiフォールバック）。結果は同じページの最上部に追記表示される。
 全ハンドまとめてAI解析する `/start_ai/{job_id}` は**廃止**。
 
 ### 結果ページのレイアウト（AI解析後）
@@ -446,64 +451,187 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 
 ---
 
-## 10. Phase 13: AI解析品質向上（次回実装予定）
+## 10. Phase 13: AI解析品質向上（✅ 完了 2026-04-15）
 
-### 概要
+### 完了内容
 
-現状の AI 解析は文章のみで「ハンド・ボード・アクション」が含まれず分かりにくい。
-解析の精度・表示品質を大幅に改善する。
-
-### 13-1. プロンプト改善（`analyze.py`）
-
-現状の出力:
-```
-GTO評価: ⚠️改善
-一言: フォールドが正解
-詳細: ポットオッズが合わない
-```
-
-改善後の出力フォーマット（`reconstruct_evaluation` も合わせて更新）:
-```
-GTO評価: ⚠️改善
-一言: ターンのコールはEV-
-詳細: 相手レンジはセット・ストレートが多く、ポットオッズ33%に対してエクイティ不足
-ハンドリーディング: フロップCBet→ターンオーバーベットはナッツ系に偏重。ブラフ比率低い。
-相手GTOずれ: オーバーベットはGTO比率より多め（搾取可能）
-改善アクション: ターンはフォールド。フロップコールはOK。
-```
-
-追加する評価軸:
-| 項目 | 内容 |
+| 項目 | 実装内容 |
 |---|---|
-| ハンドリーディング | 各ストリートでの相手の推定ハンドレンジ |
-| 相手GTOずれ | 相手のアクションがGTOから外れている点（搾取ポイント） |
-| 代替アクション | 良い場合も「他に有効なライン」を提示 |
-| 改善アクション | 悪い場合の正しいアクション（現状と同じだが必須化） |
+| `analyze2.py` 新規作成 | Groq/Gemini両対応・OpenAI互換・503リトライ・JSONフォールバック |
+| detailモード | 数値なし・`rep`フィールド（Hero表現レンジ）・systemプロンプト使用 |
+| explainモード | 長文教育解説（400〜1200文字）・`SYSTEM_PROMPT_EXPLAIN`・temperature=0.5・max_tokens=2000 |
+| `POST /api/cart/{job_id}/explain` | 1ハンドオンデマンド生成・Firestore保存 |
+| UI: 📖詳細解説ボタン | AI解析結果カードに追加・トグル表示・ページ再読み込み時復元 |
+| UI: 進捗バー | SSEバッチ完了ごとに N/M手・経過秒数を表示 |
+| AI解析結果カード刷新 | GTO評価バッジ・ヒーロー情報ヘッダー・折りたたみセクション |
 
-### 13-2. 解析結果の表示改善（`classify_result.html`）
+### analyze2.py の解析モード
 
-現状: AI解析テキストを `esc()` でHTML化してそのまま表示。
+| MODE | 説明 | 出力形式 | 用途 |
+|---|---|---|---|
+| `standard` | 数値あり・旧来互換 | JSON | レガシー |
+| `detail` | 数値なし・rep追加 | JSON | カートAI解析（メイン） |
+| `explain` | 長文教育解説 | free-text | 📖詳細解説ボタン（オンデマンド） |
 
-改善後:
-- ハンド情報ヘッダーを解析結果カードに追加（Hero位置・手札・ボード・収支）
-- 各ストリートのアクションサマリー（PF/F/T/R）を解析テキストの上に表示
-- 評価ラベル（✅⚠️❌🎲）をバッジ表示
-- 改善アクション・ハンドリーディングを折りたたみ展開で表示
+### BYOKキー判定ロジック
 
-### 13-3. 解析進捗表示の復活
+```
+api_key が "gsk_" で始まる → Groq (llama-3.3-70b-versatile)
+それ以外                   → Gemini (gemini-2.5-flash)
+```
 
-廃止した進捗表示を再実装:
-- SSE `batch` イベント受信ごとに「N/M手 解析完了」を表示
-- 解析開始からの経過時間を表示（`Date.now()` で計測）
-- 将来: カート追加時に「推定解析時間 約XX秒」を表示（実測値から算出）
+### PDF AI込みバージョン（Phase 15 に移行）
 
-### 13-4. PDF AI込みバージョン（Phase 12 残タスク）
-
-Phase 12 からの持ち越し。13-1〜13-3 完了後に実装。
+Phase 12 からの持ち越し。Phase 15 で実装予定。
 
 ---
 
-## 11. Phase 11: 対戦相手統計DB & SNS共有（未着手）
+## 11. Phase 15: UI/UX改善・Groq統合・ソート（⬜ 次回）
+
+### 実装順序
+
+```
+15-1: Gemini表記統一 + インデックスGroq案内更新   ← 小規模・先行
+15-2: カートにトークン見積もり表示               ← 小規模・先行
+15-3: ハンド情報増量 + AI解析ハイブリッド表示     ← 中規模
+15-4: フィルター/ソート機能                      ← 中規模
+15-5: インデックス拡張機能インストール動画案内     ← 外部作業（動画制作）後
+```
+
+---
+
+### 15-1. Gemini表記統一 + インデックスGroq案内更新
+
+**変更対象と内容:**
+
+| 対象 | 変更前 | 変更後 |
+|---|---|---|
+| classify_result.html カートドロワー | 「Gemini APIキー」 | 「AIキー (Groq推奨)」 |
+| classify_result.html カートボタン | 「⚡ Gemini解析を実行」 | 「⚡ AI解析を実行」 |
+| classify_result.html APIキー説明文 | Geminiキーの説明 | Groqキー取得方法に更新 |
+| `/` ランディングページ | Geminiキーの案内 | GroqキーURLと取得ステップに更新 |
+
+**⚠️ 変更しないもの（互換性維持）:**
+- Firestore: `users/{uid}/settings/gemini` ドキュメントパス
+- Firestore: `analyses/{job_id}/gemini_results` フィールド名
+- `analyze2.py`: PROVIDERS dict（Groq/Gemini両対応を内部維持）
+
+---
+
+### 15-2. カートにトークン見積もり表示
+
+**表示場所:** カートドロワーのフッター（解析実行ボタンの上）
+
+**表示内容:**
+```
+📊 トークン見積もり（目安）
+  簡易解析   N手 × 370 tok ≈ X tok
+  詳細解説   1手ごとに ≈ 1,700 tok
+⚡ Groq無料枠: 約14,400 tok/分
+  → [余裕で収まります / 複数回に分けて実行推奨]
+注: 実際の使用量はGroqダッシュボードで確認できます
+```
+
+**実装方針:**
+- フロントエンド定数計算のみ（バックエンド変更なし）
+- トークン定数: `DETAIL_TOKENS_PER_HAND = 370` / `EXPLAIN_TOKENS_PER_HAND = 1700`
+- Groq無料枠定数: `GROQ_FREE_TPM = 14400`
+- カート件数変更時にリアルタイム更新
+
+---
+
+### 15-3. ハンド情報増量 + AI解析ハイブリッド表示
+
+#### 現状の問題
+- AI解析セクションのカードに対戦相手情報・ストリート別アクションがない
+- 解析を読みながら該当ハンドを探すのが手間
+
+#### 設計方針
+- **AI解析セクション（上部）**: 既存を維持しつつ情報を増量（ハンドの概要を俯瞰）
+- **hand-card（下部）**: AI結果を折りたたみで内包（詳細をhand-card近くで読める）
+- どちらも同じデータを使うため重複ではなく**役割分担**
+
+#### 15-3-A. html/pages.py の hand-card に data 属性追加
+
+```python
+# 追加するdata属性
+data-3bet="1"          # is_3bet_pot が True の場合（ソート機能でも使用）
+data-hnum-opp="CO:AhKd BTN:Th9c"  # 相手pos:cards をスペース区切り（表示・sort用）
+```
+
+追加場所: `data_attrs` 変数の末尾
+
+また各 hand-card の末尾（`hand-card-body` の後）に AI結果プレースホルダーを追加:
+```html
+<div id="ai-inline-{hnum}" class="ai-inline-section"></div>
+```
+
+#### 15-3-B. AI解析セクション（renderAiSection）の表示増量
+
+追加表示項目:
+- 対戦相手情報: `data-hnum-opp` から取得してポジション・カードを表示
+- ストリート別アクション: hand-card の `.hand-card-body` からDOMコピー
+
+#### 15-3-C. hand-card内AI結果（新規）
+
+- `renderAiInHandCard(hnum, result)`: プレースホルダーに折りたたみAIカードを注入
+- 初期状態: 折りたたんで非表示（ `[AI解析 ▼]` トグルボタン）
+- SSE streaming 時: `renderAiSection()` と `renderAiInHandCard()` を両方呼ぶ
+- ページロード時: `_geminiResults` から復元
+
+#### 15-3-D. classify_result.html の肥大化対策
+
+現状17,000トークン超。機能追加前に外部JS分離を実施:
+- `static/classify_result.js` を新規作成し、JSロジックをすべて移動
+- HTML側は `<script src="/static/classify_result.js">` のみに
+- ルーティング: `routes/pages.py` で `/static` を mount するか、既存の static mount を確認
+
+---
+
+### 15-4. フィルター/ソート機能
+
+**実装方針:** フロントエンドのみ（classify.py・バックエンド変更なし）
+
+**UIレイアウト:**
+```
+[全て] [青線のみ] [赤線のみ] [AI解析済み]  ← フィルター
+[損益▼] [損益▲] [ポジション] [3BETのみ]  ← ソート/フィルター
+```
+
+**ソート仕様:**
+
+| ソートキー | data属性 | 備考 |
+|---|---|---|
+| 損益（大→小） | `data-pl-num` | デフォルト（現状） |
+| 損益（小→大） | `data-pl-num` | |
+| ポジション | `data-pos` | EP→MP→LP→ブラインド順 |
+
+**フィルター仕様:**
+
+| フィルター | 条件 | data属性 |
+|---|---|---|
+| 3BETのみ | `data-3bet="1"` | 15-3-Aで追加 |
+| AI解析済みのみ | `_geminiResults[hnum]` 存在 | |
+| ポジション指定 | `data-pos` が選択値に一致 | |
+
+**スコープ:** 各セクション内（青線・赤線・全ハンドそれぞれ）でソート。青赤混在ソートは将来検討。
+
+---
+
+### 15-5. インデックス拡張機能インストール案内改善
+
+**chrome://extensions リンク問題:**
+- `<a href="chrome://extensions">` はブラウザセキュリティで無効
+- → コピーボタンを実装: `navigator.clipboard.writeText('chrome://extensions')`
+
+**動画案内:**
+- 別タブで開く（`target="_blank" rel="noopener"`）
+- 動画はYouTubeまたは外部ホスティング（スクショより動画優先: スペース効率・操作が直感的）
+- 動画URLは実装時に確定
+
+---
+
+## 12. Phase 11: 対戦相手統計DB & SNS共有（未着手）
 
 ### 11-1. 対戦相手統計DB
 - hand_jsonから自動算出（VPIP/PFR/3BET%/CBet%/フォールドto3BET/SD勝率）→ Firestore保存
