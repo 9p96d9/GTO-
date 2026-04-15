@@ -34,9 +34,9 @@ def convert_card(card_str: str) -> str | None:
 
 
 def parse_bb(s: str) -> float:
-    """'4bb' / '4.5bb' / '4' → float"""
+    """'4bb' / '4.5BB' / '4' → float（大文字小文字を区別しない）"""
     try:
-        return float(s.rstrip("bb").rstrip("b"))
+        return float(re.sub(r'[bB]+$', '', str(s).strip()))
     except (ValueError, AttributeError):
         return 0.0
 

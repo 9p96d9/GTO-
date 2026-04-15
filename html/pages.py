@@ -1021,6 +1021,15 @@ def classify_result_page(
         "fold_unknown":           "warn",
     }
 
+    def _fmt_amt(v):
+        """float → '12' / '12.5' / '12.25'（不要な .0 を省略）"""
+        try:
+            n = float(v)
+            if n <= 0: return ""
+            return str(int(n)) if n == int(n) else f"{n:.2f}".rstrip('0').rstrip('.')
+        except Exception:
+            return ""
+
     def _fmt_actions(actions):
         """アクションリストを '›' 区切りの HTML 文字列に変換（ポジション名を使用）"""
         parts = []
@@ -1028,7 +1037,8 @@ def classify_result_page(
             pos = a.get("position") or a.get("name", "?")
             act = a.get("action", "")
             amt = a.get("amount_bb")
-            amt_s = f"&nbsp;{amt}bb" if amt else ""
+            _a  = _fmt_amt(amt)
+            amt_s = f"&nbsp;{_a}bb" if _a else ""
             if act == "Fold":
                 parts.append(f'<span class="act-fold">{pos}&nbsp;F</span>')
             elif act == "Check":

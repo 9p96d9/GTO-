@@ -516,9 +516,15 @@ window.fetchExplain = async function(handNum, uid) {
   const btn   = document.getElementById(`${uid}-exbtn`);
   if (!panel || !btn) return;
 
-  if (panel.classList.contains('open') && panel.textContent.trim()) {
-    panel.classList.remove('open');
-    btn.textContent = '📖 詳細解説';
+  // テキスト既ロード済みならフェッチせずトグル
+  if (panel.textContent.trim()) {
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open');
+      btn.textContent = '📖 詳細解説';
+    } else {
+      panel.classList.add('open');
+      btn.textContent = '📖 詳細解説を隠す';
+    }
     return;
   }
 
