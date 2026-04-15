@@ -98,6 +98,8 @@ body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
         <button onclick="navigator.clipboard.writeText('chrome://extensions').then(()=>{this.textContent='✓ コピー済';setTimeout(()=>this.textContent='コピー',1500)})"
           style="margin-left:6px;padding:2px 8px;font-size:12px;border:1px solid #555;border-radius:4px;background:#1e2a45;color:#ccc;cursor:pointer">コピー</button>
         と入力して開き、「パッケージ化されていない拡張機能を読み込む」から <code>tenfour-scraper</code> フォルダを選択してください。</p>
+        <video src="/static/exex.mp4" controls preload="none"
+          style="margin-top:10px;width:100%;max-width:560px;border-radius:6px;display:block"></video>
       </div>
     </div>
     <div class="step">
