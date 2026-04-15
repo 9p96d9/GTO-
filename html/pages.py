@@ -1059,7 +1059,8 @@ def classify_result_page(
         card_cls   = "hand-card needs-ai" if needs_api else "hand-card"
 
         # 相手プレイヤーのカード（ポジション付き）
-        opp_parts = []
+        opp_parts      = []
+        opp_data_parts = []
         for p in h.get("players", []):
             if not p.get("is_hero"):
                 cards = "".join(p.get("hole_cards", []))
@@ -1068,7 +1069,9 @@ def classify_result_page(
                     opp_parts.append(f'<span class="opp-pos">{pos}</span>&nbsp;{_card_html(cards)}')
                 else:
                     opp_parts.append(f'<span class="opp-pos">{pos}</span>')
-        opp_html = "&ensp;".join(opp_parts) if opp_parts else "—"
+                opp_data_parts.append(f"{pos}:{cards}")
+        opp_html     = "&ensp;".join(opp_parts) if opp_parts else "—"
+        opp_data_str = ",".join(opp_data_parts)
 
         hero_c_html = _card_html(hero_cards) if hero_cards else "—"
 
@@ -1125,6 +1128,8 @@ def classify_result_page(
             f' data-pl="{_esc(_pl_str)}"'
             f' data-pl-num="{pl:.2f}"'
             f' data-board="{_esc(_board_str)}"'
+            f' data-opp="{_esc(opp_data_str)}"'
+            + (' data-3bet="1"' if is_3bet else '')
         )
         cart_btn = (
             f'<button class="cart-add-btn" onclick="toggleCart({hnum})" '
@@ -1147,6 +1152,7 @@ def classify_result_page(
             f'{cart_btn}'
             f'</div>'
             f'<div class="hand-card-body">{streets_html}</div>'
+            f'<div class="hand-ai-inline" id="hai-{hnum}"></div>'
             f'</div>'
         )
 
