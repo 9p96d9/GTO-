@@ -19,6 +19,7 @@ BYOKフロー（routes/cart.py から呼ばれる場合）:
 解析モード:
   MODE = "standard" : 数値あり・従来互換
   MODE = "detail"   : 数値なし・rep（Hero表現レンジ）追加・システムプロンプト使用
+  MODE = "explain"  : 長文教育解説・1ハンド単位・詳細解説ボタン用
 """
 
 import json
@@ -221,6 +222,93 @@ def build_batch_prompt_detail(indexed_hands: list) -> str:
     "rep": "Heroが表現できるハンド2〜3個（例: ハートフラッシュ・セット88）"
   }}
 ]"""
+
+
+# ─── explain モード ───────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT_EXPLAIN = """あなたはプロポーカープレイヤー兼GTOコーチです。
+
+目的：
+初心者〜中級者に対して「なぜそのプレイが良い/悪いのか」を戦略的・論理的に深く解説すること。
+
+要件：
+- 最低400文字以上、最大1200文字程度
+- 箇条書きと段落を組み合わせて読みやすく
+- 数学的・戦略的理由を具体的に含める
+- ポジション・レンジ・ポットオッズ・スタック深度に言及する
+- 「なぜそうなるか」の因果関係を必ず説明する
+- 初心者にも理解できる言葉で、内容は浅くしない
+
+出力形式（必ずこの構造で日本語で書くこと）：
+GTO評価: [✅良好 / ⚠️改善 / ❌ミス / 🎲クーラー]
+
+（本文：以下のセクションを段落で展開）
+・Heroのプレイ評価と理由
+・レンジ・ポジション・ボードテクスチャの観点
+・相手レンジの変化
+・代替ライン
+
+禁止：
+- JSON形式での出力
+- 1〜2文だけの短い説明
+- 根拠のない断定"""
+
+
+def build_explain_prompt(idx: int, hand: dict) -> str:
+    """単一ハンドの詳細解説用ユーザーメッセージ"""
+    block = build_hand_block(idx, hand)
+    return f"""以下のハンドについて詳しく解説してください。
+
+{block}
+
+特に以下を含めてください：
+1. Heroのプレイの評価と理由（なぜ良い/悪いのか）
+2. ポジション・レンジ・ポットオッズの観点
+3. 相手レンジの変化と読み
+4. GTO的観点とExploit機会
+5. 代替ライン
+
+長文で詳しく日本語で説明してください。"""
+
+
+def evaluate_explain_single(client: OpenAI, model: str, hand_idx: int, hand: dict) -> str:
+    """1ハンドの詳細解説を生成して返す（free-text）"""
+    prompt = build_explain_prompt(hand_idx, hand)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT_EXPLAIN},
+        {"role": "user",   "content": prompt},
+    ]
+
+    retries = 0
+    while True:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.5,
+                max_tokens=2000,
+            )
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            err_str = str(e)
+            is_retryable = (
+                "429" in err_str
+                or "rate_limit" in err_str.lower()
+                or "503" in err_str
+                or "UNAVAILABLE" in err_str.upper()
+            )
+            if is_retryable and retries < MAX_RETRY:
+                retries += 1
+                wait = RETRY_WAIT * retries
+                print(
+                    f"  [RETRY] explain H{hand_idx}: 過負荷/レート制限 — {wait:.0f}秒後リトライ "
+                    f"({retries}/{MAX_RETRY})",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+                continue
+            raise
 
 
 def reconstruct_evaluation_detail(j: dict) -> str:

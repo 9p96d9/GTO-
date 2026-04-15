@@ -105,6 +105,12 @@ body {
 .ai-collapse-body.open { display: block; }
 /* 改善アクション */
 .ai-kaizen { font-size: 11px; background: #fef9c3; border-left: 3px solid #ca8a04; padding: 5px 10px; border-radius: 0 4px 4px 0; margin-top: 6px; color: #854d0e; }
+/* 詳細解説 */
+.ai-explain-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 12px; background: #f0f4ff; border: 1px solid #b8c8f0; border-radius: 4px; font-size: 11px; font-weight: 700; color: #1a4abf; cursor: pointer; transition: background .15s; }
+.ai-explain-btn:hover { background: #dce8ff; }
+.ai-explain-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ai-explain-panel { display: none; margin-top: 8px; background: #f8faff; border: 1px solid #dde8ff; border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #222; line-height: 1.9; white-space: pre-wrap; }
+.ai-explain-panel.open { display: block; }
 /* 進捗バー */
 .ai-progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden; margin: 8px 16px 0; }
 .ai-progress-fill { height: 100%; background: #1a1a2e; border-radius: 2px; transition: width .4s; }
@@ -790,8 +796,24 @@ function renderAiSection() {
         <div class="ai-collapse-body" id="${uid}-og">${esc(oppGto)}</div>` : ''}
       ${f['Heroレンジ'] ? `<button class="ai-collapse-toggle" onclick="toggleAiCollapse('${uid}-rep')">▶ Hero表現レンジ</button>
         <div class="ai-collapse-body" id="${uid}-rep">${esc(f['Heroレンジ'])}</div>` : ''}
+      <div style="margin-top:8px">
+        <button class="ai-explain-btn" id="${uid}-exbtn" onclick="fetchExplain(${k}, '${uid}')">📖 詳細解説</button>
+      </div>
+      <div class="ai-explain-panel" id="${uid}-expanel">${r.explain ? esc(r.explain) : ''}</div>
     </div>`;
   }).join('');
+
+  // 既存 explain を復元表示
+  keys.forEach(k => {
+    const r = _geminiResults[k];
+    if (r && r.explain) {
+      const uid = `ai-${k}`;
+      const panel = document.getElementById(`${uid}-expanel`);
+      const btn   = document.getElementById(`${uid}-exbtn`);
+      if (panel) panel.classList.add('open');
+      if (btn)   btn.textContent = '📖 詳細解説を隠す';
+    }
+  });
 }
 
 window.toggleAiCollapse = function(id) {
@@ -800,6 +822,52 @@ window.toggleAiCollapse = function(id) {
   el.classList.toggle('open');
   const btn = el.previousElementSibling;
   if (btn) btn.textContent = btn.textContent.replace(/^[▶▼]/, el.classList.contains('open') ? '▼' : '▶');
+};
+
+// ── 詳細解説（explainモード）取得 ────────────────────────────────
+window.fetchExplain = async function(handNum, uid) {
+  const panel = document.getElementById(`${uid}-expanel`);
+  const btn   = document.getElementById(`${uid}-exbtn`);
+  if (!panel || !btn) return;
+
+  // 既に表示中ならトグル（再取得しない）
+  if (panel.classList.contains('open') && panel.textContent.trim()) {
+    panel.classList.remove('open');
+    btn.textContent = '📖 詳細解説';
+    return;
+  }
+
+  const token = await getToken();
+  if (!token) { alert('ログインしてください'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ 解説生成中...';
+
+  try {
+    const resp = await fetch(`/api/cart/${JOB_ID}/explain`, {
+      method: 'POST',
+      headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
+      body: JSON.stringify({hand_number: handNum})
+    });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) {
+      alert('エラー: ' + (d.error || resp.statusText));
+      btn.disabled = false;
+      btn.textContent = '📖 詳細解説';
+      return;
+    }
+    panel.textContent = d.explain || '';
+    panel.classList.add('open');
+    // _geminiResults にキャッシュ
+    const key = String(handNum);
+    if (_geminiResults[key]) _geminiResults[key].explain = d.explain;
+    btn.textContent = '📖 詳細解説を隠す';
+  } catch(e) {
+    alert('エラー: ' + e.message);
+    btn.textContent = '📖 詳細解説';
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 // ── APIキー UI 更新 ──────────────────────────────────────────────

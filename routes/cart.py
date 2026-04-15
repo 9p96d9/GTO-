@@ -185,3 +185,91 @@ async def api_analyze_cart(job_id: str, request: Request):
         yield {"data": json.dumps({"type": "done", "total": total}, ensure_ascii=False)}
 
     return EventSourceResponse(generate())
+
+
+@router.post("/api/cart/{job_id}/explain")
+async def api_explain_hand(job_id: str, request: Request):
+    """1ハンドの詳細解説（explainモード）をオンデマンドで生成"""
+    try:
+        uid = get_uid_from_request(request)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+
+    body = await request.json()
+    hand_number = body.get("hand_number")
+    if hand_number is None:
+        return JSONResponse({"error": "hand_number が必要です"}, status_code=400)
+    hand_number = int(hand_number)
+
+    from scripts.firebase_utils import (
+        is_firebase_enabled, get_user_settings, get_gemini_results, save_gemini_results,
+    )
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+
+    settings = get_user_settings(uid)
+    api_key  = (settings.get("encrypted_api_key") or "").strip()
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return JSONResponse({"error": "APIキーが設定されていません"}, status_code=400)
+
+    # ハンドデータ取得
+    classified_data = None
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job and job.get("classified_path"):
+        try:
+            with open(job["classified_path"], encoding="utf-8") as f:
+                classified_data = json.load(f)
+        except Exception:
+            pass
+
+    if not classified_data:
+        from scripts.firebase_utils import get_analysis
+        analysis = get_analysis(uid, job_id)
+        if analysis and analysis.get("classified_snapshot"):
+            try:
+                classified_data = json.loads(analysis["classified_snapshot"])
+            except Exception:
+                pass
+
+    if not classified_data:
+        return JSONResponse({"error": "解析データが見つかりません"}, status_code=404)
+
+    hand_map = {
+        h.get("hand_number"): h
+        for h in classified_data.get("hands", [])
+        if h.get("hand_number") is not None
+    }
+    hand = hand_map.get(hand_number)
+    if not hand:
+        return JSONResponse({"error": f"ハンド {hand_number} が見つかりません"}, status_code=404)
+
+    import asyncio as _asyncio
+    from scripts.analyze2 import evaluate_explain_single, detect_provider, make_client, PROVIDERS
+
+    provider = detect_provider(api_key)
+    model    = PROVIDERS[provider]["model"]
+    client   = make_client(provider, api_key)
+
+    loop = _asyncio.get_event_loop()
+    try:
+        explain_text = await loop.run_in_executor(
+            None, evaluate_explain_single, client, model, hand_number, hand
+        )
+    except Exception as e:
+        key_hint = f"（キー末尾: ...{api_key[-4:]}）" if api_key else ""
+        return JSONResponse({"error": str(e)[:300] + key_hint}, status_code=500)
+
+    # Firestoreに保存（既存エントリにexplainフィールドを追加）
+    try:
+        existing = get_gemini_results(uid, job_id)
+        entry = existing.get(str(hand_number), {})
+        entry["explain"] = explain_text
+        existing[str(hand_number)] = entry
+        save_gemini_results(uid, job_id, existing)
+    except Exception as e:
+        print(f"[WARN] explain保存失敗: {e}", file=sys.stderr)
+
+    return JSONResponse({"ok": True, "hand_number": hand_number, "explain": explain_text})
