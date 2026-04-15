@@ -286,8 +286,9 @@ async def api_hands_realtime(request: Request):
 
 @router.get("/api/debug/hand-sample")
 async def api_debug_hand_sample(request: Request):
-    """最新ハンド1件のactionHistoryを返す（BET額フォーマット確認用・認証必須）"""
+    """ポストフロップあり最新ハンドのactionHistory＋変換後streets（BET額確認用・認証必須）"""
     from scripts.firebase_utils import is_firebase_enabled, get_db
+    from scripts.hand_converter import convert_hand_json
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -296,13 +297,36 @@ async def api_debug_hand_sample(request: Request):
         return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
     db = get_db()
     docs = list(db.collection("users").document(uid).collection("hands")
-                .order_by("saved_at", direction="DESCENDING").limit(1).stream())
+                .order_by("saved_at", direction="DESCENDING").limit(30).stream())
     if not docs:
         return JSONResponse({"error": "ハンドなし"})
-    h = docs[0].to_dict().get("hand_json", {})
+    # ポストフロップあり（flop が存在する）ハンドを優先して返す
+    target = None
+    for doc in docs:
+        d = doc.to_dict()
+        hj = d.get("hand_json", {})
+        ah = hj.get("actionHistory", [])
+        if any("FLOP" in line for line in ah):
+            target = d
+            break
+    if not target:
+        target = docs[0].to_dict()
+    hj = target.get("hand_json", {})
+    # 変換後 streets も確認
+    try:
+        converted = convert_hand_json(hj, target.get("captured_at", ""), hand_index=1)
+        streets_debug = {
+            st: [
+                {"pos": a.get("position"), "act": a.get("action"), "amt": a.get("amount_bb")}
+                for a in (v if isinstance(v, list) else v.get("actions", []))
+            ]
+            for st, v in converted.get("streets", {}).items() if v
+        }
+    except Exception as e:
+        streets_debug = {"error": str(e)}
     return JSONResponse({
-        "actionHistory": h.get("actionHistory", []),
-        "tableId": h.get("tableId", ""),
+        "actionHistory": hj.get("actionHistory", []),
+        "streets_converted": streets_debug,
     })
 
 
