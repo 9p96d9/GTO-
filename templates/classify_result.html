@@ -55,6 +55,16 @@ body {
 .line-count { font-size: 12px; color: #444; }
 .line-pl { margin-left: auto; font-size: 13px; font-weight: 700; }
 .line-pl.pos { color: #2e7d32; } .line-pl.neg { color: #c0392b; }
+/* ─── フィルター/ソートバー ─── */
+.filter-sort-bar { padding: 8px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fafafa; border: 1px solid #e8e8e8; border-radius: 6px; margin: 12px 0 4px; }
+.filter-group, .sort-group { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.filter-bar-sep { width: 1px; height: 22px; background: #ddd; }
+.filter-bar-label { font-size: 10px; color: #999; }
+.filter-btn, .sort-btn { padding: 3px 10px; font-size: 11px; border: 1px solid #ccc; border-radius: 12px; background: #fff; cursor: pointer; color: #555; line-height: 1.6; }
+.filter-btn:hover { background: #e8f0fb; border-color: #1a6abf; color: #1a6abf; }
+.sort-btn:hover   { background: #e8f5e9; border-color: #2e7d32; color: #2e7d32; }
+.filter-btn.active { background: #1a6abf; color: #fff; border-color: #1a6abf; font-weight: 600; }
+.sort-btn.active   { background: #2e7d32; color: #fff; border-color: #2e7d32; font-weight: 600; }
 /* ─── カテゴリ小見出し ─── */
 .cat-subheader { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 10px 0 4px; border-radius: 4px; font-size: 11px; font-weight: 700; }
 .cat-subheader.blue { background: #dbeafe; color: #1a6abf; border-left: 3px solid #1a6abf; }
@@ -313,6 +323,25 @@ body.design-c .cart-panel.open { right: 0; }
     <div class="cat-grid">
       {{ cat_rows }}
     </div>
+  </div>
+</div>
+
+<!-- フィルター/ソートバー -->
+<div class="filter-sort-bar" id="filter-sort-bar">
+  <div class="filter-group">
+    <span class="filter-bar-label">絞込:</span>
+    <button class="filter-btn active" onclick="applyFilter('all',this)">全て</button>
+    <button class="filter-btn" onclick="applyFilter('blue',this)">🔵 青線</button>
+    <button class="filter-btn" onclick="applyFilter('red',this)">🔴 赤線</button>
+    <button class="filter-btn" onclick="applyFilter('ai',this)">★ AI済</button>
+    <button class="filter-btn" onclick="applyFilter('3bet',this)">3BET</button>
+  </div>
+  <div class="filter-bar-sep"></div>
+  <div class="sort-group">
+    <span class="filter-bar-label">並替:</span>
+    <button class="sort-btn" onclick="applySort('pl-desc',this)">損益▼</button>
+    <button class="sort-btn" onclick="applySort('pl-asc',this)">損益▲</button>
+    <button class="sort-btn" onclick="applySort('pos',this)">ポジション</button>
   </div>
 </div>
 

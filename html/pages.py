@@ -1191,7 +1191,7 @@ def classify_result_page(
             # cat-subheaderのクラス: blue/red/warn のみCSS定義あり; 空の場合はデフォルト
             sub_cls = f"cat-subheader {cc}" if cc else "cat-subheader"
             html += (
-                f'<div style="padding:0 10px">'
+                f'<div class="hand-cat-group" style="padding:0 10px">'
                 f'<div class="{sub_cls}">'
                 f'{_esc(cat_label)} <span style="font-weight:400;color:#555">{len(cat_hands)}手</span>'
                 f'<span class="cat-sub-pl {pl_cls}">{pl_sign}{cat_pl:.2f}bb</span>'
@@ -1353,13 +1353,13 @@ def classify_result_page(
       <span class="line-count">{len(blue_hands)}手</span>
       <span class="line-pl {blue_pl_c}">{blue_pl_str}bb</span>
     </div>
-    {blue_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+    <div id="blue-hands-area">{blue_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}</div>
     <div class="line-header" style="border-top:2px solid #eee;margin-top:8px">
       <span class="line-title red">&#x1F534; 赤線（ノーショーダウン）</span>
       <span class="line-count">{len(red_hands)}手</span>
       <span class="line-pl {red_pl_c}">{red_pl_str}bb</span>
     </div>
-    {red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}
+    <div id="red-hands-area">{red_section or '<div style="padding:8px 14px;color:#aaa;font-size:12px">該当なし</div>'}</div>
   </div>
 </div>
 

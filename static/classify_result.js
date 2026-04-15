@@ -727,6 +727,111 @@ window.startAnalyze = async function() {
   }
 };
 
+// ─── フィルター/ソート ────────────────────────────────────────────────────────
+
+var _currentFilter  = 'all';
+var _currentSort    = null;       // null = Pythonデフォルト順
+var _cardOrigParent = {};         // hnum -> original parentElement
+
+var _POS_ORDER_JS = ['UTG','UTG+1','LJ','HJ','CO','BTN','SB','BB'];
+
+function _saveOriginalParents() {
+  if (Object.keys(_cardOrigParent).length) return;
+  document.querySelectorAll('#hand-list-body .hand-card').forEach(function(c) {
+    _cardOrigParent[c.dataset.hnum] = c.parentNode;
+  });
+}
+
+function _getOrCreateFlatView(line) {
+  var id = line + '-flat-view';
+  var el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'padding:0 10px';
+    var area = document.getElementById(line + '-hands-area');
+    if (area) area.appendChild(el);
+  }
+  return el;
+}
+
+function _applyFilter() {
+  document.querySelectorAll('#hand-list-body .hand-card').forEach(function(c) {
+    var show = true;
+    if      (_currentFilter === 'blue') show = c.dataset.line === 'blue';
+    else if (_currentFilter === 'red')  show = c.dataset.line === 'red';
+    else if (_currentFilter === '3bet') show = c.dataset['3bet'] === '1';
+    else if (_currentFilter === 'ai')   show = !!(_geminiResults && _geminiResults[c.dataset.hnum]);
+    c.style.display = show ? '' : 'none';
+  });
+  // 空の cat-group を非表示
+  document.querySelectorAll('#hand-list-body .hand-cat-group').forEach(function(grp) {
+    var any = Array.from(grp.querySelectorAll('.hand-card')).some(function(c) {
+      return c.style.display !== 'none';
+    });
+    grp.style.display = any ? '' : 'none';
+  });
+}
+
+function _applySort() {
+  ['blue', 'red'].forEach(function(line) {
+    var area = document.getElementById(line + '-hands-area');
+    if (!area) return;
+    if (!_currentSort) {
+      // デフォルト順に戻す: カードを元の親へ移動
+      var flat = document.getElementById(line + '-flat-view');
+      if (flat) {
+        Array.from(flat.querySelectorAll('.hand-card')).forEach(function(c) {
+          var orig = _cardOrigParent[c.dataset.hnum];
+          if (orig) orig.appendChild(c);
+        });
+        flat.style.display = 'none';
+      }
+      area.querySelectorAll('.hand-cat-group').forEach(function(g) { g.style.display = ''; });
+    } else {
+      _saveOriginalParents();
+      // area内の全 hand-card を収集（cat-group + flat-view 両方から）
+      var cards = Array.from(area.querySelectorAll('.hand-card'));
+      cards.sort(function(a, b) {
+        if (_currentSort === 'pl-asc')  return parseFloat(a.dataset.plNum || 0) - parseFloat(b.dataset.plNum || 0);
+        if (_currentSort === 'pl-desc') return parseFloat(b.dataset.plNum || 0) - parseFloat(a.dataset.plNum || 0);
+        if (_currentSort === 'pos') {
+          var ai = _POS_ORDER_JS.indexOf(a.dataset.pos);
+          var bi = _POS_ORDER_JS.indexOf(b.dataset.pos);
+          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+        }
+        return 0;
+      });
+      var flat = _getOrCreateFlatView(line);
+      flat.style.display = '';
+      flat.innerHTML = '';
+      cards.forEach(function(c) { flat.appendChild(c); });
+      area.querySelectorAll('.hand-cat-group').forEach(function(g) { g.style.display = 'none'; });
+    }
+  });
+}
+
+window.applyFilter = function(type, btn) {
+  _currentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  _applyFilter();
+};
+
+window.applySort = function(type, btn) {
+  // 同じボタンを再クリック → デフォルト順に戻す
+  if (_currentSort === type) {
+    _currentSort = null;
+    document.querySelectorAll('.sort-btn').forEach(function(b) { b.classList.remove('active'); });
+  } else {
+    _currentSort = type;
+    document.querySelectorAll('.sort-btn').forEach(function(b) { b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+  }
+  _applySort();
+  _applyFilter();
+};
+
 // ── デザイン切替 ──────────────────────────────────────────────────────────────
 window.setDesign = (d) => {
   document.body.className = document.body.className
