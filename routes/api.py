@@ -284,6 +284,28 @@ async def api_hands_realtime(request: Request):
     return JSONResponse({"ok": True, "hand_id": hand_id})
 
 
+@router.get("/api/debug/hand-sample")
+async def api_debug_hand_sample(request: Request):
+    """最新ハンド1件のactionHistoryを返す（BET額フォーマット確認用・認証必須）"""
+    from scripts.firebase_utils import is_firebase_enabled, get_db
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    db = get_db()
+    docs = list(db.collection("users").document(uid).collection("hands")
+                .order_by("saved_at", direction="DESCENDING").limit(1).stream())
+    if not docs:
+        return JSONResponse({"error": "ハンドなし"})
+    h = docs[0].to_dict().get("hand_json", {})
+    return JSONResponse({
+        "actionHistory": h.get("actionHistory", []),
+        "tableId": h.get("tableId", ""),
+    })
+
+
 @router.get("/api/analyses")
 async def api_analyses_list(request: Request):
     from scripts.firebase_utils import is_firebase_enabled, get_analyses
