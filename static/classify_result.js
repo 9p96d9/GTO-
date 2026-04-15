@@ -190,6 +190,16 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// 4色スート（♠黒・♥赤・♦青・♣緑）
+var _SUIT_COLORS = {'♠':'#1a1a1a','♥':'#d32f2f','♦':'#1565c0','♣':'#2e7d32'};
+function cardHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/([23456789TJQKA]{1,2})([\u2660\u2665\u2666\u2663])/g, function(_, rank, suit) {
+    var c = _SUIT_COLORS[suit] || '#000';
+    return esc(rank) + '<span style="color:' + c + '">' + suit + '</span>';
+  });
+}
+
 // ── Firebase 初期化 ──────────────────────────────────────────────────────────
 (async () => {
   try {
@@ -369,13 +379,13 @@ function ratingClass(rating) {
 
 // ── AI解析結果セクション描画 ──────────────────────────────────────────────────
 function _oppDataToHtml(oppStr) {
-  // "BTN:AhKh,CO:" → 対戦相手表示HTML
+  // "BTN:AhKh,CO:" → 対戦相手表示HTML（4色スート）
   if (!oppStr) return '';
   return oppStr.split(',').filter(Boolean).map(part => {
     const idx   = part.indexOf(':');
     const pos   = idx >= 0 ? part.slice(0, idx) : part;
     const cards = idx >= 0 ? part.slice(idx + 1) : '';
-    return `<span class="ai-pos" style="font-size:10px">${esc(pos)}</span>${cards ? ` <span style="font-size:12px">${esc(cards)}</span>` : ''}`;
+    return `<span class="ai-pos" style="font-size:10px">${esc(pos)}</span>${cards ? ` <span style="font-size:12px">${cardHtml(cards)}</span>` : ''}`;
   }).join(' <span style="color:#ccc">|</span> ');
 }
 
@@ -422,9 +432,9 @@ function renderAiSection() {
       </div>
       <div class="ai-hand-info">
         ${pos   ? `<span class="ai-pos">${esc(pos)}</span>` : ''}
-        ${cards ? `<span class="ai-cards">${esc(cards)}</span>` : ''}
+        ${cards ? `<span class="ai-cards">${cardHtml(cards)}</span>` : ''}
         ${oppHtml ? `<span class="vs-label">vs</span> ${oppHtml}` : ''}
-        ${board ? `<span class="ai-board">/ ${esc(board)}</span>` : ''}
+        ${board ? `<span class="ai-board">/ ${cardHtml(board)}</span>` : ''}
         ${plStr ? `<span class="ai-pl ${plCls}">${esc(plStr)}</span>` : ''}
       </div>
       ${ichi   ? `<div class="ai-ichi">${esc(ichi)}</div>` : ''}
@@ -458,7 +468,7 @@ function renderAiSection() {
   });
 }
 
-// ── AI インラインパネル描画（hand-card 内） ────────────────────────────────────
+// ── AI インラインパネル描画（hand-card 内・デフォルト折りたたみ） ───────────────
 function renderAiInHandCard(hnum, result) {
   const container = document.getElementById('hai-' + hnum);
   if (!container) return;
@@ -470,14 +480,15 @@ function renderAiInHandCard(hnum, result) {
   const kaizen  = f['代替ライン'] || '';
   const rCls    = ratingClass(rating);
   const bodyId  = 'hai-body-' + hnum;
+  // ヘッダー部（常に表示）: バッジ + 一言 + 展開トグル
+  // ボディ部（デフォルト折りたたみ）: 詳細 + 代替ライン
   container.innerHTML =
     '<div class="hai-head" onclick="toggleHaiBody(\'' + bodyId + '\', this)">'
     + (rating ? '<span class="ai-rating-badge ' + rCls + '" style="font-size:10px">' + esc(rating) + '</span>' : '')
-    + (ichi   ? '<span class="hai-ichi" style="font-weight:normal;color:#333">' + esc(ichi) + '</span>' : '')
-    + '<span class="hai-toggle">▶ 詳細</span>'
+    + (ichi   ? '<span class="hai-ichi">' + esc(ichi) + '</span>' : '')
+    + '<span class="hai-toggle">▶</span>'
     + '</div>'
     + '<div class="hai-body" id="' + bodyId + '">'
-    + (ichi   ? '<div class="hai-ichi">' + esc(ichi)   + '</div>' : '')
     + (detail ? '<div class="hai-detail">' + esc(detail) + '</div>' : '')
     + (kaizen ? '<div class="hai-kaizen">' + esc(kaizen) + '</div>' : '')
     + '</div>';
@@ -488,7 +499,7 @@ window.toggleHaiBody = function(bodyId, headEl) {
   if (!body) return;
   body.classList.toggle('open');
   const btn = headEl ? headEl.querySelector('.hai-toggle') : null;
-  if (btn) btn.textContent = body.classList.contains('open') ? '▲ 詳細' : '▶ 詳細';
+  if (btn) btn.textContent = body.classList.contains('open') ? '▲' : '▶';
 };
 
 window.toggleAiCollapse = function(id) {

@@ -199,13 +199,13 @@ body.design-c .cart-panel.open { right: 0; }
 .badge-line-pf   { font-size: 9px; background: #f5f5f5; color: #999; border-radius: 2px; padding: 1px 4px; }
 /* ─── AI インラインパネル（手牌カード内） ─── */
 .hand-ai-inline:empty { display: none; }
-.hand-ai-inline { border-top: 1px solid #e8e8e8; padding: 6px 10px; background: #fafcff; font-size: 11px; }
-.hai-head { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-.hai-head:hover .hai-toggle { text-decoration: underline; }
-.hai-toggle { color: #1a6abf; font-size: 10px; margin-left: auto; }
-.hai-body { display: none; margin-top: 5px; }
+.hand-ai-inline { border-top: 1px solid #e8e8e8; padding: 5px 10px; background: #fafcff; font-size: 11px; }
+.hai-head { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; min-height: 22px; }
+.hai-head:hover { background: #f0f4ff; border-radius: 3px; }
+.hai-toggle { color: #aaa; font-size: 9px; margin-left: auto; flex-shrink: 0; padding: 0 2px; }
+.hai-ichi { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; font-size: 11px; }
+.hai-body { display: none; padding-top: 5px; }
 .hai-body.open { display: block; }
-.hai-ichi { font-weight: 700; color: #1a1a2e; margin-bottom: 3px; }
 .hai-detail { color: #333; line-height: 1.7; margin-bottom: 3px; }
 .hai-kaizen { font-size: 10px; background: #fef9c3; border-left: 3px solid #ca8a04; padding: 4px 8px; border-radius: 0 3px 3px 0; margin-top: 4px; color: #854d0e; }
 /* ─── アコーディオン ─── */
