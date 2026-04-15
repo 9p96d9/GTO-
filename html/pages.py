@@ -93,7 +93,11 @@ body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
       <div class="step-num">1</div>
       <div class="step-body">
         <h3>拡張機能をインストール</h3>
-        <p>上の「拡張機能をダウンロード」からZIPを取得し、解凍後に Chrome の拡張機能管理ページ（<code>chrome://extensions</code>）で「パッケージ化されていない拡張機能を読み込む」から追加してください。</p>
+        <p>上の「拡張機能をダウンロード」からZIPを取得して解凍。Chromeのアドレスバーに
+        <code id="ext-url">chrome://extensions</code>
+        <button onclick="navigator.clipboard.writeText('chrome://extensions').then(()=>{this.textContent='✓ コピー済';setTimeout(()=>this.textContent='コピー',1500)})"
+          style="margin-left:6px;padding:2px 8px;font-size:12px;border:1px solid #555;border-radius:4px;background:#1e2a45;color:#ccc;cursor:pointer">コピー</button>
+        と入力して開き、「パッケージ化されていない拡張機能を読み込む」から <code>tenfour-scraper</code> フォルダを選択してください。</p>
       </div>
     </div>
     <div class="step">
@@ -115,6 +119,14 @@ body { background: #0a0e1a; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
       <div class="step-body">
         <h3>セッション画面で解析</h3>
         <p><a href="/sessions">セッション一覧</a> を開いて「⚡ リアルタイム解析」ボタンを押すと、蓄積されたハンドをGTO観点で分類・分析してレポートを生成します。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h3>（任意）AIキーを登録してGTO解説を強化</h3>
+        <p>解析結果画面の「解析カート」に気になったハンドを追加し、AIキーを登録するとAIが詳しくGTO評価します。<br>
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a> で無料のAPIキーを取得（クレジットカード不要）し、解析カートの「AIキー」欄に貼り付けるだけです。</p>
       </div>
     </div>
   </div>

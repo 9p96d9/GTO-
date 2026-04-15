@@ -338,7 +338,7 @@ body.design-c .cart-panel.open { right: 0; }
   <div class="action-card">
     <div class="action-icon">&#x1F6D2;</div>
     <div class="action-title">AI 解析カート</div>
-    <div class="action-desc">気になったハンドを選んで<br>Gemini に GTO 評価させる</div>
+    <div class="action-desc">気になったハンドを選んで<br>AI に GTO 評価させる</div>
     <button type="button" class="btn-secondary" onclick="toggleCartPanel()">🛒 カートを開く</button>
   </div>
 </div>
@@ -374,11 +374,22 @@ body.design-c .cart-panel.open { right: 0; }
   </div>
   <div class="cart-panel-foot">
     <div id="api-key-section" style="display:none;padding:10px 0 6px">
-      <div style="font-size:11px;color:#555;margin-bottom:6px;font-weight:600">Gemini APIキー</div>
-      <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off"
+      <div style="font-size:11px;color:#555;margin-bottom:4px;font-weight:600">AIキー <span style="font-weight:400;color:#888">（Groq推奨）</span></div>
+      <div style="font-size:10px;color:#888;margin-bottom:6px">
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:#1a6abf">Groq無料キーを取得 →</a>
+        &ensp;|&ensp; <span style="color:#aaa">gsk_... で始まるキーをそのまま入力</span>
+      </div>
+      <input type="password" id="api-key-input" placeholder="gsk_..." autocomplete="off"
         style="display:block;width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;margin-bottom:6px" />
       <button class="cart-btn" onclick="saveApiKey()" style="width:100%">保存</button>
       <div id="api-key-status" style="font-size:11px;margin-top:5px;color:#888"></div>
+    </div>
+    <div id="token-estimate" style="display:none;background:#f8f9fa;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#444;line-height:1.8">
+      <div style="font-weight:700;margin-bottom:4px">📊 トークン見積もり（目安）</div>
+      <div>簡易解析: <span id="est-detail-tok">-</span></div>
+      <div>詳細解説: 1手ごとに ≈ 1,700 tok</div>
+      <div id="est-groq-status" style="margin-top:4px;padding-top:4px;border-top:1px solid #e8e8e8"></div>
+      <div style="margin-top:3px;color:#aaa;font-size:10px">実際の使用量は <a href="https://console.groq.com" target="_blank" rel="noopener" style="color:#1a6abf">Groqダッシュボード</a> で確認</div>
     </div>
     <button class="cart-btn primary" id="cart-analyze-btn" disabled onclick="startAnalyze()">⚡ 解析を実行</button>
   </div>
@@ -492,6 +503,30 @@ window.toggleCart = function(handNum) {
   _renderCartDrawer();
   if (typeof window._fullRenderCart === 'function') window._fullRenderCart();
 };
+// ── トークン見積もり ──────────────────────────────────────────────
+var DETAIL_TOK_PER_HAND = 370;
+var EXPLAIN_TOK_PER_HAND = 1700;
+var GROQ_FREE_TPM = 14400;
+
+function _updateTokenEstimate(count) {
+  var el = document.getElementById('token-estimate');
+  var detailEl = document.getElementById('est-detail-tok');
+  var statusEl = document.getElementById('est-groq-status');
+  if (!el) return;
+  if (count === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  var detailTok = count * DETAIL_TOK_PER_HAND;
+  if (detailEl) detailEl.textContent = count + '手 × ' + DETAIL_TOK_PER_HAND + ' tok ≈ ' + detailTok.toLocaleString() + ' tok';
+  if (statusEl) {
+    if (detailTok <= GROQ_FREE_TPM) {
+      statusEl.innerHTML = '⚡ Groq無料枠 ' + GROQ_FREE_TPM.toLocaleString() + ' tok/分 → <span style="color:#2e7d32;font-weight:700">余裕で収まります</span>';
+    } else {
+      var batches = Math.ceil(detailTok / GROQ_FREE_TPM);
+      statusEl.innerHTML = '⚡ Groq無料枠 ' + GROQ_FREE_TPM.toLocaleString() + ' tok/分 → <span style="color:#c0392b;font-weight:700">複数回に分けて実行推奨</span>（約' + batches + '回）';
+    }
+  }
+}
+
 function _renderCartDrawer() {
   var count = window._cartSet.size;
   var emptyEl = document.getElementById('cart-empty');
@@ -502,10 +537,12 @@ function _renderCartDrawer() {
     if (emptyEl) emptyEl.style.display = '';
     itemsEl.innerHTML = '';
     if (analyzeBtn) analyzeBtn.disabled = true;
+    _updateTokenEstimate(0);
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
   if (analyzeBtn) analyzeBtn.disabled = false;
+  _updateTokenEstimate(count);
   var sorted = Array.from(window._cartSet).sort(function(a,b){return a-b;});
   itemsEl.innerHTML = sorted.map(function(n) {
     var el = document.querySelector('.hand-card[data-hnum="' + n + '"]');
@@ -938,7 +975,7 @@ window.closeCartPanel = () => {
   document.getElementById('cart-overlay').classList.remove('open');
 };
 
-// ── Gemini 解析実行 ──────────────────────────────────────────────
+// ── AI解析実行 ──────────────────────────────────────────────────
 window.startAnalyze = async function() {
   const token = await getToken();
   if (!token) { alert('ログインしてください'); return; }
