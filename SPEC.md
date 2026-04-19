@@ -1,6 +1,6 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 6.5
+**バージョン:** 7.0
 **最終更新:** 2026-04-20
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
@@ -28,9 +28,11 @@
 | **Phase 15** | UI/UX改善・Groq統合・トークン見積もり・ソート | ✅ 完了（15-5のみ動画待ち） |
 | **Phase 16** | AI解析表示改善（スートカラーリング・ストリート別BET額） | ✅ 完了 |
 | **Phase 17** | ランディング・セッションページ リデザイン（claude.ai/design活用） | ✅ 完了（ランディングのみ） |
+| **Phase 20a** | セッション解析履歴 削除機能 ＋ Firestore転送量削減（フィールドマスク） | ✅ 完了 |
+| **Phase 20b** | 3D可視化ページ `/3d_view/{job_id}`（Three.js 4タブ） | 🔄 実装中（4タブ完了・調整中） |
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・セキュリティ学習） | ⬜ 計画中 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
-| **Phase 20** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
+| **Phase 20c** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
 
 ---
 
@@ -103,19 +105,28 @@ GTO-/
 ├── state.py                    # グローバル変数（jobs, event_queues 等）
 ├── pipelines.py                # run_classify_pipeline_from_json 等のパイプライン関数
 ├── routes/
-│   ├── pages.py                # 現役画面（/sessions /login /classify_result /classify_progress）
+│   ├── pages.py                # 現役画面（/ /sessions /login /classify_result /classify_progress /progress /error /report /pdf /download 等）
 │   ├── api.py                  # /api/hands/* /api/analyses/* /api/sessions/* /api/user/settings
-│   ├── cart.py                 # /api/cart/*（Phase 12）
-│   └── legacy.py               # 旧フロー（/upload /progress /report /dashboard 等）将来削除予定
+│   └── cart.py                 # /api/cart/*（Phase 12）
 ├── html/
-│   └── pages.py                # classify_result_page() 等の Python HTML 生成関数（Jinja2 本格移行まで）
+│   └── pages.py                # HTML生成ラッパー関数（全ページをJinja2テンプレートに外出し済み）
 ├── templates/
-│   └── classify_result.html    # 解析結果画面テンプレート（Jinja2）
+│   ├── classify_result.html    # 解析結果画面（フッターに3D可視化ボタン）
+│   ├── 3d_view.html            # 3D可視化（Three.js 4タブ: 3Dバー/サンキー/バブル/時系列）
+│   ├── landing.html            # トップページ
+│   ├── upload.html             # 手動アップロード（/legacy）
+│   ├── classify_progress.html  # 解析進捗
+│   ├── progress.html           # PDF生成進捗
+│   ├── report.html             # PDFビューア
+│   ├── error.html              # エラー画面
+│   ├── dashboard.html          # クイック解析ダッシュボード
+│   ├── login.html              # ログイン
+│   ├── sessions.html           # セッション一覧（解析履歴削除ボタン付き）
+│   └── restore.html            # Firestore復元中
 ├── scripts/
 │   ├── parse.py                # ハンド履歴パーサー（txt → JSON）
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
 │   ├── hand_converter.py       # fastFoldTableState JSON → parse.py互換JSON変換
-│   ├── analyze.py              # Gemini GTO分析（レガシー・フォールバック用に存置）
 │   ├── analyze2.py             # Groq/Gemini両対応・detailモード/explainモード（現用）
 │   ├── generate_noapilist.js   # NoAPI PDFレポート生成
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ
@@ -131,7 +142,7 @@ GTO-/
 ```
 
 > **Phase 14 完了（2026-04-14）:** server.py（3900行）を上記構成に分割。server.py は45行に縮小。
-> `classify_result_page()` の Jinja2 本格移行（HTML 組み立てをテンプレート側に移す）は Phase 13 の表示改善と合わせて実施予定。
+> **2026-04-20:** html/pages.py のすべての HTML を templates/ 配下の Jinja2 テンプレートに外出し完了。routes/legacy.py と scripts/analyze.py を削除。
 
 ---
 
@@ -185,6 +196,7 @@ postflopあり:
 | POST | `/upload` | テキストファイル受信 → classifyパイプライン開始 |
 | GET | `/classify_progress/{job_id}` | 分類進捗画面（SSE接続） |
 | GET | `/classify_result/{job_id}` | 分類結果Web画面（Firestoreから復元対応） |
+| GET | `/3d_view/{job_id}` | 3D可視化画面（Three.js・4タブ・認証不要） |
 | POST | `/generate_pdf/{job_id}` | NoAPI PDF生成 |
 | POST | `/generate_pdf/{job_id}?include_ai=true` | AI結果込みPDF生成（Phase 12） |
 | ~~POST~~ | ~~`/start_ai/{job_id}`~~ | ~~全ハンドAI解析+PDF（廃止・Phase 12で削除）~~ |
@@ -194,7 +206,8 @@ postflopあり:
 | GET | `/api/hands/stats` | 蓄積ハンド件数・期間（Bearer認証） |
 | POST | `/api/hands/realtime` | ハンド1件即時保存（Bearer認証） |
 | POST | `/api/hands/analyze` | hands取得→変換→classifyパイプライン（Bearer認証） |
-| GET | `/api/analyses` | 解析履歴一覧（最新20件、Bearer認証） |
+| GET | `/api/analyses` | 解析履歴一覧（最新20件・フィールドマスク適用、Bearer認証） |
+| DELETE | `/api/analyses/{job_id}` | 解析ドキュメント削除（Bearer認証） |
 | POST | `/api/analyses/{job_id}/restore` | Firestoreから解析結果を復元（Bearer認証） |
 | GET | `/api/sessions` | セッション一覧JSON（Bearer認証） |
 | DELETE | `/api/sessions/{session_id}` | セッション削除 |

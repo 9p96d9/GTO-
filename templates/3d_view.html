@@ -25,8 +25,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* ─── HEADER ─── */
 header {
-  height: 50px;
-  background: var(--bg2);
+  height: 50px; background: var(--bg2);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 20px; position: relative; z-index: 100;
@@ -44,16 +43,31 @@ header {
 .stat-pill { font-size: 11px; color: var(--text2); }
 .stat-pill strong { color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; }
 
+/* ─── TABS ─── */
+.tabs {
+  height: 44px; background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-end;
+  padding: 0 20px; gap: 2px; position: relative; z-index: 100;
+}
+.tab {
+  padding: 8px 18px; font-size: 12px; font-weight: 500;
+  color: var(--text2); border: 1px solid transparent;
+  border-bottom: none; border-radius: 6px 6px 0 0;
+  cursor: pointer; transition: all .2s; letter-spacing: .03em;
+  background: transparent; user-select: none;
+}
+.tab:hover { color: var(--text); background: var(--surface); }
+.tab.active { color: var(--text); background: var(--surface); border-color: var(--border); }
+
 /* ─── LAYOUT ─── */
-.app-body { display: flex; height: calc(100vh - 50px); }
+.app-body { display: flex; height: calc(100vh - 94px); }
 
 /* ─── SIDEBAR ─── */
 .sidebar {
-  width: 210px; min-width: 210px;
-  background: var(--bg2);
+  width: 210px; min-width: 210px; background: var(--bg2);
   border-right: 1px solid var(--border);
-  padding: 14px 12px;
-  overflow-y: auto;
+  padding: 14px 12px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 14px;
 }
 .sidebar-section h4 {
@@ -64,8 +78,7 @@ header {
 .y-btn {
   flex: 1; padding: 7px 0; text-align: center;
   font-size: 11px; font-weight: 500; cursor: pointer;
-  color: var(--text2); background: transparent; border: none;
-  transition: all .15s;
+  color: var(--text2); background: transparent; border: none; transition: all .15s;
 }
 .y-btn.active { background: var(--blue); color: #fff; }
 
@@ -90,19 +103,21 @@ header {
 .mini-stat .value.neg { color: var(--red); }
 .mini-stat .value.blue { color: var(--blue); }
 
-/* ─── MAIN CANVAS ─── */
+/* ─── MAIN VIEW ─── */
 .main-view { flex: 1; position: relative; overflow: hidden; }
 #three-canvas { display: block; width: 100%; height: 100%; }
+
+/* ─── CHART VIEWS ─── */
+.chart-view { display: none; width: 100%; height: 100%; }
+.chart-view.active { display: block; }
+#view-sankey { position: relative; }
 
 /* ─── TOOLTIP ─── */
 #tooltip {
   position: absolute; z-index: 200;
-  background: rgba(15,20,40,.95);
-  border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px 14px;
-  font-size: 12px; pointer-events: none;
-  display: none; min-width: 180px;
-  backdrop-filter: blur(8px);
+  background: rgba(15,20,40,.95); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; font-size: 12px;
+  pointer-events: none; display: none; min-width: 180px; backdrop-filter: blur(8px);
 }
 #tooltip .tt-title { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 #tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px; color: var(--text2); }
@@ -113,18 +128,68 @@ header {
 
 /* ─── CONTROLS HINT ─── */
 .controls-hint {
-  position: absolute; bottom: 14px; right: 14px;
-  font-size: 10px; color: var(--text2);
-  background: rgba(15,20,40,.7);
-  padding: 5px 10px; border-radius: 6px;
-  border: 1px solid var(--border);
+  position: absolute; bottom: 14px; right: 14px; font-size: 10px; color: var(--text2);
+  background: rgba(15,20,40,.7); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);
 }
+
+/* ─── DRILL PANEL ─── */
+#drill-panel {
+  position: absolute; top: 0; right: -340px; width: 340px; height: 100%;
+  background: var(--surface); border-left: 1px solid var(--border);
+  transition: right .25s ease; z-index: 500;
+  display: flex; flex-direction: column;
+}
+#drill-panel.open { right: 0; }
+#drill-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600;
+}
+#drill-close {
+  background: none; border: none; color: var(--text2); font-size: 18px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+}
+#drill-close:hover { color: var(--text); }
+#drill-stats {
+  display: flex; gap: 6px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); font-size: 11px;
+}
+.ds-stat { flex: 1; background: var(--surface2); border-radius: 5px; padding: 6px 8px; }
+.ds-stat .ds-label { color: var(--text2); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.ds-stat .ds-val { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; margin-top: 1px; }
+#drill-list { overflow-y: auto; flex: 1; padding: 8px 0; }
+.drill-hand-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; font-size: 11px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.drill-hand-row:hover { background: var(--surface2); }
+.dr-num { font-weight: 700; color: var(--text2); min-width: 44px; font-size: 10px; }
+.dr-pos { background: var(--surface2); color: var(--blue); border-radius: 3px; padding: 1px 5px; font-size: 9px; font-weight: 700; }
+.dr-street { color: var(--text2); font-size: 10px; }
+.dr-pl { margin-left: auto; font-weight: 700; white-space: nowrap; font-size: 11px; }
+.dr-pl.pos { color: var(--green); } .dr-pl.neg { color: var(--red); } .dr-pl.zero { color: var(--text2); }
+#drill-firebase {
+  border-top: 1px solid var(--border); padding: 12px;
+  font-size: 11px; color: var(--text2);
+}
+#drill-firebase textarea, #drill-firebase input {
+  width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px;
+  font-size: 10px; margin-bottom: 6px;
+}
+#drill-firebase textarea { height: 56px; font-family: monospace; resize: none; }
+#fb-connect {
+  width: 100%; padding: 6px; background: var(--blue);
+  color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;
+}
+#fb-connect:hover { opacity: .85; }
 
 /* ─── EMPTY STATE ─── */
 .empty-state {
-  position: absolute; inset: 0; display: flex;
-  align-items: center; justify-content: center;
-  flex-direction: column; gap: 12px; color: var(--text2);
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; flex-direction: column; gap: 12px; color: var(--text2);
 }
 .empty-state h2 { font-size: 18px; color: var(--text); }
 
@@ -146,11 +211,18 @@ header {
   </div>
 </header>
 
+<div class="tabs">
+  <div class="tab active" data-tab="3d">3D バーグラフ</div>
+  <div class="tab" data-tab="sankey">サンキーダイアグラム</div>
+  <div class="tab" data-tab="bubble">バブルチャート</div>
+  <div class="tab" data-tab="timeseries">時系列累積損益</div>
+</div>
+
 <div class="app-body">
   <!-- SIDEBAR -->
   <div class="sidebar">
-    <div class="sidebar-section">
-      <h4>Y 軸</h4>
+    <div class="sidebar-section" id="y-section">
+      <h4>Y 軸（3D）</h4>
       <div class="y-toggle">
         <button class="y-btn active" id="y-hands">手数</button>
         <button class="y-btn" id="y-profit">損益</button>
@@ -198,78 +270,122 @@ header {
 
   <!-- MAIN VIEW -->
   <div class="main-view" id="main-view">
-    <canvas id="three-canvas"></canvas>
-    <div id="tooltip"></div>
-    <div id="axis-labels"></div>
-    <div class="controls-hint">ドラッグ: 回転 &nbsp;|&nbsp; スクロール: ズーム &nbsp;|&nbsp; 右クリック: パン</div>
-  </div>
-</div>
 
-<!-- THREE.JS -->
+    <!-- 3D バーグラフ -->
+    <div id="view-3d" style="width:100%;height:100%;position:relative;">
+      <canvas id="three-canvas"></canvas>
+      <div id="tooltip"></div>
+      <div id="axis-labels"></div>
+      <div class="controls-hint">ドラッグ: 回転 &nbsp;|&nbsp; スクロール: ズーム &nbsp;|&nbsp; 右クリック: パン</div>
+    </div>
+
+    <!-- サンキーダイアグラム -->
+    <div id="view-sankey" class="chart-view">
+      <svg id="sankey-svg" style="width:100%;height:100%;display:block;"></svg>
+      <!-- ドリルパネル -->
+      <div id="drill-panel">
+        <div id="drill-header">
+          <span id="drill-title">カテゴリ</span>
+          <button id="drill-close">✕</button>
+        </div>
+        <div id="drill-stats">
+          <div class="ds-stat">
+            <div class="ds-label">手数</div>
+            <div class="ds-val" id="ds-count">—</div>
+          </div>
+          <div class="ds-stat">
+            <div class="ds-label">損益合計</div>
+            <div class="ds-val" id="ds-total">—</div>
+          </div>
+          <div class="ds-stat">
+            <div class="ds-label">平均損益</div>
+            <div class="ds-val" id="ds-avg">—</div>
+          </div>
+        </div>
+        <div id="drill-list"></div>
+        <div id="drill-firebase">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span>🔥 Firebase</span>
+            <span id="fb-status" style="font-size:10px;color:var(--text2)">未接続</span>
+          </div>
+          <textarea id="fb-config" placeholder="Firebase Config JSON をここに貼り付け"></textarea>
+          <input id="fb-path" placeholder="コレクションパス (例: users/uid/analyses/job_id)">
+          <button id="fb-connect">接続する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- バブルチャート -->
+    <div id="view-bubble" class="chart-view">
+      <canvas id="bubble-canvas" style="display:block;"></canvas>
+    </div>
+
+    <!-- 時系列累積損益 -->
+    <div id="view-ts" class="chart-view">
+      <canvas id="ts-canvas" style="display:block;"></canvas>
+    </div>
+
+  </div><!-- /main-view -->
+</div><!-- /app-body -->
+
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-<!-- SERVER DATA -->
 <script>
-const HANDS_DATA = {{ hands_json }};
-const JOB_ID = "{{ job_id }}";
+let HANDS_DATA = {{ hands_json }};
+const JOB_ID   = "{{ job_id }}";
 </script>
 
 <script>
-// ─── 定数 ───────────────────────────────────────────────────────────────────
-const POS_ORDER = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
+// ═══════════════════════════════════════════════════════════════════
+// 共通定数・ユーティリティ
+// ═══════════════════════════════════════════════════════════════════
+const POS_ORDER   = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
+const BLUE_COLOR  = '#4a9eff';
+const RED_COLOR   = '#e94560';
+const ACT_COLORS  = { 'BET/RAISE':'#f6c90e', 'CALL':'#74b9ff', 'FOLD':'#e94560', 'CHECK':'#8892b0', 'OTHER':'#8892b0' };
+const ACT_ORDER   = ['BET/RAISE','CALL','FOLD','CHECK','OTHER'];
 
-const BLUE_COLOR = '#4a9eff';
-const RED_COLOR  = '#e94560';
+function deriveAction(hand) {
+  const cat = hand.category;
+  if (['バリュー成功','ブラフ失敗','アグレッション勝利'].includes(cat)) return 'BET/RAISE';
+  if (['ブラフキャッチ','コール負け'].includes(cat))                    return 'CALL';
+  if (['ナイスフォールド','バッドフォールド','フォールド(要確認)'].includes(cat)) return 'FOLD';
+  return 'OTHER';
+}
 
-// ─── データ集計ユーティリティ ───────────────────────────────────────────────
 function getPositions(hands) {
   const inData = new Set(hands.map(h => h.position));
   const ordered = POS_ORDER.filter(p => inData.has(p));
-  // POS_ORDERに含まれない不明なポジションを末尾に追加
   inData.forEach(p => { if (!ordered.includes(p)) ordered.push(p); });
   return ordered;
 }
-
 function getCategories(hands) {
-  const blueCats = [...new Set(hands.filter(h => h.line === 'blue').map(h => h.category))];
-  const redCats  = [...new Set(hands.filter(h => h.line === 'red').map(h => h.category))];
-  return [...blueCats, ...redCats];
+  const blue = [...new Set(hands.filter(h => h.line === 'blue').map(h => h.category))];
+  const red  = [...new Set(hands.filter(h => h.line === 'red').map(h => h.category))];
+  return [...blue, ...red];
 }
-
 function getCatLine(hands) {
   const map = {};
   hands.forEach(h => { map[h.category] = h.line; });
   return map;
 }
 
-function aggregate(hands, positions, categories) {
-  const grid = {};
-  positions.forEach(pos => {
-    grid[pos] = {};
-    categories.forEach(cat => { grid[pos][cat] = { count: 0, profit: 0 }; });
-  });
-  hands.forEach(h => {
-    if (grid[h.position] && grid[h.position][h.category] !== undefined) {
-      grid[h.position][h.category].count++;
-      grid[h.position][h.category].profit += h.profit;
-    }
-  });
-  return grid;
-}
-
 function computeStats(hands) {
   const blue = hands.filter(h => h.line === 'blue');
   const red  = hands.filter(h => h.line === 'red');
-  const totalPl  = hands.reduce((s, h) => s + h.profit, 0);
-  const avgBlue  = blue.length ? blue.reduce((s, h) => s + h.profit, 0) / blue.length : 0;
-  const avgRed   = red.length  ? red.reduce((s,  h) => s + h.profit, 0) / red.length  : 0;
-  return { totalPl, avgBlue, avgRed, blueCount: blue.length, redCount: red.length };
+  return {
+    totalPl:   hands.reduce((s,h) => s + h.profit, 0),
+    avgBlue:   blue.length ? blue.reduce((s,h) => s + h.profit,0) / blue.length : 0,
+    avgRed:    red.length  ? red.reduce((s,h)  => s + h.profit,0) / red.length  : 0,
+    blueCount: blue.length,
+    redCount:  red.length,
+  };
 }
 
 function updateSidebarStats(hands) {
-  const s = computeStats(hands);
-  const fmt = (v, dec=1) => (v >= 0 ? '+' : '') + v.toFixed(dec) + 'bb';
+  const s   = computeStats(hands);
+  const fmt = (v, d=1) => (v >= 0 ? '+' : '') + v.toFixed(d) + 'bb';
 
   document.getElementById('hdr-blue').textContent  = s.blueCount;
   document.getElementById('hdr-red').textContent   = s.redCount;
@@ -278,30 +394,49 @@ function updateSidebarStats(hands) {
   const plEl = document.getElementById('stat-total-pl');
   plEl.textContent = fmt(s.totalPl, 1);
   plEl.className = 'value ' + (s.totalPl >= 0 ? 'pos' : 'neg');
-
   document.getElementById('stat-avg-blue').textContent = fmt(s.avgBlue);
   document.getElementById('stat-avg-red').textContent  = fmt(s.avgRed);
 }
 
-// ─── THREE.JS 変数 ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// フィルター状態
+// ═══════════════════════════════════════════════════════════════════
+let activeFilter  = 'all';
+let filteredHands = [...HANDS_DATA];
+let yMode         = 'hands';
+let currentTab    = '3d';
+
+function applyFilter() {
+  if      (activeFilter === 'all')  filteredHands = [...HANDS_DATA];
+  else if (activeFilter === 'blue') filteredHands = HANDS_DATA.filter(h => h.line === 'blue');
+  else if (activeFilter === 'red')  filteredHands = HANDS_DATA.filter(h => h.line === 'red');
+  else if (activeFilter === '3bet') filteredHands = HANDS_DATA.filter(h => h.is_3bet);
+  updateSidebarStats(filteredHands);
+  rebuildCurrentTab();
+}
+
+function rebuildCurrentTab() {
+  if (currentTab === '3d')         rebuildBars();
+  else if (currentTab === 'sankey')    buildSankey();
+  else if (currentTab === 'bubble')    buildBubble();
+  else if (currentTab === 'timeseries') buildTimeSeries();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 1. THREE.JS 3D バーグラフ
+// ═══════════════════════════════════════════════════════════════════
 let scene, camera, renderer, controls;
 let barMeshes = [];
-let yMode = 'hands';
-let activeFilter = 'all';
-let filteredHands = [...HANDS_DATA];
 
-// ─── 初期化 ─────────────────────────────────────────────────────────────────
 function initThree() {
   if (!HANDS_DATA.length) {
-    document.getElementById('main-view').innerHTML =
-      '<div class="empty-state"><h2>データがありません</h2><p>青線・赤線のハンドがありません</p></div>';
+    document.getElementById('view-3d').innerHTML =
+      '<div class="empty-state"><h2>データがありません</h2></div>';
     return;
   }
-
   const canvas    = document.getElementById('three-canvas');
-  const container = document.getElementById('main-view');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
+  const container = document.getElementById('view-3d');
+  const W = container.clientWidth, H = container.clientHeight;
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -314,320 +449,677 @@ function initThree() {
 
   camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 500);
   camera.position.set(16, 13, 20);
-  camera.lookAt(0, 0, 0);
 
   controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.minDistance   = 6;
-  controls.maxDistance   = 60;
+  controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.minDistance = 6; controls.maxDistance = 60;
   controls.maxPolarAngle = Math.PI / 2 + 0.05;
 
-  // ライト
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
   const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(20, 30, 20);
-  dir.castShadow = true;
-  scene.add(dir);
+  dir.position.set(20, 30, 20); dir.castShadow = true; scene.add(dir);
   const fill = new THREE.DirectionalLight(0x4a9eff, 0.15);
-  fill.position.set(-10, 5, -10);
-  scene.add(fill);
+  fill.position.set(-10, 5, -10); scene.add(fill);
 
-  updateSidebarStats(filteredHands);
-  buildGrid();
-  rebuildBars();
-  setupTooltip();
-  animate();
-
-  window.addEventListener('resize', onResize);
+  buildGrid(); rebuildBars(); setupTooltip(); animate();
+  window.addEventListener('resize', onResize3D);
 }
 
-// ─── グリッド ────────────────────────────────────────────────────────────────
 const GAP = 0.5;
-
-function gridDimensions() {
-  const positions  = getPositions(filteredHands.length ? filteredHands : HANDS_DATA);
-  const categories = getCategories(filteredHands.length ? filteredHands : HANDS_DATA);
-  const nPos = positions.length || 1;
-  const nCat = categories.length || 1;
-  const totalX = nPos * (1 + GAP) - GAP;
-  const totalZ = nCat * (1 + GAP) - GAP;
-  return { nPos, nCat, totalX, totalZ, offX: -totalX / 2, offZ: -totalZ / 2 };
+function gridDims() {
+  const pos  = getPositions(filteredHands.length ? filteredHands : HANDS_DATA);
+  const cats = getCategories(filteredHands.length ? filteredHands : HANDS_DATA);
+  const nPos = pos.length || 1, nCat = cats.length || 1;
+  const totalX = nPos * (1 + GAP) - GAP, totalZ = nCat * (1 + GAP) - GAP;
+  return { nPos, nCat, totalX, totalZ, offX: -totalX/2, offZ: -totalZ/2 };
 }
 
 function buildGrid() {
   scene.children.filter(c => c.userData.isGrid).forEach(c => scene.remove(c));
-
-  const { nPos, nCat, totalX, totalZ, offX, offZ } = gridDimensions();
+  const { nPos, nCat, totalX, totalZ, offX, offZ } = gridDims();
   const mat = new THREE.LineBasicMaterial({ color: 0x2a3550, transparent: true, opacity: 0.7 });
-
   for (let i = 0; i <= nPos; i++) {
-    const x = offX + i * (1 + GAP) - GAP / 2;
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(x, 0, offZ - GAP / 2),
-        new THREE.Vector3(x, 0, offZ + totalZ + GAP / 2),
-      ]), mat
-    );
-    line.userData.isGrid = true; scene.add(line);
+    const x = offX + i * (1 + GAP) - GAP/2;
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,0,offZ-GAP/2),new THREE.Vector3(x,0,offZ+totalZ+GAP/2)]), mat);
+    l.userData.isGrid = true; scene.add(l);
   }
   for (let j = 0; j <= nCat; j++) {
-    const z = offZ + j * (1 + GAP) - GAP / 2;
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(offX - GAP / 2, 0, z),
-        new THREE.Vector3(offX + totalX + GAP / 2, 0, z),
-      ]), mat
-    );
-    line.userData.isGrid = true; scene.add(line);
+    const z = offZ + j * (1 + GAP) - GAP/2;
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(offX-GAP/2,0,z),new THREE.Vector3(offX+totalX+GAP/2,0,z)]), mat);
+    l.userData.isGrid = true; scene.add(l);
   }
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(totalX + 2, totalZ + 2),
-    new THREE.MeshStandardMaterial({ color: 0x12152a, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.01;
-  floor.userData.isGrid = true;
-  scene.add(floor);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(totalX+2,totalZ+2),
+    new THREE.MeshStandardMaterial({color:0x12152a,transparent:true,opacity:0.5,side:THREE.DoubleSide}));
+  floor.rotation.x = -Math.PI/2; floor.position.y = -0.01; floor.userData.isGrid = true; scene.add(floor);
 }
 
-// ─── バー構築 ────────────────────────────────────────────────────────────────
 function rebuildBars() {
-  barMeshes.forEach(m => scene.remove(m));
-  barMeshes = [];
-
-  const hands      = filteredHands.length ? filteredHands : [];
-  const positions  = getPositions(hands);
-  const categories = getCategories(hands);
-  const catLine    = getCatLine(hands);
-  const data       = aggregate(hands, positions, categories);
-
-  if (!positions.length || !categories.length) return;
-
+  barMeshes.forEach(m => scene.remove(m)); barMeshes = [];
+  const hands = filteredHands;
+  const positions = getPositions(hands), categories = getCategories(hands);
+  const catLine   = getCatLine(hands);
+  if (!positions.length || !categories.length) { buildGrid(); return; }
   buildGrid();
-
-  const { totalX, totalZ, offX, offZ } = gridDimensions();
-
-  let maxVal = 0;
-  positions.forEach(pos => {
-    categories.forEach(cat => {
-      const v = yMode === 'hands'
-        ? data[pos][cat].count
-        : Math.abs(data[pos][cat].profit);
-      if (v > maxVal) maxVal = v;
-    });
+  const { offX, offZ } = gridDims();
+  const grid = {};
+  positions.forEach(p => { grid[p] = {}; categories.forEach(c => { grid[p][c] = {count:0,profit:0}; }); });
+  hands.forEach(h => {
+    if (grid[h.position] && grid[h.position][h.category] !== undefined) {
+      grid[h.position][h.category].count++;
+      grid[h.position][h.category].profit += h.profit;
+    }
   });
+  let maxVal = 0;
+  positions.forEach(p => categories.forEach(c => {
+    const v = yMode === 'hands' ? grid[p][c].count : Math.abs(grid[p][c].profit);
+    if (v > maxVal) maxVal = v;
+  }));
   if (maxVal === 0) maxVal = 1;
   const MAX_H = 10;
-
   positions.forEach((pos, pi) => {
     categories.forEach((cat, ci) => {
-      const val = yMode === 'hands'
-        ? data[pos][cat].count
-        : Math.abs(data[pos][cat].profit);
+      const val = yMode === 'hands' ? grid[pos][cat].count : Math.abs(grid[pos][cat].profit);
       if (val === 0) return;
-
       const h = Math.max((val / maxVal) * MAX_H, 0.05);
-      const x = offX + pi * (1 + GAP);
-      const z = offZ + ci * (1 + GAP);
-
-      const line = catLine[cat] || 'blue';
-      const col  = new THREE.Color(line === 'blue' ? BLUE_COLOR : RED_COLOR);
-
-      // バー本体
+      const x = offX + pi * (1 + GAP), z = offZ + ci * (1 + GAP);
+      const col = new THREE.Color(catLine[cat] === 'blue' ? BLUE_COLOR : RED_COLOR);
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.85, h, 0.85),
-        new THREE.MeshStandardMaterial({
-          color: col, transparent: true, opacity: 0.82,
-          roughness: 0.3, metalness: 0.35,
-        })
+        new THREE.MeshStandardMaterial({ color: col, transparent: true, opacity: 0.82, roughness: 0.3, metalness: 0.35 })
       );
-      mesh.position.set(x, h / 2, z);
-      mesh.castShadow = true;
-      mesh.userData = {
-        pos, cat, line,
-        count:  data[pos][cat].count,
-        profit: data[pos][cat].profit,
-        origColor: col.clone(),
-        isCap: false,
-      };
-      scene.add(mesh);
-      barMeshes.push(mesh);
-
-      // 上部キャップ（グロー）
-      const capCol = col.clone().lerp(new THREE.Color(1, 1, 1), 0.45);
-      const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.87, 0.04, 0.87),
-        new THREE.MeshStandardMaterial({
-          color: capCol, emissive: capCol, emissiveIntensity: 0.5,
-          transparent: true, opacity: 0.9,
-        })
-      );
-      cap.position.set(x, h + 0.02, z);
-      cap.userData = { isCap: true };
-      scene.add(cap);
-      barMeshes.push(cap);
+      mesh.position.set(x, h/2, z); mesh.castShadow = true;
+      mesh.userData = { pos, cat, line: catLine[cat], count: grid[pos][cat].count, profit: grid[pos][cat].profit, origColor: col.clone(), isCap: false };
+      scene.add(mesh); barMeshes.push(mesh);
+      const capCol = col.clone().lerp(new THREE.Color(1,1,1), 0.45);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.87,0.04,0.87),
+        new THREE.MeshStandardMaterial({ color: capCol, emissive: capCol, emissiveIntensity: 0.5, transparent: true, opacity: 0.9 }));
+      cap.position.set(x, h+0.02, z); cap.userData = { isCap: true };
+      scene.add(cap); barMeshes.push(cap);
     });
   });
-
-  updateAxisLabels();
-}
-
-// ─── 軸ラベル ────────────────────────────────────────────────────────────────
-function updateAxisLabels() {
   requestAnimationFrame(projectLabels);
 }
 
 function projectLabels() {
-  const ax        = document.getElementById('axis-labels');
-  const container = document.getElementById('main-view');
+  const ax = document.getElementById('axis-labels');
+  const container = document.getElementById('view-3d');
   ax.innerHTML = '';
-  if (!renderer || !camera) return;
-
-  const W = container.clientWidth;
-  const H = container.clientHeight;
-
-  const hands      = filteredHands.length ? filteredHands : HANDS_DATA;
-  const positions  = getPositions(hands);
-  const categories = getCategories(hands);
-  const catLine    = getCatLine(hands);
-  const { offX, offZ, totalX, totalZ } = gridDimensions();
-
-  const project = (x, y, z) => {
-    const v = new THREE.Vector3(x, y, z).project(camera);
-    return { sx: (v.x * .5 + .5) * W, sy: (-v.y * .5 + .5) * H, behind: v.z > 1 };
+  if (!renderer || !camera || currentTab !== '3d') return;
+  const W = container.clientWidth, H = container.clientHeight;
+  const hands = filteredHands.length ? filteredHands : HANDS_DATA;
+  const positions = getPositions(hands), categories = getCategories(hands);
+  const catLine   = getCatLine(hands);
+  const { offX, offZ, totalX, totalZ } = gridDims();
+  const proj = (x,y,z) => {
+    const v = new THREE.Vector3(x,y,z).project(camera);
+    return { sx: (v.x*.5+.5)*W, sy: (-v.y*.5+.5)*H, behind: v.z>1 };
   };
-
-  // X軸ラベル（ポジション）
   positions.forEach((pos, pi) => {
-    const x = offX + pi * (1 + GAP);
-    const p = project(x, 0, offZ + totalZ + 0.9);
+    const p = proj(offX + pi*(1+GAP), 0, offZ + totalZ + 0.9);
     if (p.behind) return;
     const el = document.createElement('div');
-    el.style.cssText = `position:absolute;left:${p.sx}px;top:${p.sy}px;
-      transform:translate(-50%,-50%);font-size:10px;font-weight:700;
-      color:#ccd6f6;font-family:'Space Grotesk',sans-serif;
-      pointer-events:none;text-shadow:0 1px 4px #000`;
-    el.textContent = pos;
-    ax.appendChild(el);
+    el.style.cssText = `position:absolute;left:${p.sx}px;top:${p.sy}px;transform:translate(-50%,-50%);font-size:10px;font-weight:700;color:#ccd6f6;font-family:'Space Grotesk',sans-serif;pointer-events:none;text-shadow:0 1px 4px #000`;
+    el.textContent = pos; ax.appendChild(el);
   });
-
-  // Z軸ラベル（カテゴリ）
   categories.forEach((cat, ci) => {
     const line = catLine[cat] || 'blue';
-    const z = offZ + ci * (1 + GAP);
-    const p = project(offX + totalX + 0.9, 0, z);
+    const p = proj(offX + totalX + 0.9, 0, offZ + ci*(1+GAP));
     if (p.behind) return;
     const el = document.createElement('div');
-    el.style.cssText = `position:absolute;left:${p.sx + 4}px;top:${p.sy}px;
-      transform:translateY(-50%);font-size:9px;
-      color:${line === 'blue' ? '#4a9eff' : '#e94560'};
-      font-family:'Inter',sans-serif;pointer-events:none;
-      white-space:nowrap;text-shadow:0 1px 3px #000;
-      max-width:110px;overflow:hidden;text-overflow:ellipsis`;
-    el.textContent = cat;
-    ax.appendChild(el);
+    el.style.cssText = `position:absolute;left:${p.sx+4}px;top:${p.sy}px;transform:translateY(-50%);font-size:9px;color:${line==='blue'?'#4a9eff':'#e94560'};font-family:'Inter',sans-serif;pointer-events:none;white-space:nowrap;text-shadow:0 1px 3px #000;max-width:110px;overflow:hidden;text-overflow:ellipsis`;
+    el.textContent = cat; ax.appendChild(el);
   });
 }
 
-// ─── ツールチップ ────────────────────────────────────────────────────────────
-const raycaster = new THREE.Raycaster();
-const mouse     = new THREE.Vector2();
+const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
 let hoveredMesh = null;
-
 function setupTooltip() {
   const canvas = document.getElementById('three-canvas');
-  canvas.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mouseleave', () => {
-    clearHover();
-    document.getElementById('tooltip').style.display = 'none';
-  });
+  canvas.addEventListener('mousemove', onMouseMove3D);
+  canvas.addEventListener('mouseleave', () => { clearHover(); document.getElementById('tooltip').style.display='none'; });
 }
-
 function clearHover() {
   if (hoveredMesh && !hoveredMesh.userData.isCap) {
-    hoveredMesh.material.emissive.set(0, 0, 0);
+    hoveredMesh.material.emissive.set(0,0,0);
     hoveredMesh.material.emissiveIntensity = 0;
     hoveredMesh = null;
   }
 }
-
-function onMouseMove(e) {
+function onMouseMove3D(e) {
   const rect = e.target.getBoundingClientRect();
   mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
   mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
-
   raycaster.setFromCamera(mouse, camera);
-  const targets = barMeshes.filter(m => !m.userData.isCap);
-  const hits    = raycaster.intersectObjects(targets);
-  const tt      = document.getElementById('tooltip');
-
+  const hits = raycaster.intersectObjects(barMeshes.filter(m => !m.userData.isCap));
+  const tt = document.getElementById('tooltip');
   if (hits.length) {
     const mesh = hits[0].object;
     if (hoveredMesh && hoveredMesh !== mesh) clearHover();
     hoveredMesh = mesh;
     mesh.material.emissive = mesh.userData.origColor.clone().multiplyScalar(0.35);
     mesh.material.emissiveIntensity = 1;
-
-    const d   = mesh.userData;
-    const avg = d.count > 0 ? (d.profit / d.count).toFixed(2) : '0.00';
+    const d = mesh.userData;
+    const avg = d.count > 0 ? (d.profit/d.count).toFixed(2) : '0.00';
     const col = d.line === 'blue' ? '#4a9eff' : '#e94560';
-    const plSign = d.profit >= 0 ? '+' : '';
-    const avgSign = parseFloat(avg) >= 0 ? '+' : '';
-
     tt.style.display = 'block';
-    tt.style.left    = (e.clientX - rect.left + 14) + 'px';
-    tt.style.top     = (e.clientY - rect.top  - 10) + 'px';
+    tt.style.left = (e.clientX - rect.left + 14) + 'px';
+    tt.style.top  = (e.clientY - rect.top  - 10) + 'px';
     tt.innerHTML = `
       <div class="tt-title" style="color:${col}">${d.cat}</div>
       <div class="tt-row"><span>ポジション</span><span>${d.pos}</span></div>
       <div class="tt-row"><span>手数</span><span>${d.count}</span></div>
-      <div class="tt-row"><span>損益合計</span>
-        <span style="color:${d.profit>=0?'#64ffda':'#e94560'}">${plSign}${d.profit.toFixed(1)}bb</span>
-      </div>
-      <div class="tt-row"><span>平均損益</span>
-        <span style="color:${parseFloat(avg)>=0?'#64ffda':'#e94560'}">${avgSign}${avg}bb</span>
-      </div>`;
+      <div class="tt-row"><span>損益合計</span><span style="color:${d.profit>=0?'#64ffda':'#e94560'}">${d.profit>=0?'+':''}${d.profit.toFixed(1)}bb</span></div>
+      <div class="tt-row"><span>平均損益</span><span style="color:${parseFloat(avg)>=0?'#64ffda':'#e94560'}">${parseFloat(avg)>=0?'+':''}${avg}bb</span></div>`;
   } else {
-    clearHover();
-    tt.style.display = 'none';
+    clearHover(); tt.style.display = 'none';
   }
 }
 
-// ─── アニメーションループ ────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
   renderer.render(scene, camera);
-  projectLabels();
+  if (currentTab === '3d') projectLabels();
+}
+function onResize3D() {
+  if (!renderer) return;
+  const container = document.getElementById('view-3d');
+  const W = container.clientWidth, H = container.clientHeight;
+  camera.aspect = W/H; camera.updateProjectionMatrix(); renderer.setSize(W, H);
 }
 
-// ─── リサイズ ────────────────────────────────────────────────────────────────
-function onResize() {
-  const container = document.getElementById('main-view');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
-  camera.aspect = W / H;
-  camera.updateProjectionMatrix();
-  renderer.setSize(W, H);
+// ═══════════════════════════════════════════════════════════════════
+// 2. サンキーダイアグラム
+// ═══════════════════════════════════════════════════════════════════
+function buildSankey() {
+  const container = document.getElementById('view-sankey');
+  const svg = document.getElementById('sankey-svg');
+  const W = container.clientWidth || 900;
+  const H = container.clientHeight || 500;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.innerHTML = '';
+
+  const hands = filteredHands;
+  if (!hands.length) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x',W/2); t.setAttribute('y',H/2);
+    t.setAttribute('text-anchor','middle'); t.setAttribute('fill','#8892b0'); t.setAttribute('font-size','14');
+    t.textContent = 'データがありません'; svg.appendChild(t); return;
+  }
+
+  const PAD = 12, PAD_Y = 28, NODE_W = 14;
+  const maxH = H - PAD_Y * 2;
+  const TOTAL = hands.length;
+
+  // カテゴリの色
+  const catLine = getCatLine(hands);
+  const catColor = cat => catLine[cat] === 'blue' ? '#4a9eff' : '#e94560';
+
+  // 集計: posAction, actionCat
+  const posAction = {}, actionCat = {};
+  const posCounts = {}, actCounts = {}, catCounts = {};
+  hands.forEach(h => {
+    const act = deriveAction(h);
+    posCounts[h.position]  = (posCounts[h.position]  || 0) + 1;
+    actCounts[act]         = (actCounts[act]          || 0) + 1;
+    catCounts[h.category]  = (catCounts[h.category]  || 0) + 1;
+    if (!posAction[h.position]) posAction[h.position] = {};
+    posAction[h.position][act] = (posAction[h.position][act] || 0) + 1;
+    if (!actionCat[act]) actionCat[act] = {};
+    actionCat[act][h.category] = (actionCat[act][h.category] || 0) + 1;
+  });
+
+  // ノードリスト生成（順序付き）
+  function buildNodes(counts, order) {
+    const keys = (order || []).filter(k => counts[k]);
+    Object.keys(counts).forEach(k => { if (!keys.includes(k)) keys.push(k); });
+    const totalH = keys.reduce((s,k) => s + (counts[k]/TOTAL)*maxH, 0) + PAD*(keys.length-1);
+    let y = PAD_Y + Math.max(0, (maxH - totalH + PAD*(keys.length-1)) / 2);
+    return keys.map(k => {
+      const h = Math.max((counts[k]/TOTAL)*maxH - PAD, 2);
+      const node = { key: k, count: counts[k], y, h };
+      y += h + PAD; return node;
+    });
+  }
+
+  const posNodes = buildNodes(posCounts, getPositions(hands));
+  const actNodes = buildNodes(actCounts, ACT_ORDER);
+  const catNodes = buildNodes(catCounts, null);
+
+  // 列X座標
+  const COL = [W*0.05, W*0.38, W*0.72];
+
+  // フロー描画
+  function drawFlows(xSrc, nodes1, xDst, nodes2, matrix, colorFn) {
+    nodes2.forEach(n => { n._fy = n.y; });
+    nodes1.forEach(n1 => {
+      let srcY = n1.y;
+      nodes2.forEach(n2 => {
+        const cnt = (matrix[n1.key] && matrix[n1.key][n2.key]) || 0;
+        if (!cnt) return;
+        const h1 = Math.max((cnt/TOTAL)*maxH - PAD, 0.5);
+        const h2 = h1;
+        const dstY = n2._fy; n2._fy += h2;
+        const mx = (xSrc + NODE_W + xDst) / 2;
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d',
+          `M${xSrc+NODE_W},${srcY} C${mx},${srcY} ${mx},${dstY} ${xDst},${dstY}
+           L${xDst},${dstY+h2} C${mx},${dstY+h2} ${mx},${srcY+h1} ${xSrc+NODE_W},${srcY+h1} Z`
+        );
+        path.setAttribute('fill', colorFn(n1.key));
+        path.setAttribute('opacity','0.2'); path.setAttribute('stroke','none');
+        path.addEventListener('mouseenter', () => path.setAttribute('opacity','0.45'));
+        path.addEventListener('mouseleave', () => path.setAttribute('opacity','0.2'));
+        svg.appendChild(path);
+        srcY += h1;
+      });
+    });
+  }
+
+  drawFlows(COL[0], posNodes, COL[1], actNodes, posAction,
+    k => { const pc = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
+           const cols = ['#4a9eff','#5bc8af','#f6c90e','#a29bfe','#e94560','#fd79a8','#74b9ff','#64ffda'];
+           const i = pc.indexOf(k); return i >= 0 ? cols[i] : '#8892b0'; });
+  drawFlows(COL[1], actNodes, COL[2], catNodes, actionCat, k => ACT_COLORS[k] || '#8892b0');
+
+  // ノード描画
+  function drawNodes(nodes, x, colorFn) {
+    nodes.forEach(n => {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', n.y);
+      rect.setAttribute('width', NODE_W); rect.setAttribute('height', n.h);
+      rect.setAttribute('fill', colorFn(n.key)); rect.setAttribute('rx', 3);
+      svg.appendChild(rect);
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', x + NODE_W + 5);
+      txt.setAttribute('y', n.y + n.h/2 + 1);
+      txt.setAttribute('dominant-baseline','middle');
+      txt.setAttribute('fill','#ccd6f6'); txt.setAttribute('font-size','10');
+      txt.setAttribute('font-family','Inter,sans-serif');
+      txt.textContent = `${n.key} (${n.count})`;
+      svg.appendChild(txt);
+    });
+  }
+
+  function drawCatNodes(nodes, x) {
+    nodes.forEach(n => {
+      const col = catColor(n.key);
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', n.y);
+      rect.setAttribute('width', NODE_W); rect.setAttribute('height', Math.max(n.h, 4));
+      rect.setAttribute('fill', col); rect.setAttribute('rx', 3);
+      rect.style.cursor = 'pointer';
+      rect.addEventListener('mouseenter', () => { rect.setAttribute('opacity','0.7'); });
+      rect.addEventListener('mouseleave', () => { rect.setAttribute('opacity','1'); });
+      svg.appendChild(rect);
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', x + NODE_W + 5);
+      txt.setAttribute('y', n.y + n.h/2 + 1);
+      txt.setAttribute('dominant-baseline','middle');
+      txt.setAttribute('fill', col); txt.setAttribute('font-size','10');
+      txt.setAttribute('font-family','Inter,sans-serif');
+      txt.textContent = `${n.key} (${n.count})`;
+      txt.style.cursor = 'pointer';
+      svg.appendChild(txt);
+
+      // クリックでドリルパネル表示
+      [rect, txt].forEach(el => {
+        el.addEventListener('click', () => openDrillPanel(n.key));
+      });
+    });
+  }
+
+  const posColorFn = k => {
+    const pc   = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
+    const cols = ['#4a9eff','#5bc8af','#f6c90e','#a29bfe','#e94560','#fd79a8','#74b9ff','#64ffda'];
+    const i = pc.indexOf(k); return i >= 0 ? cols[i] : '#8892b0';
+  };
+  drawNodes(posNodes, COL[0], posColorFn);
+  drawNodes(actNodes, COL[1], k => ACT_COLORS[k] || '#8892b0');
+  drawCatNodes(catNodes, COL[2]);
+
+  // 列ラベル
+  [['ポジション', COL[0]], ['最終アクション', COL[1]], ['カテゴリ', COL[2]]].forEach(([label, x]) => {
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', x + NODE_W/2); t.setAttribute('y', 14);
+    t.setAttribute('text-anchor','middle'); t.setAttribute('fill','#8892b0');
+    t.setAttribute('font-size','11'); t.setAttribute('font-weight','600');
+    t.setAttribute('font-family','Space Grotesk,sans-serif');
+    t.textContent = label; svg.appendChild(t);
+  });
 }
 
-// ─── フィルター ──────────────────────────────────────────────────────────────
-function applyFilter() {
-  if (activeFilter === 'all')  filteredHands = [...HANDS_DATA];
-  else if (activeFilter === 'blue') filteredHands = HANDS_DATA.filter(h => h.line === 'blue');
-  else if (activeFilter === 'red')  filteredHands = HANDS_DATA.filter(h => h.line === 'red');
-  else if (activeFilter === '3bet') filteredHands = HANDS_DATA.filter(h => h.is_3bet);
-  updateSidebarStats(filteredHands);
-  rebuildBars();
+// ─── ドリルパネル ───────────────────────────────────────────────────
+function openDrillPanel(catName) {
+  const hands = filteredHands.filter(h => h.category === catName);
+  const panel = document.getElementById('drill-panel');
+  document.getElementById('drill-title').textContent = catName;
+
+  const total = hands.reduce((s,h) => s + h.profit, 0);
+  const avg   = hands.length ? total / hands.length : 0;
+  const fmt   = v => (v >= 0 ? '+' : '') + v.toFixed(2) + 'bb';
+
+  document.getElementById('ds-count').textContent = hands.length;
+  document.getElementById('ds-total').textContent = fmt(total);
+  document.getElementById('ds-total').style.color = total >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('ds-avg').textContent = fmt(avg);
+  document.getElementById('ds-avg').style.color  = avg   >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const list = document.getElementById('drill-list');
+  if (!hands.length) {
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:12px">データなし</div>';
+  } else {
+    list.innerHTML = hands.sort((a,b) => a.hand_number - b.hand_number).map(h => {
+      const pl = h.profit;
+      const plCls = pl > 0 ? 'pos' : pl < 0 ? 'neg' : 'zero';
+      const plStr = (pl >= 0 ? '+' : '') + pl.toFixed(2) + 'bb';
+      const stMap = { preflop:'PF', flop:'F', turn:'T', river:'R' };
+      const st = stMap[h.last_street] || h.last_street;
+      return `<div class="drill-hand-row">
+        <span class="dr-num">H${h.hand_number}</span>
+        <span class="dr-pos">${h.position}</span>
+        <span class="dr-street">${st}</span>
+        <span class="dr-pl ${plCls}">${plStr}</span>
+      </div>`;
+    }).join('');
+  }
+
+  panel.classList.add('open');
 }
 
+function closeDrillPanel() {
+  document.getElementById('drill-panel').classList.remove('open');
+}
+
+document.getElementById('drill-close').addEventListener('click', closeDrillPanel);
+document.getElementById('sankey-svg').addEventListener('click', e => {
+  if (e.target === document.getElementById('sankey-svg')) closeDrillPanel();
+});
+
+// ─── Firebase 接続ゾーン ──────────────────────────────────────────
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+}
+
+document.getElementById('fb-connect').addEventListener('click', async () => {
+  const statusEl = document.getElementById('fb-status');
+  statusEl.textContent = '接続中...'; statusEl.style.color = '#f6c90e';
+  try {
+    const config = JSON.parse(document.getElementById('fb-config').value);
+    if (!window.firebase) {
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js');
+    }
+    const app = window.firebase.apps.length ? window.firebase.apps[0] : window.firebase.initializeApp(config);
+    const db = window.firebase.firestore(app);
+    const path = document.getElementById('fb-path').value.trim();
+    const snap = await db.doc(path).get();
+    if (snap.exists) {
+      const data = snap.data();
+      if (data.hands && Array.isArray(data.hands)) {
+        HANDS_DATA = data.hands;
+        filteredHands = [...HANDS_DATA];
+        applyFilter();
+        statusEl.textContent = `接続済み (${data.hands.length}手)`;
+        statusEl.style.color = '#64ffda';
+        buildSankey();
+      } else {
+        statusEl.textContent = 'データ形式エラー'; statusEl.style.color = '#e94560';
+      }
+    } else {
+      statusEl.textContent = 'ドキュメントが見つかりません'; statusEl.style.color = '#e94560';
+    }
+  } catch(err) {
+    statusEl.textContent = 'エラー: ' + err.message.slice(0, 40); statusEl.style.color = '#e94560';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 3. バブルチャート
+// ═══════════════════════════════════════════════════════════════════
+function buildBubble() {
+  const canvas    = document.getElementById('bubble-canvas');
+  const container = document.getElementById('view-bubble');
+  const W = container.clientWidth || 900, H = container.clientHeight || 480;
+  canvas.width  = W * window.devicePixelRatio;
+  canvas.height = H * window.devicePixelRatio;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, W, H);
+
+  const hands = filteredHands;
+  if (!hands.length) {
+    ctx.fillStyle = '#8892b0'; ctx.font = '14px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('データがありません', W/2, H/2); return;
+  }
+
+  const positions = getPositions(hands);
+  const byPos = {};
+  positions.forEach(p => { byPos[p] = {count:0, profit:0, bet3:0, blue:0, red:0}; });
+  hands.forEach(h => {
+    if (!byPos[h.position]) return;
+    byPos[h.position].count++;
+    byPos[h.position].profit += h.profit;
+    if (h.is_3bet) byPos[h.position].bet3++;
+    if (h.line === 'blue') byPos[h.position].blue++;
+    if (h.line === 'red')  byPos[h.position].red++;
+  });
+
+  const PAD = { l:70, r:40, t:50, b:60 };
+  const CW = W - PAD.l - PAD.r, CH = H - PAD.t - PAD.b;
+
+  const maxProfit = Math.max(...positions.map(p => Math.abs(byPos[p].profit)), 1);
+  const maxCount  = Math.max(...positions.map(p => byPos[p].count), 1);
+
+  const posX = pi => PAD.l + (pi / Math.max(positions.length - 1, 1)) * CW;
+  const valY = v  => PAD.t + CH/2 - (v / maxProfit) * (CH/2 - 20);
+
+  // グリッド
+  [-maxProfit, -maxProfit/2, 0, maxProfit/2, maxProfit].forEach(v => {
+    const y = valY(v);
+    ctx.strokeStyle = '#2a3550'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    ctx.fillStyle = '#8892b0'; ctx.font = '10px Inter'; ctx.textAlign = 'right';
+    ctx.fillText((v >= 0 ? '+' : '') + Math.round(v) + 'bb', PAD.l - 6, y + 4);
+  });
+  ctx.strokeStyle = '#556677'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, valY(0)); ctx.lineTo(W - PAD.r, valY(0)); ctx.stroke();
+
+  // バブル
+  positions.forEach((pos, pi) => {
+    const d = byPos[pos];
+    const x = posX(pi), y = valY(d.profit);
+    const r = Math.sqrt(d.count / maxCount) * 50 + 10;
+    const col = d.profit >= 0 ? '#4a9eff' : '#e94560';
+
+    const grd = ctx.createRadialGradient(x, y, 0, x, y, r * 1.5);
+    grd.addColorStop(0, col + '44'); grd.addColorStop(1, col + '00');
+    ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, Math.PI*2); ctx.fillStyle = grd; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fillStyle = col + 'cc'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // 3BET 弧
+    if (d.count > 0 && d.bet3 > 0) {
+      const ratio = d.bet3 / d.count;
+      ctx.beginPath(); ctx.arc(x, y, r, -Math.PI/2, -Math.PI/2 + Math.PI*2*ratio);
+      ctx.strokeStyle = '#f6c90e'; ctx.lineWidth = 3; ctx.stroke();
+    }
+
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Space Grotesk'; ctx.textAlign = 'center';
+    ctx.fillText(pos, x, y + 4);
+    ctx.fillStyle = col; ctx.font = '9px Inter';
+    ctx.fillText((d.profit >= 0 ? '+' : '') + d.profit.toFixed(1) + 'bb', x, y + r + 14);
+  });
+
+  // 凡例
+  ctx.fillStyle = '#8892b0'; ctx.font = '11px Space Grotesk'; ctx.textAlign = 'left';
+  ctx.fillText('Y軸: 損益(bb)', PAD.l, PAD.t - 22);
+  ctx.fillText('バブルサイズ: 手数', PAD.l + 110, PAD.t - 22);
+  ctx.fillStyle = '#f6c90e';
+  ctx.fillText('● 黄弧: 3BET率', PAD.l + 260, PAD.t - 22);
+
+  positions.forEach((pos, pi) => {
+    ctx.fillStyle = '#8892b0'; ctx.font = '11px Space Grotesk'; ctx.textAlign = 'center';
+    ctx.fillText(pos, posX(pi), H - 18);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4. 時系列累積損益
+// ═══════════════════════════════════════════════════════════════════
+function buildTimeSeries() {
+  const canvas    = document.getElementById('ts-canvas');
+  const container = document.getElementById('view-ts');
+  const W = container.clientWidth || 900, H = container.clientHeight || 480;
+  canvas.width  = W * window.devicePixelRatio;
+  canvas.height = H * window.devicePixelRatio;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, W, H);
+
+  const hands = filteredHands;
+  if (!hands.length) {
+    ctx.fillStyle = '#8892b0'; ctx.font = '14px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('データがありません', W/2, H/2); return;
+  }
+
+  const sorted = [...hands].sort((a,b) => a.hand_number - b.hand_number);
+  const blue = [], red = [], all = [];
+  let cumBlue = 0, cumRed = 0, cumAll = 0;
+  sorted.forEach(h => {
+    cumAll += h.profit; all.push(cumAll);
+    if (h.line === 'blue') { cumBlue += h.profit; blue.push({ n: h.hand_number, v: cumBlue }); }
+    if (h.line === 'red')  { cumRed  += h.profit; red.push({ n: h.hand_number, v: cumRed  }); }
+  });
+
+  const PAD = { l:70, r:40, t:50, b:50 };
+  const CW = W - PAD.l - PAD.r, CH = H - PAD.t - PAD.b;
+  const N = sorted.length;
+  const allVals = all.concat(blue.map(d=>d.v), red.map(d=>d.v));
+  const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  const range = maxV - minV || 1;
+
+  const toX = n  => PAD.l + (n / N) * CW;
+  const toY = v  => PAD.t + CH - ((v - minV) / range) * CH;
+
+  // グリッド
+  for (let i = 0; i <= 5; i++) {
+    const v = minV + (range/5) * i, y = toY(v);
+    ctx.strokeStyle = '#2a3550'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    ctx.fillStyle = '#8892b0'; ctx.font = '10px Inter'; ctx.textAlign = 'right';
+    ctx.fillText((v >= 0 ? '+' : '') + Math.round(v) + 'bb', PAD.l - 6, y + 4);
+  }
+  if (minV < 0 && maxV > 0) {
+    ctx.strokeStyle = '#556677'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.l, toY(0)); ctx.lineTo(W - PAD.r, toY(0)); ctx.stroke();
+  }
+
+  // 全体フィル
+  ctx.beginPath(); ctx.moveTo(PAD.l, toY(0));
+  all.forEach((v, i) => ctx.lineTo(toX(i), toY(v)));
+  ctx.lineTo(toX(N-1), toY(0)); ctx.closePath();
+  const fillGrd = ctx.createLinearGradient(0,0,0,H);
+  fillGrd.addColorStop(0, cumAll >= 0 ? '#4a9eff33' : '#e9456033');
+  fillGrd.addColorStop(1, '#00000000');
+  ctx.fillStyle = fillGrd; ctx.fill();
+
+  // 全体ライン
+  ctx.beginPath();
+  all.forEach((v,i) => { if (i===0) ctx.moveTo(toX(i),toY(v)); else ctx.lineTo(toX(i),toY(v)); });
+  ctx.strokeStyle = '#8892b0'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // 青線
+  if (blue.length > 1) {
+    ctx.beginPath();
+    blue.forEach((d,i) => { if (i===0) ctx.moveTo(toX(d.n),toY(d.v)); else ctx.lineTo(toX(d.n),toY(d.v)); });
+    ctx.strokeStyle = '#4a9eff'; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+
+  // 赤線
+  if (red.length > 1) {
+    ctx.beginPath();
+    red.forEach((d,i) => { if (i===0) ctx.moveTo(toX(d.n),toY(d.v)); else ctx.lineTo(toX(d.n),toY(d.v)); });
+    ctx.strokeStyle = '#e94560'; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+
+  // 終端ドット＆ラベル
+  [[cumBlue, blue, '#4a9eff'], [cumRed, red, '#e94560']].forEach(([cum, arr, col]) => {
+    if (!arr.length) return;
+    const last = arr[arr.length-1];
+    ctx.beginPath(); ctx.arc(toX(last.n), toY(last.v), 4, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.fillStyle = col; ctx.font = 'bold 11px Space Grotesk'; ctx.textAlign = 'left';
+    ctx.fillText((cum>=0?'+':'')+cum.toFixed(1)+'bb', toX(last.n)+8, toY(last.v)+4);
+  });
+
+  // X軸目盛り
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    ctx.fillStyle = '#8892b0'; ctx.font = '10px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('H' + Math.round(t * N), PAD.l + t*CW, H - 16);
+  });
+
+  // 凡例
+  [['─ 全体','#8892b0'], ['─ 青線','#4a9eff'], ['─ 赤線','#e94560']].forEach(([label,col],i) => {
+    ctx.fillStyle = col; ctx.font = '11px Space Grotesk'; ctx.textAlign = 'left';
+    ctx.fillText(label, PAD.l + i*100, PAD.t - 22);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// タブ切替
+// ═══════════════════════════════════════════════════════════════════
+let sankeyBuilt = false, bubbleBuilt = false, tsBuilt = false;
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const id = tab.dataset.tab;
+    if (id === currentTab) return;
+    currentTab = id;
+
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // 表示切替
+    document.getElementById('view-3d').style.display      = id === '3d'         ? 'block' : 'none';
+    document.getElementById('view-sankey').classList.toggle('active', id === 'sankey');
+    document.getElementById('view-bubble').classList.toggle('active', id === 'bubble');
+    document.getElementById('view-ts').classList.toggle('active', id === 'timeseries');
+
+    // Y軸切替セクション: 3Dタブのみ表示
+    document.getElementById('y-section').style.display = id === '3d' ? '' : 'none';
+
+    // 遅延ビルド
+    if (id === 'sankey' && !sankeyBuilt) { setTimeout(buildSankey, 50); sankeyBuilt = true; }
+    else if (id === 'sankey')             setTimeout(buildSankey, 10);
+
+    if (id === 'bubble' && !bubbleBuilt) { setTimeout(buildBubble, 50); bubbleBuilt = true; }
+    else if (id === 'bubble')             setTimeout(buildBubble, 10);
+
+    if (id === 'timeseries' && !tsBuilt) { setTimeout(buildTimeSeries, 50); tsBuilt = true; }
+    else if (id === 'timeseries')         setTimeout(buildTimeSeries, 10);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// フィルター & Y軸ハンドラー
+// ═══════════════════════════════════════════════════════════════════
 document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeFilter = btn.dataset.filter;
+    sankeyBuilt = bubbleBuilt = tsBuilt = false;
     applyFilter();
   });
 });
@@ -645,7 +1137,17 @@ document.getElementById('y-profit').addEventListener('click', () => {
   rebuildBars();
 });
 
-// ─── 起動 ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  onResize3D();
+  if (currentTab === 'sankey') buildSankey();
+  else if (currentTab === 'bubble') buildBubble();
+  else if (currentTab === 'timeseries') buildTimeSeries();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 起動
+// ═══════════════════════════════════════════════════════════════════
+updateSidebarStats(filteredHands);
 initThree();
 </script>
 </body>
