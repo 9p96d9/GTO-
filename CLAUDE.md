@@ -22,10 +22,12 @@
 | Phase 15 | UI/UX改善・Groq統合・トークン見積もり・ソート | ✅ 完了（15-5のみ動画待ち） |
 | Phase 16 | AI解析表示改善（スートカラーリング・ストリート別BET額） | ✅ 完了 |
 | Phase 17 | ランディングページ リデザイン（claude.ai/design活用） | ✅ 完了（sessionsページは未着手） |
+| Phase 20a | sessions解析ログ削除機能・Firestoreフィールドマスク最適化 | ✅ 完了 |
+| Phase 20b | 3D可視化 4タブ全実装（Sankey/Bubble/TimeSeries） | ✅ 完了 |
 | Phase 5, 6, 11 | 管理者ダッシュボード・UX改善・対戦相手統計 | ⬜ 未着手 |
+| **Phase 20c** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC） | ⬜ 計画中 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード | ⬜ 計画中 |
-| **Phase 20** | バグ修正・仕上げ・UX polish | ⬜ 計画中（先行対応済みあり） |
 
 ---
 
@@ -54,22 +56,25 @@ server.py                    # FastAPI 初期化・ミドルウェアのみ
 state.py                     # グローバル変数（jobs, event_queues 等）
 pipelines.py                 # run_classify_pipeline_from_json 等
 routes/
-  pages.py                   # 画面ルート
-  api.py                     # /api/* ルート
+  pages.py                   # 画面ルート（/3d_view/{job_id} 含む）
+  api.py                     # /api/* ルート（DELETE /api/analyses/{job_id} 含む）
   cart.py                    # /api/cart/* ルート
-  legacy.py                  # 旧フロー（削除予定）
 html/
-  pages.py                   # Python HTML 生成関数（Jinja2移行予定）
+  pages.py                   # Python HTML 生成関数（three_d_view_page 含む）
 templates/
   classify_result.html       # 解析結果画面テンプレート（Jinja2）
-  *.html                     # その他ページ（Jinja2移行後に増える）
+  3d_view.html               # 3D可視化（4タブ: 3Dバー/Sankey/Bubble/TimeSeries）
+  sessions.html              # セッション一覧・解析履歴（削除ボタン付き）
+  landing.html               # ランディングページ
+  login.html / error.html    # 認証・エラー
+  progress.html / classify_progress.html / restore.html / upload.html / report.html / dashboard.html
 static/
   classify_result.js         # 解析結果画面JS（?v=日付でキャッシュバスト）
 scripts/
   classify.py                # 青線/赤線分類
   hand_converter.py          # fastFoldTableState → parse.py互換JSON
   analyze2.py                # Groq/Gemini両対応・detailモード既定（現用）
-  firebase_utils.py          # Firebase Admin SDK
+  firebase_utils.py          # Firebase Admin SDK（フィールドマスク最適化済み）
 extension/
   background.js              # Service Worker・自動解析トリガー
   interceptor.js             # WebSocket傍受（MAIN world）
@@ -130,7 +135,7 @@ hand_results = hand_json.get("handResults") or []
 # 構文チェック（必須）
 python -c "
 import ast, pathlib
-for f in ['server.py','state.py','pipelines.py','routes/pages.py','routes/api.py','routes/cart.py','routes/legacy.py','html/pages.py']:
+for f in ['server.py','state.py','pipelines.py','routes/pages.py','routes/api.py','routes/cart.py','html/pages.py']:
     p = pathlib.Path(f)
     if p.exists(): ast.parse(p.read_text(encoding='utf-8')); print(f'OK: {f}')
 "
