@@ -1,7 +1,7 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 6.3
-**最終更新:** 2026-04-15
+**バージョン:** 6.4
+**最終更新:** 2026-04-19
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
 
@@ -26,6 +26,11 @@
 | Phase 13 | AI解析品質向上（analyze2.py・detailモード・explainモード） | ✅ 完了 |
 | Phase 14 | server.py リファクタ（routes/ / pipelines.py / state.py 分割） | ✅ 完了 |
 | **Phase 15** | UI/UX改善・Groq統合・トークン見積もり・ソート | ✅ 完了（15-5のみ動画待ち） |
+| **Phase 16** | AI解析表示改善（スートカラーリング・ストリート別BET額） | ⬜ 次回 |
+| **Phase 17** | ランディング・セッションページ リデザイン（claude.ai/design活用） | ⬜ 次回 |
+| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・セキュリティ学習） | ⬜ 計画中 |
+| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
+| **Phase 20** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
 
 ---
 
@@ -669,6 +674,159 @@ if (typeof raw === "string" && raw.startsWith("42")) {
 | 🔑 APIキー管理 | Gemini APIキー登録・変更・削除（マスキング表示） |
 | 🛒 カート履歴 | 名前付き保存カードの一覧・読み込み・削除 |
 | 🗄 データ管理 | 蓄積ハンド数・期間確認 / 全ハンド削除（確認ダイアログ付き） |
+
+---
+
+## 13. Phase 16: AI解析表示改善（⬜ 次回）
+
+### 16-1. スートカラーリング
+
+カード表示（♠♣♥♦）にCSSでスートの色を付ける。
+
+**対象箇所:** `templates/classify_result.html` のカード表示部分、AI解析結果カード
+
+**カラー仕様:**
+
+| スート | 色 |
+|---|---|
+| ♠ スペード | #ccc（グレーホワイト） |
+| ♣ クラブ | #4caf93（グリーン） |
+| ♥ ハート | #e94560（レッド） |
+| ♦ ダイヤ | #5b9bd5（ブルー） |
+
+**実装方針:** JSでカード文字列をパースし `<span class="suit-s">♠</span>` 等に変換。CSSで色付け。
+
+### 16-2. ストリート別BET額表示
+
+AI解析カードのストリート別アクション表示に `amount_bb` を追加する。
+
+**データ:** `hand_converter.py` が生成するJSONにすでに `amount_bb` フィールドが存在（Bet/Raise/Call時）。
+表示側に渡すだけでよく、バックエンド変更不要。
+
+**表示例:**
+```
+[FLOP] A♥ K♦ 2♣
+  Hero (BTN): Bet 4.5bb
+  Villain (BB): Raise 14.0bb
+  Hero (BTN): Call 14.0bb
+```
+
+---
+
+## 14. Phase 17: ランディング・セッションページ リデザイン（⬜ 次回）
+
+### 概要
+
+- **対象:** `/`（ランディング）と `/sessions`（セッション画面）のみ
+- **解析結果画面 `/classify_result` は変更しない**
+- **ツール:** claude.ai/design でデザイン案を生成 → HTML/CSSに移植
+- **スタック変更なし:** Jinja2/Python生成HTML を維持（React移行はPhase 19以降）
+
+### 現状デザインの課題
+
+| 場所 | 課題 |
+|---|---|
+| ランディング | ヒーローセクションが地味。ポーカー感が薄い |
+| ランディング | ステップ説明が縦並びで長い |
+| セッション | 数字（ハンド数）が大きいだけで情報密度が低い |
+| 共通 | フォントが `Meiryo` でモダン感が乏しい |
+
+### デザイン方針
+
+- **カラーパレット維持:** `#0a0e1a`（背景）/ `#e94560`（アクセント）/ `#4caf93`（緑）
+- グラデーション・グラスモーフィズム・アニメーション追加でポーカー感を演出
+- モバイルファースト（スマホでも使いやすく）
+
+---
+
+## 15. Phase 18: Railway → AWS 移行（⬜ 計画中）
+
+### 目的
+
+- 本番インフラをRailwayからAWSに移行
+- AWSとセキュリティの実践的な学習
+
+### 採用サービス構成（案）
+
+| AWSサービス | 用途 |
+|---|---|
+| **ECS Fargate** | Dockerコンテナ実行（Railwayと同じ感覚で移行できる） |
+| **ECR** | Dockerイメージ管理 |
+| **ALB** | ロードバランサー + HTTPS終端 |
+| **ACM** | SSL証明書（無料） |
+| **Secrets Manager** | 環境変数の安全な管理（現在の.env相当） |
+| **VPC + セキュリティグループ** | ネットワーク分離・ポート制御 |
+| **IAM** | 最小権限ロール設計 |
+
+### 学習できるセキュリティ項目
+
+- IAMロールと最小権限の原則
+- VPCサブネット設計（パブリック/プライベート）
+- セキュリティグループによるポート制御
+- HTTPS強制・HTTPリダイレクト
+- Secrets Managerによる秘密情報管理
+- CloudWatch Logsによる監視・アラート
+
+---
+
+## 16. Phase 19: Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（⬜ 計画中）
+
+### 目的
+
+- FirebaseからPostgreSQLへ移行してDBの学習
+- 複数ユーザーのデータを分析・可視化するアドミンアナリティクスダッシュボード構築
+- React化（フロントエンドをAPIサーバー + React SPAに分離）
+
+### PostgreSQL スキーマ設計方針
+
+**AIが生成するDBの典型的な失敗と対策:**
+
+| 失敗パターン | 対策 |
+|---|---|
+| インデックス漏れ | `user_id`, `saved_at`, `job_id` に必ずINDEX |
+| JSONまるごと保存 | 検索・集計が必要なフィールドは専用カラムに出す |
+| マイグレーション未設計 | Alembicを導入しスキーマ変更を管理 |
+| `TIMESTAMP` と `TIMESTAMPTZ` 混在 | 全て `TIMESTAMPTZ`（UTC）で統一 |
+| NOT NULL 制約漏れ | 論理的に必須のカラムには必ず付ける |
+| 外部キー制約なし | 孤立レコード防止のため必ず設定 |
+| ソフトデリート未設計 | `deleted_at TIMESTAMPTZ NULL` で論理削除 |
+
+**テーブル設計（暫定）:**
+
+```sql
+users          (id, firebase_uid UNIQUE, email, created_at, deleted_at)
+hands          (id, user_id FK, hand_json JSONB, captured_at, saved_at)
+analyses       (id, user_id FK, job_id UNIQUE, created_at, hand_count, ...)
+analysis_ai    (id, analysis_id FK, hand_number, ai_text, category, explain, analyzed_at)
+user_settings  (id, user_id FK UNIQUE, encrypted_api_key, auto_cart BOOL, updated_at)
+```
+
+### アドミンアナリティクスダッシュボード
+
+管理者が複数ユーザーのポーカーデータを集計・可視化する画面（Phase 5の本格実装）。
+
+**可視化項目（案）:**
+
+| 指標 | グラフ種別 |
+|---|---|
+| ユーザー別ハンド蓄積数 | 棒グラフ |
+| 日別新規ハンド数 | 折れ線グラフ |
+| カテゴリ分布（blue/red/preflop比率） | ドーナツチャート |
+| AI解析利用率 | 数値カード |
+| ポジション別損益分布 | ヒートマップ |
+
+---
+
+## 17. Phase 20: バグ修正・仕上げ（⬜ 計画中）
+
+既知バグの洗い出しと修正。現行機能のエッジケース対応。
+
+### バグ調査方針
+
+1. 全ユーザーフローを通しで実行して動作確認
+2. ブラウザコンソールエラーの確認
+3. Railway ログの確認（本番エラー）
+4. 拡張機能のService Workerログ確認
 
 ---
 

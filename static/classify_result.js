@@ -402,14 +402,15 @@ function renderAiSection() {
     const cat  = r.category || '';
     const f    = parseAiText(text);
 
-    const el    = document.querySelector(`.hand-card[data-hnum="${k}"]`);
-    const pos   = el?.dataset.pos   || '';
-    const cards = el?.dataset.cards || '';
-    const plStr = el?.dataset.pl    || '';
-    const plNum = parseFloat(el?.dataset.plNum || '0');
-    const board = el?.dataset.board || '';
-    const opp   = el?.dataset.opp   || '';
-    const is3bt = el?.dataset['3bet'] === '1';
+    const el       = document.querySelector(`.hand-card[data-hnum="${k}"]`);
+    const pos      = el?.dataset.pos   || '';
+    const cards    = el?.dataset.cards || '';
+    const plStr    = el?.dataset.pl    || '';
+    const plNum    = parseFloat(el?.dataset.plNum || '0');
+    const board    = el?.dataset.board || '';
+    const opp      = el?.dataset.opp   || '';
+    const is3bt    = el?.dataset['3bet'] === '1';
+    const streetBodyHtml = el?.querySelector('.hand-card-body')?.innerHTML || '';
     const plCls = plNum > 0 ? 'pos' : plNum < 0 ? 'neg' : 'zero';
 
     const rating   = f['GTO評価'] || '';
@@ -437,6 +438,7 @@ function renderAiSection() {
         ${board ? `<span class="ai-board">/ ${cardHtml(board)}</span>` : ''}
         ${plStr ? `<span class="ai-pl ${plCls}">${esc(plStr)}</span>` : ''}
       </div>
+      ${streetBodyHtml ? `<div class="ai-street-body">${streetBodyHtml}</div>` : ''}
       ${ichi   ? `<div class="ai-ichi">${esc(ichi)}</div>` : ''}
       ${detail ? `<div class="ai-detail">${esc(detail)}</div>` : ''}
       ${(kaizen || evLoss) ? `<div class="ai-kaizen">${kaizen ? esc(kaizen) : ''}${evLoss ? ` <b>(${esc(evLoss)})</b>` : ''}</div>` : ''}
