@@ -1,1203 +1,129 @@
 """
 html/pages.py - HTML生成関数・定数
-Jinja2本格移行（Phase 13）まで classify_result_page() 等のHTML組み立てはここで管理
+各ページのHTMLはすべて templates/ 配下のJinja2テンプレートで管理。
+このファイルは薄いラッパー関数のみを提供する。
 """
 
 import json as _json
-import os
 import re as _re
 from pathlib import Path
 
 _TEMPLATES_DIR = str(Path(__file__).parent.parent / "templates")
 
 
+def _render(template_name: str, **ctx) -> str:
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=False)
+    return env.get_template(template_name).render(**ctx)
+
+
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-LANDING_PAGE = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PokerGTO — リアルタイム GTO 分析</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0a0e1a; --bg2: #0d1224;
-    --surface: rgba(255,255,255,0.04); --surface-hover: rgba(255,255,255,0.07);
-    --border: rgba(255,255,255,0.08); --border-bright: rgba(255,255,255,0.14);
-    --red: #e94560; --red-dim: rgba(233,69,96,0.15); --red-glow: rgba(233,69,96,0.3);
-    --green: #4caf93; --green-dim: rgba(76,175,147,0.15);
-    --text: #e0e0e0; --text-muted: #7a8099; --text-dim: #4a5168;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
-  body::before {
-    content: ''; position: fixed; inset: 0;
-    background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-    background-size: 60px 60px; pointer-events: none; z-index: 0;
-  }
-  nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 5%; height: 64px;
-    background: rgba(10,14,26,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
-  }
-  .nav-right { display: flex; align-items: center; gap: 12px; }
-  .nav-user {
-    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
-    border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
-    cursor: pointer; transition: background 0.2s; text-decoration: none;
-  }
-  .nav-user:hover { background: var(--surface-hover); }
-  .nav-user-avatar {
-    width: 24px; height: 24px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--red), #c0392b);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.65rem; font-weight: 700; color: #fff; flex-shrink: 0;
-  }
-  .nav-user-name { font-size: 0.82rem; font-weight: 500; color: var(--text); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nav-login-btn {
-    display: flex; align-items: center; gap: 7px; padding: 7px 14px;
-    border-radius: 8px; border: 1px solid rgba(233,69,96,0.35); background: rgba(233,69,96,0.08);
-    color: var(--red); font-size: 0.82rem; font-weight: 500; text-decoration: none;
-    transition: background 0.2s; font-family: 'Inter', sans-serif;
-  }
-  .nav-login-btn:hover { background: rgba(233,69,96,0.15); }
-  .nav-logo {
-    font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 800;
-    letter-spacing: -0.5px; color: var(--text); text-decoration: none;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .nav-logo .suit { color: var(--red); font-size: 1.1rem; }
-  .nav-logo span { color: var(--red); }
-  .nav-btn {
-    display: flex; align-items: center; gap: 8px; padding: 9px 20px;
-    border-radius: 8px; border: 1px solid var(--border-bright); background: var(--surface);
-    color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500;
-    cursor: pointer; text-decoration: none; transition: background 0.2s, border-color 0.2s, transform 0.15s;
-  }
-  .nav-btn:hover { background: var(--surface-hover); transform: translateY(-1px); }
-  .nav-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .hero {
-    position: relative; display: flex; align-items: center; justify-content: center;
-    text-align: center; padding: 96px 5% 48px; overflow: hidden;
-  }
-  .hero::after {
-    content: ''; position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
-    width: 700px; height: 500px;
-    background: radial-gradient(ellipse at center, rgba(233,69,96,0.12) 0%, rgba(76,175,147,0.05) 40%, transparent 70%);
-    pointer-events: none;
-  }
-  .suits-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-  .suit-mark {
-    position: absolute; font-size: 180px; opacity: 0.028; color: var(--text);
-    user-select: none; animation: floatSuit 20s ease-in-out infinite;
-  }
-  .suit-mark:nth-child(1) { top: 8%; left: 5%; animation-delay: 0s; }
-  .suit-mark:nth-child(2) { top: 60%; left: 2%; font-size: 120px; animation-delay: -5s; }
-  .suit-mark:nth-child(3) { top: 10%; right: 4%; animation-delay: -10s; }
-  .suit-mark:nth-child(4) { bottom: 15%; right: 6%; font-size: 140px; animation-delay: -15s; }
-  .suit-mark:nth-child(5) { top: 40%; left: 50%; font-size: 260px; opacity: 0.015; animation-delay: -7s; }
-  @keyframes floatSuit {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    33% { transform: translateY(-18px) rotate(3deg); }
-    66% { transform: translateY(10px) rotate(-2deg); }
-  }
-  .hero-inner { position: relative; z-index: 2; max-width: 780px; }
-  .hero-badge {
-    display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px;
-    border-radius: 100px; border: 1px solid rgba(76,175,147,0.35); background: rgba(76,175,147,0.08);
-    font-size: 0.75rem; font-weight: 500; color: var(--green); letter-spacing: 0.05em;
-    text-transform: uppercase; margin-bottom: 16px; animation: fadeUp 0.6s ease both;
-  }
-  .hero-badge::before { content: '♠'; font-size: 0.7em; }
-  .hero-title {
-    font-family: 'Space Grotesk', sans-serif; font-size: clamp(2.8rem, 7vw, 5.5rem);
-    font-weight: 800; line-height: 1; letter-spacing: -2px; color: #fff; margin-bottom: 16px;
-    animation: fadeUp 0.6s ease 0.1s both;
-  }
-  .hero-title .red { color: var(--red); }
-  .hero-sub {
-    font-size: clamp(0.9rem, 1.8vw, 1.05rem); color: var(--text-muted); line-height: 1.6;
-    max-width: 580px; margin: 0 auto; font-weight: 400; animation: fadeUp 0.6s ease 0.2s both;
-  }
-  .hero-sub strong { color: var(--text); font-weight: 500; }
-  .hero-ctas {
-    display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
-    margin-top: 24px; animation: fadeUp 0.6s ease 0.3s both;
-  }
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px;
-    border-radius: 10px; background: var(--red); color: #fff;
-    font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 600;
-    border: none; cursor: pointer; text-decoration: none;
-    transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
-    box-shadow: 0 0 30px rgba(233,69,96,0.35);
-  }
-  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 45px rgba(233,69,96,0.5); background: #f25470; }
-  .btn-secondary {
-    display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px;
-    border-radius: 10px; background: transparent; color: var(--text);
-    font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 500;
-    border: 1px solid var(--border-bright); cursor: pointer; text-decoration: none;
-    transition: transform 0.15s, background 0.2s, border-color 0.2s;
-  }
-  .btn-secondary:hover { transform: translateY(-2px); background: var(--surface-hover); border-color: rgba(255,255,255,0.22); }
-  .section { position: relative; z-index: 1; padding: 60px 5%; }
-  .section-header { text-align: center; margin-bottom: 40px; }
-  .section-eyebrow { font-size: 0.75rem; font-weight: 600; color: var(--red); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 16px; }
-  .section-title { font-family: 'Space Grotesk', sans-serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -1.5px; color: #fff; line-height: 1.1; }
-  .section-title span { color: var(--red); }
-  .section-desc { font-size: 1rem; color: var(--text-muted); margin-top: 16px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.7; }
-  .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto; }
-  @media (min-width: 900px) {
-    .steps-grid { grid-template-columns: repeat(4, 1fr); }
-    .step-card:nth-child(1) { grid-column: 1 / -1; }
-  }
-  @media (min-width: 600px) and (max-width: 899px) {
-    .steps-grid { grid-template-columns: repeat(2, 1fr); }
-    .step-card:nth-child(1) { grid-column: 1 / -1; }
-  }
-  .step-card {
-    position: relative; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 32px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
-  }
-  .step-card::before {
-    content: ''; position: absolute; inset: 0; border-radius: 16px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%);
-    pointer-events: none; z-index: 0;
-  }
-  .step-card:hover { transform: translateY(-4px); border-color: rgba(233,69,96,0.3); box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 30px rgba(233,69,96,0.08); }
-  .step-number {
-    font-family: 'Space Grotesk', sans-serif; font-size: 0.7rem; font-weight: 700; color: var(--red);
-    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .step-number::before { content: ''; display: inline-block; width: 24px; height: 2px; background: var(--red); border-radius: 2px; }
-  .step-icon { width: 44px; height: 44px; border-radius: 10px; background: var(--red-dim); border: 1px solid rgba(233,69,96,0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 1.2rem; }
-  .step-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 10px; letter-spacing: -0.3px; }
-  .step-desc { font-size: 0.875rem; color: var(--text-muted); line-height: 1.7; }
-  .step-desc a { color: var(--red); text-decoration: none; }
-  .step-desc a:hover { text-decoration: underline; }
-  .step-desc code { background: rgba(255,255,255,0.08); border-radius: 4px; padding: 1px 6px; font-size: 0.82em; color: var(--text); }
-  .step-suit { position: absolute; bottom: 16px; right: 20px; font-size: 3.5rem; opacity: 0.06; color: var(--text); pointer-events: none; user-select: none; }
-  .video-toggle-btn {
-    display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; padding: 7px 14px;
-    border-radius: 8px; border: 1px solid rgba(233,69,96,0.3); background: rgba(233,69,96,0.08);
-    color: var(--red); font-size: 0.78rem; font-weight: 500; font-family: 'Inter', sans-serif;
-    cursor: pointer; transition: background 0.2s, border-color 0.2s; user-select: none;
-  }
-  .video-toggle-btn:hover { background: rgba(233,69,96,0.14); border-color: rgba(233,69,96,0.5); }
-  .video-toggle-btn .play-icon { width: 16px; height: 16px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .video-toggle-btn .play-icon svg { width: 7px; height: 7px; }
-  .video-collapse { overflow: visible; max-height: 0; transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, margin-top 0.3s ease; opacity: 0; margin-top: 0; pointer-events: none; }
-  .video-collapse.open { max-height: 1200px; opacity: 1; margin-top: 16px; pointer-events: auto; }
-  .video-collapse video { width: 100%; border-radius: 10px; border: 1px solid rgba(233,69,96,0.2); background: #000; display: block; }
-  .copy-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 8px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted); cursor: pointer; transition: background 0.2s; font-family: 'Inter', sans-serif; }
-  .copy-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
-  .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1100px; margin: 64px auto 0; }
-  @media (max-width: 700px) { .feature-row { grid-template-columns: 1fr; } }
-  .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; transition: transform 0.2s, border-color 0.2s; }
-  .feature-card:hover { transform: translateY(-3px); border-color: var(--border-bright); }
-  .feature-card.accent-green { border-color: rgba(76,175,147,0.2); }
-  .feature-card.accent-green:hover { border-color: rgba(76,175,147,0.4); box-shadow: 0 16px 40px rgba(76,175,147,0.08); }
-  .feature-card-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px; }
-  .tag-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(233,69,96,0.2); }
-  .tag-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,147,0.2); }
-  .feature-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-bottom: 10px; }
-  .feature-card-desc { font-size: 0.875rem; color: var(--text-muted); line-height: 1.7; }
-  .feature-card-mock { margin-top: 24px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 16px; font-family: 'Space Grotesk', monospace; font-size: 0.8rem; }
-  .mock-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
-  .mock-row:last-child { border-bottom: none; }
-  .mock-action { color: var(--text-muted); }
-  .mock-val { font-weight: 700; }
-  .mock-val.pos { color: var(--green); }
-  .mock-val.neg { color: var(--red); }
-  .mock-val.neutral { color: var(--text); }
-  footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 40px 5%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
-  .footer-logo { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700; color: var(--text-muted); text-decoration: none; }
-  .footer-logo span { color: var(--red); }
-  .footer-links { display: flex; gap: 28px; list-style: none; }
-  .footer-links a { font-size: 0.82rem; color: var(--text-dim); text-decoration: none; transition: color 0.2s; }
-  .footer-links a:hover { color: var(--text-muted); }
-  .footer-copy { font-size: 0.78rem; color: var(--text-dim); }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-  .fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
-  .fade-in.visible { opacity: 1; transform: translateY(0); }
-  @media (max-width: 600px) {
-    footer { flex-direction: column; align-items: flex-start; }
-    .footer-links { flex-wrap: wrap; gap: 16px; }
-  }
-</style>
-</head>
-<body>
-
-<nav>
-  <a href="/" class="nav-logo"><span class="suit">♠</span>Poker<span>GTO</span></a>
-  <div class="nav-right">
-    <div id="nav-login-area">
-      <a href="/login" class="nav-login-btn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
-        </svg>
-        Google でログイン
-      </a>
-    </div>
-    <a href="/sessions" class="nav-btn"><span class="dot"></span>セッション一覧</a>
-  </div>
-</nav>
-
-<section class="hero" id="home">
-  <div class="suits-bg">
-    <div class="suit-mark">♠</div><div class="suit-mark">♥</div>
-    <div class="suit-mark">♦</div><div class="suit-mark">♣</div>
-    <div class="suit-mark">♠</div>
-  </div>
-  <div class="hero-inner">
-    <div class="hero-badge">T4 Poker · ハンド自動収集 &amp; GTO 分析</div>
-    <h1 class="hero-title">Poker<span class="red">GTO</span></h1>
-    <p class="hero-sub">Chrome 拡張機能をインストールするだけ。T4 でプレイすれば自動でハンドを収集し、ボタン1つで<strong> GTO 分析レポート</strong>を生成します。</p>
-    <div class="hero-ctas">
-      <a href="/download-extension" class="btn-primary">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        ⬇ 拡張機能をダウンロード
-      </a>
-      <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
-    </div>
-  </div>
-</section>
-
-<section class="section" id="howto">
-  <div class="section-header fade-in">
-    <div class="section-eyebrow">使い方</div>
-    <h2 class="section-title">5ステップで<span>始める</span></h2>
-    <p class="section-desc">セットアップから初回解析まで、すぐに始められます。</p>
-  </div>
-
-  <div class="steps-grid">
-    <div class="step-card fade-in">
-      <div class="step-number">STEP 01</div>
-      <div class="step-icon">⬇</div>
-      <div class="step-title">拡張機能をインストール</div>
-      <div class="step-desc">「拡張機能をダウンロード」から ZIP を取得して解凍。Chrome のアドレスバーに
-        <code>chrome://extensions</code>
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('chrome://extensions').then(()=>{this.textContent='✓ コピー済';setTimeout(()=>this.textContent='コピー',1500)})">コピー</button>
-        と入力して「パッケージ化されていない拡張機能を読み込む」から <code>tenfour-scraper</code> フォルダを選択。
-      </div>
-      <button class="video-toggle-btn" onclick="toggleVideo('step1-video', this)" aria-expanded="false">
-        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
-        <span class="btn-label">インストール動画を見る</span>
-      </button>
-      <div class="video-collapse" id="step1-video">
-        <video controls preload="none"><source src="/static/exex.mp4" type="video/mp4"></video>
-      </div>
-      <div class="step-suit">♠</div>
-    </div>
-    <div class="step-card fade-in">
-      <div class="step-number">STEP 02</div>
-      <div class="step-icon">🔑</div>
-      <div class="step-title">Google ログイン</div>
-      <div class="step-desc">拡張機能のポップアップを開いて Google アカウントでログイン。ハンドログがクラウドに自動保存されるようになります。</div>
-      <button class="video-toggle-btn" onclick="toggleVideo('step2-video', this)" aria-expanded="false">
-        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
-        <span class="btn-label">ログイン動画を見る</span>
-      </button>
-      <div class="video-collapse" id="step2-video">
-        <video controls preload="none"><source src="/static/PR.mp4" type="video/mp4"></video>
-      </div>
-      <div class="step-suit">♥</div>
-    </div>
-    <div class="step-card fade-in">
-      <div class="step-number">STEP 03</div>
-      <div class="step-icon">🃏</div>
-      <div class="step-title">T4 でプレイするだけ</div>
-      <div class="step-desc"><a href="https://tenfour-poker.com" target="_blank" rel="noopener">tenfour-poker.com</a> にアクセスしてプレイ。拡張機能が WebSocket を傍受し、各ハンドをリアルタイムでクラウドに蓄積します。手動操作は一切不要。</div>
-      <div class="step-suit">♦</div>
-    </div>
-    <div class="step-card fade-in">
-      <div class="step-number">STEP 04</div>
-      <div class="step-icon">⚡</div>
-      <div class="step-title">セッション画面で解析</div>
-      <div class="step-desc">プレイ後に <a href="/sessions">/sessions</a> を開いて「⚡ 解析する」ボタンを押すだけ。GTO 観点でハンドを分類した結果レポートが生成されます。</div>
-      <div class="step-suit">♣</div>
-    </div>
-    <div class="step-card fade-in">
-      <div class="step-number">STEP 05</div>
-      <div class="step-icon">🤖</div>
-      <div class="step-title">（任意）AI 解説で深掘り</div>
-      <div class="step-desc">解析結果で気になったハンドを「解析カート」に追加。<a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a> の無料 API キー（カード登録不要）を登録するだけで AI が GTO 評価と改善ポイントを詳しく解説します。</div>
-      <div class="step-suit">♠</div>
-    </div>
-  </div>
-
-  <div class="feature-row">
-    <div class="feature-card fade-in">
-      <div class="feature-card-tag tag-red">⚡ GTO 分類レポート</div>
-      <div class="feature-card-title">GTO 分類レポート</div>
-      <div class="feature-card-desc">ハンドをショーダウンの有無・アグレッション・最終ストリートで自動分類。「青線（ショーダウン）」「赤線（ノーショーダウン）」に分けて弱点を可視化します。</div>
-      <div class="feature-card-mock">
-        <div class="mock-row"><span class="mock-action">バリュー成功</span><span class="mock-val pos">✓</span></div>
-        <div class="mock-row"><span class="mock-action">ブラフ失敗</span><span class="mock-val neg">△</span></div>
-        <div class="mock-row"><span class="mock-action">フォールド判断</span><span class="mock-val neutral">要確認 ★</span></div>
-      </div>
-    </div>
-    <div class="feature-card accent-green fade-in">
-      <div class="feature-card-tag tag-green">🤖 Groq AI 解説</div>
-      <div class="feature-card-title">Groq AI 解説</div>
-      <div class="feature-card-desc">Groq の高速 LLM がハンドを GTO 観点で評価。「代替ライン」「EV 損失推定」「Hero 表現レンジ」まで具体的にフィードバックします。API キーは無料で取得可能。</div>
-      <div class="feature-card-mock">
-        <div class="mock-row"><span class="mock-action">GTO 評価</span><span class="mock-val neg">改善</span></div>
-        <div class="mock-row"><span class="mock-action">一言</span><span class="mock-val neutral">リバーでベットを検討</span></div>
-        <div class="mock-row"><span class="mock-action">EV 損失推定</span><span class="mock-val neg">−1.2bb</span></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<footer>
-  <a href="/" class="footer-logo">Poker<span>GTO</span> ♠</a>
-  <ul class="footer-links">
-    <li><a href="/">ホーム</a></li>
-    <li><a href="#howto">使い方</a></li>
-    <li><a href="/sessions">セッション一覧</a></li>
-    <li><a href="/legacy">手動アップロード（旧版）</a></li>
-    <li><a href="/login">ログイン</a></li>
-  </ul>
-  <div class="footer-copy">© 2026 PokerGTO.</div>
-</footer>
-
-<script type="module">
-  // ── ナビ: Firebase でログイン状態を反映 ──
-  try {
-    const { initializeApp, getApps, getApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    const cfg = await fetch('/api/firebase-config').then(r => r.json());
-    const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
-    const auth = getAuth(app);
-    onAuthStateChanged(auth, user => {
-      if (!user) return;
-      const name = user.displayName || user.email || 'User';
-      const initials = name.slice(0, 2).toUpperCase();
-      document.getElementById('nav-login-area').innerHTML =
-        `<a href="/sessions" class="nav-user">
-           <div class="nav-user-avatar">${initials}</div>
-           <span class="nav-user-name">${name}</span>
-         </a>`;
-    });
-  } catch(e) { /* Firebase 未設定環境ではスキップ */ }
-</script>
-
-<script>
-  function toggleVideo(id, btn) {
-    const panel = document.getElementById(id);
-    const isOpen = panel.classList.toggle('open');
-    btn.setAttribute('aria-expanded', isOpen);
-    btn.querySelector('.btn-label').textContent = isOpen ? '動画を閉じる' : btn.querySelector('.btn-label').textContent.replace('動画を閉じる', btn.id);
-    if (!isOpen) panel.querySelector('video').pause();
-  }
-
-  // ラベルを最初に保存してトグル時に復元
-  document.querySelectorAll('.video-toggle-btn').forEach(btn => {
-    const label = btn.querySelector('.btn-label');
-    label.dataset.original = label.textContent;
-    btn.onclick = function() {
-      const targetId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
-      const panel = document.getElementById(targetId);
-      const isOpen = panel.classList.toggle('open');
-      this.setAttribute('aria-expanded', isOpen);
-      label.textContent = isOpen ? '動画を閉じる' : label.dataset.original;
-      if (!isOpen) panel.querySelector('video').pause();
-    };
-  });
-
-  // スクロールフェードイン
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-  }, { threshold: 0.1 });
-  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
-</script>
-
-</body>
-</html>"""
+# ─── 静的ページ（変数なし） ───────────────────────────────────────────────
+def _landing_page() -> str:
+    return _render("landing.html")
 
 
-
-UPLOAD_PAGE = f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ポーカーGTO</title>
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}}
-.card {{
-  background: #16213e;
-  border-radius: 16px;
-  padding: 40px 48px;
-  width: 100%;
-  max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  text-align: center;
-}}
-h1 {{ font-size: 22px; margin-bottom: 6px; color: #e94560; }}
-.sub {{ font-size: 13px; color: #888; margin-bottom: 28px; }}
-.dropzone {{
-  border: 2px dashed #e94560;
-  border-radius: 12px;
-  padding: 32px 20px;
-  cursor: pointer;
-  transition: background 0.2s;
-  margin-bottom: 16px;
-  position: relative;
-}}
-.dropzone:hover, .dropzone.dragover {{ background: rgba(233,69,96,0.08); }}
-.dropzone input[type=file] {{
-  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-}}
-.dropzone-icon {{ font-size: 36px; margin-bottom: 8px; }}
-.dropzone-label {{ font-size: 14px; color: #aaa; }}
-.dropzone-label span {{ color: #e94560; font-weight: bold; }}
-.file-name {{ font-size: 13px; color: #4caf93; margin-top: 6px; min-height: 18px; }}
-.field-group {{ margin-bottom: 16px; text-align: left; }}
-.field-group label {{ font-size: 12px; color: #888; display: block; margin-bottom: 6px; }}
-.field-group input[type=password] {{
-  width: 100%;
-  padding: 10px 12px;
-  background: #0f0f1a;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #eee;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.2s;
-}}
-.field-group input:focus {{ border-color: #e94560; }}
-.key-hint {{ font-size: 11px; color: #555; margin-top: 4px; }}
-.key-hint a {{ color: #e94560; text-decoration: none; }}
-.btn-primary {{
-  width: 100%;
-  padding: 14px;
-  background: #e94560;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s;
-  margin-top: 8px;
-}}
-.btn-primary:hover {{ background: #c73652; }}
-.btn-primary:disabled {{ background: #555; cursor: not-allowed; }}
-.btn-guide {{
-  width: 100%;
-  padding: 11px;
-  background: transparent;
-  color: #aaa;
-  border: 1px solid #333;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 10px;
-}}
-.btn-guide:hover {{ border-color: #e94560; color: #e94560; }}
-/* ─── モーダル ─── */
-.modal-overlay {{
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.7);
-  z-index: 100;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}}
-.modal-overlay.open {{ display: flex; }}
-.modal {{
-  background: #16213e;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 520px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
-}}
-.modal-header {{
-  padding: 24px 28px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}}
-.modal-header h2 {{ font-size: 17px; color: #e94560; }}
-.modal-close {{
-  background: none; border: none; color: #666;
-  font-size: 22px; cursor: pointer; padding: 0 4px;
-  transition: color 0.2s;
-}}
-.modal-close:hover {{ color: #eee; }}
-.step-indicator {{
-  display: flex;
-  align-items: center;
-  padding: 20px 28px 0;
-  gap: 0;
-}}
-.step-dot {{
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: #0f0f1a;
-  border: 2px solid #333;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: bold; color: #555;
-  flex-shrink: 0;
-  transition: all 0.3s;
-}}
-.step-dot.active {{ border-color: #e94560; color: #e94560; background: rgba(233,69,96,0.1); }}
-.step-dot.done  {{ border-color: #4caf93; color: #fff; background: #4caf93; }}
-.step-line {{ flex: 1; height: 2px; background: #333; transition: background 0.3s; }}
-.step-line.done {{ background: #4caf93; }}
-.modal-body {{ padding: 20px 28px 28px; }}
-.step-panel {{ display: none; }}
-.step-panel.active {{ display: block; }}
-.step-title {{ font-size: 15px; font-weight: bold; margin-bottom: 16px; color: #eee; }}
-.guide-steps {{ list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }}
-.guide-steps li {{
-  display: flex; gap: 12px; align-items: flex-start;
-  background: #0f0f1a; border-radius: 8px; padding: 12px 14px;
-  font-size: 13px; line-height: 1.5; color: #ccc;
-}}
-.guide-steps li .num {{
-  background: #e94560; color: #fff;
-  width: 20px; height: 20px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: bold; flex-shrink: 0; margin-top: 1px;
-}}
-.skip-row {{
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 20px; font-size: 13px; color: #888; cursor: pointer;
-}}
-.skip-row input {{ accent-color: #e94560; width: 16px; height: 16px; cursor: pointer; }}
-.dl-btn {{
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 18px;
-  background: rgba(233,69,96,0.12);
-  border: 1px solid #e94560;
-  border-radius: 8px;
-  color: #e94560;
-  text-decoration: none;
-  font-size: 14px; font-weight: bold;
-  margin-bottom: 20px;
-  transition: background 0.2s;
-}}
-.dl-btn:hover {{ background: rgba(233,69,96,0.22); }}
-.info-box {{
-  background: #0f0f1a; border-radius: 8px; padding: 14px 16px;
-  font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 20px;
-}}
-.info-box code {{
-  background: #1e2a3a; padding: 1px 6px; border-radius: 4px;
-  font-size: 12px; color: #7ec8e3;
-}}
-.modal-footer {{
-  display: flex; gap: 10px; justify-content: flex-end;
-}}
-.btn-back-modal {{
-  padding: 10px 20px;
-  background: transparent; color: #aaa;
-  border: 1px solid #444; border-radius: 6px;
-  font-size: 14px; cursor: pointer; transition: all 0.2s;
-}}
-.btn-back-modal:hover {{ border-color: #e94560; color: #e94560; }}
-.btn-next-modal {{
-  padding: 10px 24px;
-  background: #e94560; color: #fff;
-  border: none; border-radius: 6px;
-  font-size: 14px; font-weight: bold; cursor: pointer;
-  transition: background 0.2s;
-}}
-.btn-next-modal:hover {{ background: #c73652; }}
-@media (max-width: 540px) {{
-  .card {{ padding: 28px 16px; }}
-  .modal-body {{ padding: 16px 16px 24px; }}
-  .modal-header {{ padding: 20px 16px 0; }}
-  .step-indicator {{ padding: 16px 16px 0; }}
-  .mode-btns {{ flex-direction: column; gap: 8px; }}
-  .btn-mode {{ padding: 12px 10px; }}
-  .dropzone {{ min-height: 120px; padding: 24px 16px; }}
-  .btn-primary {{ padding: 16px; min-height: 44px; font-size: 15px; }}
-}}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>&#x1F0A1; ポーカーGTO</h1>
-  <p class="sub">TenFourのハンド履歴をアップロードして分析</p>
-  <form id="form" method="post" enctype="multipart/form-data" action="/upload">
-    <div class="dropzone" id="drop">
-      <input type="file" name="file" id="file" accept=".txt" required>
-      <div class="dropzone-icon">&#x1F4C4;</div>
-      <div class="dropzone-label"><span>ファイルを選択</span>またはドロップ</div>
-      <div class="file-name" id="fname"></div>
-    </div>
-    <button type="submit" id="btn" class="btn-primary" disabled>ファイルを選択してください</button>
-  </form>
-  <button class="btn-guide" id="open-guide">&#x1F4D6; はじめての方 — ハンド履歴の取得方法</button>
-</div>
-
-<!-- ウィザードモーダル -->
-<div class="modal-overlay" id="modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>ハンド履歴の取得方法</h2>
-      <button class="modal-close" id="modal-close">&#x2715;</button>
-    </div>
-
-    <!-- ステップインジケーター -->
-    <div class="step-indicator">
-      <div class="step-dot active" id="dot1">1</div>
-      <div class="step-line" id="line1"></div>
-      <div class="step-dot" id="dot2">2</div>
-      <div class="step-line" id="line2"></div>
-      <div class="step-dot" id="dot3">3</div>
-    </div>
-
-    <div class="modal-body">
-
-      <!-- STEP 1: 拡張機能インストール -->
-      <div class="step-panel active" id="panel1">
-        <p class="step-title">STEP 1 — Chrome拡張機能をインストール</p>
-        <label class="skip-row">
-          <input type="checkbox" id="already-installed">
-          すでにインストール済み（スキップ）
-        </label>
-        <div id="install-guide">
-          <a class="dl-btn" href="/static/tenfour-scraper.zip" download>
-            &#x2B07; tenfour-scraper.zip をダウンロード
-          </a>
-          <ul class="guide-steps">
-            <li><span class="num">1</span>ダウンロードしたZIPを解凍して <code>tenfour-scraper</code> フォルダを取り出す</li>
-            <li><span class="num">2</span>Chromeのアドレスバーに <code>chrome://extensions</code> と入力して開く</li>
-            <li><span class="num">3</span>右上の「デベロッパーモード」をONにする</li>
-            <li><span class="num">4</span>「パッケージ化されていない拡張機能を読み込む」をクリックして <code>tenfour-scraper</code> フォルダを選択</li>
-            <li><span class="num">5</span>アドレスバー右の &#x1F9E9; アイコン → TenFour Scraper の &#x1F4CC; ピンをクリックしてツールバーに表示</li>
-          </ul>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-next-modal" id="next1">次へ &#x2192;</button>
-        </div>
-      </div>
-
-      <!-- STEP 2: ハンド履歴の取得 -->
-      <div class="step-panel" id="panel2">
-        <p class="step-title">STEP 2 — TenFourからハンド履歴を取得</p>
-        <ul class="guide-steps">
-          <li><span class="num">1</span>tenfour-poker.com を開き、ブックマークタブを表示する</li>
-          <li><span class="num">2</span>ツールバーの 🃏 TenFour Scraper アイコンをクリック</li>
-          <li><span class="num">3</span>「&#x25B6; ハンド履歴を取得」ボタンを押す</li>
-          <li><span class="num">4</span>進捗バーが完了したら <code>hand_history_YYYY-MM-DD.txt</code> が自動ダウンロードされる</li>
-        </ul>
-        <div class="info-box">
-          取得対象はブックマーク済みのハンドのみです（最大100件）。<br>
-          分析したいハンドを事前にTenFourでブックマークしておいてください。
-        </div>
-        <div class="modal-footer">
-          <button class="btn-back-modal" id="back2">&#x2190; 戻る</button>
-          <button class="btn-next-modal" id="next2">次へ &#x2192;</button>
-        </div>
-      </div>
-
-      <!-- STEP 3: アップロード -->
-      <div class="step-panel" id="panel3">
-        <p class="step-title">STEP 3 — ファイルをアップロードして分析</p>
-        <div class="info-box">
-          ダウンロードした <code>hand_history_*.txt</code> をモーダルを閉じて<br>
-          メイン画面にドロップするか、「ファイルを選択」からアップロードしてください。
-        </div>
-        <div class="modal-footer">
-          <button class="btn-back-modal" id="back3">&#x2190; 戻る</button>
-          <button class="btn-next-modal" id="close-final">&#x2705; 準備完了 — 閉じる</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<script>
-const file = document.getElementById('file');
-const fname = document.getElementById('fname');
-const drop = document.getElementById('drop');
-const btn = document.getElementById('btn');
-const form = document.getElementById('form');
-
-function onFileSelected() {{
-  const name = file.files[0]?.name || '';
-  fname.textContent = name;
-  if (name) {{
-    btn.disabled = false;
-    btn.textContent = '&#x1F4CA; 解析を開始';
-  }} else {{
-    btn.disabled = true;
-    btn.textContent = 'ファイルを選択してください';
-  }}
-}}
-
-file.addEventListener('change', onFileSelected);
-drop.addEventListener('dragover', e => {{ e.preventDefault(); drop.classList.add('dragover'); }});
-drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-drop.addEventListener('drop', e => {{
-  e.preventDefault(); drop.classList.remove('dragover');
-  if (e.dataTransfer.files[0]) {{
-    const dt = new DataTransfer();
-    dt.items.add(e.dataTransfer.files[0]);
-    file.files = dt.files;
-    onFileSelected();
-  }}
-}});
-form.addEventListener('submit', () => {{ btn.disabled = true; }});
-
-// ─── ウィザード ───
-const modal = document.getElementById('modal');
-let currentStep = 1;
-
-function openModal() {{
-  modal.classList.add('open');
-  goStep(1);
-}}
-function closeModal() {{
-  modal.classList.remove('open');
-}}
-function goStep(n) {{
-  currentStep = n;
-  [1,2,3].forEach(i => {{
-    document.getElementById('panel' + i).classList.toggle('active', i === n);
-    const dot = document.getElementById('dot' + i);
-    dot.classList.remove('active', 'done');
-    if (i < n) dot.classList.add('done'), dot.textContent = '✓';
-    else if (i === n) dot.classList.add('active'), dot.textContent = i;
-    else dot.textContent = i;
-    if (i < 3) {{
-      document.getElementById('line' + i).classList.toggle('done', i < n);
-    }}
-  }});
-}}
-
-document.getElementById('open-guide').addEventListener('click', openModal);
-document.getElementById('modal-close').addEventListener('click', closeModal);
-modal.addEventListener('click', e => {{ if (e.target === modal) closeModal(); }});
-
-document.getElementById('already-installed').addEventListener('change', e => {{
-  document.getElementById('install-guide').style.display = e.target.checked ? 'none' : '';
-}});
-
-document.getElementById('next1').addEventListener('click', () => goStep(2));
-document.getElementById('back2').addEventListener('click', () => goStep(1));
-document.getElementById('next2').addEventListener('click', () => goStep(3));
-document.getElementById('back3').addEventListener('click', () => goStep(2));
-document.getElementById('close-final').addEventListener('click', closeModal);
-</script>
-</body>
-</html>"""
+def _upload_page() -> str:
+    return _render("upload.html")
 
 
+# Backward-compatible constants (routes/pages.py が直接参照)
+LANDING_PAGE = property(lambda self: _landing_page())
+UPLOAD_PAGE  = property(lambda self: _upload_page())
 
+# routes/pages.py は直接 LANDING_PAGE / UPLOAD_PAGE を文字列として参照するため
+# モジュールレベルで遅延評価できないので、モジュールロード時に一度レンダリングする
+import os as _os
+_SKIP_RENDER = _os.environ.get("_PAGES_SKIP_RENDER", "")
+
+if not _SKIP_RENDER:
+    LANDING_PAGE = _landing_page()
+    UPLOAD_PAGE  = _upload_page()
+
+
+# ─── 動的ページ（変数あり） ───────────────────────────────────────────────
 def progress_page(job_id: str, mode: str = "api") -> str:
     label2 = "青線/赤線を分類" if mode == "noapi" else "GTO分析（Gemini API）"
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>処理中... - ポーカーGTO</title>
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e; color: #eee;
-  min-height: 100vh; display: flex;
-  align-items: center; justify-content: center;
-  padding: 20px;
-}}
-.card {{
-  background: #16213e; border-radius: 16px;
-  padding: 48px 56px; width: 100%; max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
-}}
-h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
-.status-msg {{ font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }}
-.progress-bar-wrap {{
-  background: #0f0f1a; border-radius: 99px;
-  height: 6px; overflow: hidden; margin-bottom: 6px;
-}}
-.progress-bar {{
-  height: 100%; background: #e94560; border-radius: 99px;
-  transition: width 0.5s ease; width: 5%;
-}}
-.elapsed {{ font-size: 12px; color: #555; margin-bottom: 24px; }}
-.steps {{ display: flex; flex-direction: column; gap: 10px; text-align: left; }}
-.step {{
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 16px; border-radius: 8px;
-  background: #0f0f1a; font-size: 14px; color: #555;
-  transition: all 0.3s; border-left: 3px solid transparent;
-}}
-.step.active {{ background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }}
-.step.done   {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
-.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }}
-.step-body {{ flex: 1; }}
-.step-label {{ display: block; }}
-.spinner {{
-  display: inline-block; width: 16px; height: 16px;
-  border: 2px solid #444; border-top-color: #e94560;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-}}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-/* バッチ進捗 */
-.batch-detail {{ display: none; margin-top: 8px; }}
-.batch-bar-wrap {{
-  background: rgba(0,0,0,0.35); border-radius: 99px;
-  height: 4px; overflow: hidden; margin-bottom: 6px;
-}}
-.batch-bar {{
-  height: 100%; background: #e94560; border-radius: 99px;
-  transition: width 0.4s ease; width: 0%;
-}}
-.batch-text {{ font-size: 11px; color: #a0a0b8; font-family: monospace; }}
-.hand-text  {{ font-size: 10px; color: #666; margin-top: 3px; font-style: italic; }}
-@media (max-width: 540px) {{
-  .card {{ padding: 28px 16px; }}
-}}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>&#x1F0A1; レポート生成中...</h1>
-  <p class="status-msg" id="msg">処理を開始しています...</p>
-  <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
-  <p class="elapsed" id="elapsed"></p>
-  <div class="steps">
-    <div class="step" id="step1">
-      <span class="step-icon" id="icon1">1</span>
-      <div class="step-body"><span class="step-label" id="label1">ハンド履歴をパース</span></div>
-    </div>
-    <div class="step" id="step2">
-      <span class="step-icon" id="icon2">2</span>
-      <div class="step-body">
-        <span class="step-label" id="label2">{label2}</span>
-        <div class="batch-detail" id="batch-detail">
-          <div class="batch-bar-wrap"><div class="batch-bar" id="batch-bar"></div></div>
-          <div class="batch-text" id="batch-text"></div>
-          <div class="hand-text"  id="hand-text"></div>
-        </div>
-      </div>
-    </div>
-    <div class="step" id="step3">
-      <span class="step-icon" id="icon3">3</span>
-      <div class="step-body"><span class="step-label" id="label3">PDFを生成</span></div>
-    </div>
-  </div>
-</div>
-<script>
-const JOB_ID = '{job_id}';
-let startTime = Date.now();
-let sseActive = false;
-
-setInterval(() => {{
-  const s = Math.floor((Date.now() - startTime) / 1000);
-  const m = Math.floor(s / 60), sec = s % 60;
-  document.getElementById('elapsed').textContent =
-    m > 0 ? `経過時間: ${{m}}分${{sec}}秒` : `経過時間: ${{sec}}秒`;
-}}, 1000);
-
-function blocks(pct, len=12) {{
-  const f = Math.round(pct / 100 * len);
-  return '\u2588'.repeat(f) + '\u2591'.repeat(len - f) + ' ' + pct + '%';
-}}
-function setPbar(pct) {{ document.getElementById('pbar').style.width = pct + '%'; }}
-
-function markDone(n, txt) {{
-  const el = document.getElementById('step' + n);
-  el.className = 'step done';
-  document.getElementById('icon' + n).textContent = '\u2713';
-  if (txt) document.getElementById('label' + n).textContent = txt;
-}}
-function markActive(n, txt) {{
-  const el = document.getElementById('step' + n);
-  el.className = 'step active';
-  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
-  if (txt) document.getElementById('label' + n).textContent = txt;
-}}
-function markIdle(n) {{
-  document.getElementById('step' + n).className = 'step';
-  document.getElementById('icon' + n).textContent = n;
-}}
-
-// ─── SSE ──────────────────────────────────────────────────────────────────
-const es = new EventSource('/stream/' + JOB_ID);
-
-// 10秒以内にSSEイベントが届かなければポーリングへフォールバック
-const fallbackTimer = setTimeout(() => {{
-  if (!sseActive) {{ es.close(); pollFallback(); }}
-}}, 10000);
-
-es.onmessage = function(e) {{
-  sseActive = true;
-  clearTimeout(fallbackTimer);
-  const d = JSON.parse(e.data);
-
-  if (d.type === 'parse_done') {{
-    markDone(1, `ハンド履歴を解析しました（${{d.hands_total}}ハンド検出）`);
-    markActive(2);
-    setPbar(20);
-    document.getElementById('msg').textContent = 'GTO分析中（Gemini API）...';
-
-  }} else if (d.type === 'batch_progress') {{
-    const pct = Math.round(d.hands_done / d.hands_total * 100);
-    setPbar(20 + Math.round(pct * 0.5));
-    document.getElementById('batch-detail').style.display = 'block';
-    document.getElementById('batch-bar').style.width = pct + '%';
-    document.getElementById('batch-text').textContent =
-      `バッチ ${{d.batch_current}}/${{d.batch_total}} 完了  ${{blocks(pct)}}  (${{d.hands_done}}/${{d.hands_total}}ハンド)`;
-    if (d.current_hand_info)
-      document.getElementById('hand-text').textContent = '\u2192 ' + d.current_hand_info;
-
-  }} else if (d.type === 'generate_start') {{
-    markDone(2, 'GTO分析が完了しました');
-    markActive(3, 'PDFを生成中...');
-    document.getElementById('batch-detail').style.display = 'none';
-    setPbar(72);
-    document.getElementById('msg').textContent = 'PDFを生成中...';
-
-  }} else if (d.type === 'done') {{
-    markDone(1); markDone(2); markDone(3);
-    setPbar(100);
-    document.getElementById('msg').textContent = '完了！レポートを表示します...';
-    es.close();
-    setTimeout(() => {{ window.location.href = '/report/' + d.pdf; }}, 800);
-
-  }} else if (d.type === 'error') {{
-    document.getElementById('msg').textContent = 'エラーが発生しました';
-    es.close();
-    setTimeout(() => {{ window.location.href = '/error/' + JOB_ID; }}, 1000);
-  }}
-}};
-
-es.onerror = function() {{
-  if (sseActive) return;
-  es.close();
-  clearTimeout(fallbackTimer);
-  pollFallback();
-}};
-
-// ─── ポーリングフォールバック ──────────────────────────────────────────────
-const POLL_PROGRESS = [0, 10, 30, 85, 100];
-const POLL_MSGS     = ['', 'ハンド履歴をパース中...', 'GTO分析中（Gemini API）...', 'PDFを生成中...', '完了！'];
-
-async function pollFallback() {{
-  if (sseActive) return;
-  try {{
-    const res  = await fetch('/status/' + JOB_ID);
-    const data = await res.json();
-    if (data.status === 'done') {{
-      markDone(1); markDone(2); markDone(3);
-      setPbar(100);
-      document.getElementById('msg').textContent = '完了！レポートを表示します...';
-      setTimeout(() => {{ window.location.href = '/report/' + data.pdf; }}, 800);
-      return;
-    }}
-    if (data.status === 'error') {{
-      window.location.href = '/error/' + JOB_ID;
-      return;
-    }}
-    const s = data.step || 0;
-    setPbar(POLL_PROGRESS[s]);
-    if (POLL_MSGS[s]) document.getElementById('msg').textContent = POLL_MSGS[s];
-    for (let i = 1; i <= 3; i++) {{
-      if (i < s) markDone(i);
-      else if (i === s) markActive(i);
-      else markIdle(i);
-    }}
-  }} catch(_) {{}}
-  if (!sseActive) setTimeout(pollFallback, 3000);
-}}
-</script>
-</body>
-</html>"""
-
+    return _render("progress.html", job_id=job_id, label2=label2)
 
 
 def classify_progress_page(job_id: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>解析中... - ポーカーGTO</title>
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e; color: #eee;
-  min-height: 100vh; display: flex;
-  align-items: center; justify-content: center;
-  padding: 20px;
-}}
-.card {{
-  background: #16213e; border-radius: 16px;
-  padding: 48px 56px; width: 100%; max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
-}}
-h1 {{ font-size: 20px; margin-bottom: 8px; color: #e94560; }}
-.status-msg {{ font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }}
-.progress-bar-wrap {{
-  background: #0f0f1a; border-radius: 99px;
-  height: 6px; overflow: hidden; margin-bottom: 6px;
-}}
-.progress-bar {{
-  height: 100%; background: #e94560; border-radius: 99px;
-  transition: width 0.5s ease; width: 5%;
-}}
-.elapsed {{ font-size: 12px; color: #555; margin-bottom: 24px; }}
-.steps {{ display: flex; flex-direction: column; gap: 10px; text-align: left; }}
-.step {{
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 16px; border-radius: 8px;
-  background: #0f0f1a; font-size: 14px; color: #555;
-  transition: all 0.3s; border-left: 3px solid transparent;
-}}
-.step.active {{ background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }}
-.step.done   {{ background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }}
-.step-icon {{ width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }}
-.step-body {{ flex: 1; }}
-.spinner {{
-  display: inline-block; width: 16px; height: 16px;
-  border: 2px solid #444; border-top-color: #e94560;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-}}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-@media (max-width: 540px) {{ .card {{ padding: 28px 16px; }} }}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>&#x1F0A1; 解析中...</h1>
-  <p class="status-msg" id="msg">処理を開始しています...</p>
-  <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
-  <p class="elapsed" id="elapsed"></p>
-  <div class="steps">
-    <div class="step active" id="step1">
-      <span class="step-icon" id="icon1"><span class="spinner"></span></span>
-      <div class="step-body"><span id="label1">ハンド履歴をパース中...</span></div>
-    </div>
-    <div class="step" id="step2">
-      <span class="step-icon" id="icon2">2</span>
-      <div class="step-body"><span id="label2">青線/赤線を分類</span></div>
-    </div>
-  </div>
-</div>
-<script>
-const JOB_ID = '{job_id}';
-let startTime = Date.now();
-let sseActive = false;
-
-setInterval(() => {{
-  const s = Math.floor((Date.now() - startTime) / 1000);
-  const m = Math.floor(s / 60), sec = s % 60;
-  document.getElementById('elapsed').textContent =
-    m > 0 ? `経過時間: ${{m}}分${{sec}}秒` : `経過時間: ${{sec}}秒`;
-}}, 1000);
-
-function setPbar(pct) {{ document.getElementById('pbar').style.width = pct + '%'; }}
-function markDone(n) {{
-  document.getElementById('step' + n).className = 'step done';
-  document.getElementById('icon' + n).textContent = '✓';
-}}
-function markActive(n) {{
-  document.getElementById('step' + n).className = 'step active';
-  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
-}}
-
-const es = new EventSource('/stream/' + JOB_ID);
-const fallbackTimer = setTimeout(() => {{
-  if (!sseActive) {{ es.close(); pollFallback(); }}
-}}, 10000);
-
-es.onmessage = function(e) {{
-  sseActive = true;
-  clearTimeout(fallbackTimer);
-  const d = JSON.parse(e.data);
-
-  if (d.type === 'parse_done') {{
-    markDone(1);
-    document.getElementById('label1').textContent =
-      `ハンド履歴を解析しました（${{d.hands_total}}ハンド検出）`;
-    markActive(2);
-    setPbar(50);
-    document.getElementById('msg').textContent = '青線/赤線を分類中...';
-
-  }} else if (d.type === 'classify_done' || d.type === 'done') {{
-    markDone(1); markDone(2);
-    setPbar(100);
-    document.getElementById('msg').textContent = '完了！結果を表示します...';
-    es.close();
-    setTimeout(() => {{ window.location.href = '/classify_result/' + JOB_ID; }}, 500);
-
-  }} else if (d.type === 'error') {{
-    document.getElementById('msg').textContent = 'エラーが発生しました';
-    es.close();
-    setTimeout(() => {{ window.location.href = '/error/' + JOB_ID; }}, 1000);
-  }}
-}};
-
-es.onerror = function() {{
-  if (sseActive) return;
-  es.close();
-  clearTimeout(fallbackTimer);
-  pollFallback();
-}};
-
-async function pollFallback() {{
-  if (sseActive) return;
-  try {{
-    const res  = await fetch('/status/' + JOB_ID);
-    const data = await res.json();
-    if (data.status === 'done') {{
-      window.location.href = '/classify_result/' + JOB_ID;
-      return;
-    }}
-    if (data.status === 'error') {{
-      window.location.href = '/error/' + JOB_ID;
-      return;
-    }}
-    const s = data.step || 0;
-    setPbar(s >= 2 ? 50 : 10);
-    if (s >= 1) markDone(1);
-    if (s >= 2) markActive(2);
-  }} catch(_) {{}}
-  if (!sseActive) setTimeout(pollFallback, 2000);
-}}
-</script>
-</body>
-</html>"""
+    return _render("classify_progress.html", job_id=job_id)
 
 
+def report_page(pdf_name: str) -> str:
+    return _render("report.html", pdf_name=pdf_name)
 
+
+ERROR_PAGE = _render("error.html", log="{log}")  # {log} placeholder for .format()
+
+
+def dashboard_page(result: dict) -> str:
+    data_json = _json.dumps(result, ensure_ascii=False)
+    hero      = result.get("hero_name", "Hero")
+    summary   = result.get("summary", {})
+    total_hands = summary.get("total_hands", 0)
+    total_bb    = summary.get("total_bb", 0)
+    bb_per_100  = summary.get("bb_per_100", 0)
+    bb_color    = "#4caf93" if total_bb >= 0 else "#e94560"
+    bb100_color = "#4caf93" if bb_per_100 >= 0 else "#e94560"
+    return _render(
+        "dashboard.html",
+        hero=_esc(hero),
+        total_hands=total_hands,
+        bb_color=bb_color,
+        total_bb_sign="+" if total_bb >= 0 else "",
+        total_bb=total_bb,
+        bb100_color=bb100_color,
+        bb_per_100_sign="+" if bb_per_100 >= 0 else "",
+        bb_per_100=bb_per_100,
+        data_json=data_json,
+    )
+
+
+# ─── 認証・セッション系ページ ─────────────────────────────────────────────
+_LOGIN_PAGE_HTML    = _render("login.html")
+_SESSIONS_PAGE_HTML = _render("sessions.html")
+
+# restore は job_id が必要なので文字列テンプレートとして保持
+_RESTORE_PAGE_HTML = (
+    Path(__file__).parent.parent / "templates" / "restore.html"
+).read_text(encoding="utf-8")
+
+
+# ─── 3d_view ─────────────────────────────────────────────────────────────────
+def three_d_view_page(job_id: str, hands: list) -> str:
+    filtered = []
+    for h in hands:
+        clf  = h.get("bluered_classification", {})
+        line = clf.get("line", "")
+        if line not in ("blue", "red"):
+            continue
+        filtered.append({
+            "hand_number": h.get("hand_number"),
+            "position":    h.get("hero_position", "?"),
+            "line":        line,
+            "category":    clf.get("category_label", "?"),
+            "profit":      float(h.get("hero_result_bb", 0)),
+            "is_3bet":     bool(h.get("is_3bet_pot", False)),
+            "last_street": clf.get("last_street", "?"),
+        })
+    blue_count = sum(1 for h in filtered if h["line"] == "blue")
+    red_count  = sum(1 for h in filtered if h["line"] == "red")
+    hands_json = _json.dumps(filtered, ensure_ascii=False)
+    return _render("3d_view.html",
+        job_id=job_id,
+        hands_json=hands_json,
+        total_count=len(filtered),
+        blue_count=blue_count,
+        red_count=red_count,
+    )
+
+
+# ─── classify_result（Jinja2テンプレートに複雑なHTML断片を渡す） ─────────────
 def classify_result_page(
     job_id: str,
     total_hands: int,
@@ -1210,7 +136,6 @@ def classify_result_page(
     json_path: str,
     hands: list = None,
 ) -> str:
-    import re as _re
 
     # カテゴリ行HTML（白背景グリッドスタイル）
     cat_rows = ""
@@ -1233,7 +158,6 @@ def classify_result_page(
     ev_html = ""
     if allin_ev_diffs:
         player, diff = next(iter(allin_ev_diffs.items()))
-        # オールイン発生ハンド数をhands引数から算出
         ev_count = sum(
             1 for h in (hands or [])
             for p in h.get("players", [])
@@ -1257,7 +181,6 @@ def classify_result_page(
   </div>"""
 
     # ─── 青線/赤線 ハンド一覧 ──────────────────────────────────────────────
-    # 4色スート（ドイツ式）
     _SUIT_COLORS = {'♠': '#000000', '♥': '#e53935', '♦': '#1e88e5', '♣': '#43a047'}
     def _card_html(s):
         if not s: return ""
@@ -1274,41 +197,7 @@ def classify_result_page(
             return "0"
         except Exception: return "—"
 
-    def _opp_cards(hand):
-        others = [p for p in hand.get("players", []) if not p.get("is_hero")]
-        if not others: return ""
-        winners = [w.get("name") for w in hand.get("result", {}).get("winners", [])]
-        opp = next((p for p in others if p.get("name") in winners), others[0])
-        return "".join(opp.get("hole_cards", []))
-
-    def _board_at(hand, last_st):
-        order = ["flop", "turn", "river"]
-        if last_st == "preflop": return ""
-        idx = order.index(last_st) if last_st in order else len(order) - 1
-        cards = []
-        for s in order[:idx + 1]:
-            board = hand.get("streets", {}).get(s, {}).get("board", [])
-            cards.extend(c for c in board if c and c != "-")
-        return " ".join(cards)
-
-    _ST_JP = {"preflop": "PF", "flop": "F", "turn": "T", "river": "R"}
-    _BLUE_ORDER = ["value_success", "bluff_catch", "bluff_failed", "call_lost"]
-    _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
-
-    # 白背景向けカテゴリサブヘッダークラス
-    _CAT_CLASS = {
-        "value_success": "blue",
-        "bluff_catch":            "blue",
-        "bluff_failed":           "red",
-        "call_lost":              "red",
-        "hero_aggression_won":    "red",
-        "bad_fold":               "red",
-        "nice_fold":              "",
-        "fold_unknown":           "warn",
-    }
-
     def _fmt_amt(v):
-        """float → '12' / '12.5' / '12.25'（不要な .0 を省略）"""
         try:
             n = float(v)
             if n <= 0: return ""
@@ -1317,7 +206,6 @@ def classify_result_page(
             return ""
 
     def _fmt_actions(actions):
-        """アクションリストを '›' 区切りの HTML 文字列に変換（ポジション名を使用）"""
         parts = []
         for a in actions:
             pos = a.get("position") or a.get("name", "?")
@@ -1340,8 +228,22 @@ def classify_result_page(
         sep = ' <span class="act-sep">›</span> '
         return sep.join(parts)
 
+    _ST_JP = {"preflop": "PF", "flop": "F", "turn": "T", "river": "R"}
+    _BLUE_ORDER = ["value_success", "bluff_catch", "bluff_failed", "call_lost"]
+    _RED_ORDER  = ["hero_aggression_won", "bad_fold", "nice_fold", "fold_unknown"]
+
+    _CAT_CLASS = {
+        "value_success": "blue",
+        "bluff_catch":            "blue",
+        "bluff_failed":           "red",
+        "call_lost":              "red",
+        "hero_aggression_won":    "red",
+        "bad_fold":               "red",
+        "nice_fold":              "",
+        "fold_unknown":           "warn",
+    }
+
     def _build_hand_card(h):
-        """1ハンドの詳細カードHTMLを返す（白背景スタイル）"""
         clf = h.get("bluered_classification", {})
         hero_cards = "".join(h.get("hero_cards", []))
         hero_pos   = h.get("hero_position", "?")
@@ -1354,7 +256,6 @@ def classify_result_page(
         badge_ai   = '<span class="badge-ai">★</span> ' if needs_api else ""
         card_cls   = "hand-card needs-ai" if needs_api else "hand-card"
 
-        # 相手プレイヤーのカード（ポジション付き）
         opp_parts      = []
         opp_data_parts = []
         for p in h.get("players", []):
@@ -1371,7 +272,6 @@ def classify_result_page(
 
         hero_c_html = _card_html(hero_cards) if hero_cards else "—"
 
-        # ストリート別アクション
         streets = h.get("streets", {})
         st_lines = []
 
@@ -1409,7 +309,6 @@ def classify_result_page(
         hnum = h.get("hand_number", "")
         line = h.get("bluered_classification", {}).get("line", "")
         na_attr = ' data-needs-api="1"' if needs_api else ""
-        # カート用データ属性
         _cards_str = "".join(h.get("hero_cards", []))
         _pl_str    = f"{_fmt_bb(pl)}bb"
         _board_cards = []
@@ -1457,7 +356,6 @@ def classify_result_page(
         for cat in cat_order:
             cat_hands = [h for h in filtered_hands
                          if h.get("bluered_classification", {}).get("category") == cat]
-            # ハンド番号順
             cat_hands.sort(key=lambda h: h.get("hand_number", 0))
             if not cat_hands: continue
             cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
@@ -1468,7 +366,6 @@ def classify_result_page(
             ai_badge  = f' <span class="ai-badge">★ 要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
             pl_sign   = "+" if cat_pl > 0 else ""
 
-            # cat-subheaderのクラス: blue/red/warn のみCSS定義あり; 空の場合はデフォルト
             sub_cls = f"cat-subheader {cc}" if cc else "cat-subheader"
             html += (
                 f'<div class="hand-cat-group" style="padding:0 10px">'
@@ -1502,7 +399,6 @@ def classify_result_page(
             hero_name2 = next((p.get("name","") for p in h.get("players",[]) if p.get("is_hero")), "")
             if hero_name2 and hero_name2 in winners:
                 s["won"] += 1
-            # VPIP: Heroが PF で Call or Raise
             pf_acts = h.get("streets", {}).get("preflop", [])
             hero_acts = [a for a in pf_acts if a.get("name") == hero_name2]
             if any(a.get("action") in ("Call","Raise") for a in hero_acts):
@@ -1523,7 +419,6 @@ def classify_result_page(
             avg = pl / n
             avg_c = "#2e7d32" if avg > 0 else "#c0392b" if avg < 0 else "#888"
             avg_s = ("+" if avg > 0 else "") + f"{avg:.2f}"
-            red_r = f'{s["red"]/n*100:.0f}%' if n else "—"
             rows_pos += f"""<tr>
   <td style="font-weight:700">{_esc(pos)}</td>
   <td style="text-align:center">{n}</td>
@@ -1564,7 +459,6 @@ def classify_result_page(
                 "y": round(cumulative, 2),
                 "line": h.get("bluered_classification", {}).get("line", "preflop_only"),
             })
-        import json as _json
         chip_data_json = _json.dumps(points)
 
     hands_html = ""
@@ -1579,7 +473,6 @@ def classify_result_page(
         blue_section = _build_hand_section(blue_hands, _BLUE_ORDER)
         red_section  = _build_hand_section(red_hands,  _RED_ORDER)
 
-        # 全ハンド一覧（青+赤+PFのみ、ハンド番号順）
         all_sorted = sorted(hands, key=lambda h: h.get("hand_number", 0))
         _LINE_BADGE = {
             "blue":         '<span class="badge-line-blue">青</span>',
@@ -1663,7 +556,6 @@ def classify_result_page(
   </div>
 </div>"""
 
-    # Jinja2テンプレートでレンダリング
     from jinja2 import Environment, FileSystemLoader as _FSL
     _env = Environment(loader=_FSL(_TEMPLATES_DIR), autoescape=False)
     return _env.get_template('classify_result.html').render(
@@ -1677,1105 +569,6 @@ def classify_result_page(
         hands_html=hands_html,
         pos_stats_html=pos_stats_html,
         chip_data_json=chip_data_json,
+        classified_path=classified_path,
+        json_path=json_path,
     )
-
-
-
-def report_page(pdf_name: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GTO レポート</title>
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}}
-.toolbar {{
-  background: #16213e;
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}}
-.toolbar h1 {{ font-size: 15px; color: #e94560; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.btn-download {{
-  padding: 10px 20px; min-height: 44px;
-  background: #e94560;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: bold;
-  text-decoration: none;
-  display: inline-flex; align-items: center;
-  transition: background 0.2s;
-}}
-.btn-download:hover {{ background: #c73652; }}
-.btn-back {{
-  padding: 10px 16px; min-height: 44px;
-  background: transparent;
-  color: #aaa;
-  border: 1px solid #444;
-  border-radius: 6px;
-  font-size: 14px;
-  text-decoration: none;
-  display: inline-flex; align-items: center;
-  transition: border-color 0.2s, color 0.2s;
-}}
-.btn-back:hover {{ border-color: #e94560; color: #e94560; }}
-iframe {{ flex: 1; width: 100%; border: none; }}
-.mobile-hint {{
-  display: none;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 16px;
-  padding: 40px 20px;
-  text-align: center;
-}}
-.mobile-hint p {{ color: #888; font-size: 14px; margin-bottom: 8px; }}
-@media (max-width: 600px) {{
-  iframe {{ display: none; }}
-  .mobile-hint {{ display: flex; }}
-  .toolbar h1 {{ font-size: 13px; }}
-}}
-</style>
-</head>
-<body>
-<div class="toolbar">
-  <h1>&#x1F0A1; GTO レポート — {pdf_name}</h1>
-  <a class="btn-back" href="/">&#x2190; 戻る</a>
-  <a class="btn-download" href="/download/{pdf_name}" download="{pdf_name}">&#x2B07; ダウンロード</a>
-</div>
-<iframe src="/pdf/{pdf_name}" type="application/pdf"></iframe>
-<div class="mobile-hint">
-  <p>スマートフォンではPDFビューアを直接表示できません。<br>下のボタンからダウンロードしてご確認ください。</p>
-  <a class="btn-download" href="/download/{pdf_name}" download="{pdf_name}">&#x2B07; PDFをダウンロード</a>
-</div>
-</body>
-</html>"""
-
-
-
-ERROR_PAGE = """<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><title>エラー</title>
-<style>
-body {{ font-family: monospace; background: #1a1a2e; color: #eee; padding: 40px; }}
-h2 {{ color: #e94560; margin-bottom: 16px; }}
-pre {{ background: #0f0f1a; padding: 20px; border-radius: 8px; white-space: pre-wrap; color: #f88; font-size: 12px; }}
-a {{ color: #e94560; }}
-</style></head><body>
-<h2>&#x274C; エラーが発生しました</h2>
-<pre>{log}</pre>
-<p><a href="/">&#x2190; 戻る</a></p>
-</body></html>"""
-
-
-
-def dashboard_page(result: dict) -> str:
-    import json as _json
-    data_json = _json.dumps(result, ensure_ascii=False)
-    hero = result.get("hero_name", "Hero")
-    summary = result.get("summary", {})
-    total_hands = summary.get("total_hands", 0)
-    total_bb    = summary.get("total_bb", 0)
-    bb_per_100  = summary.get("bb_per_100", 0)
-    bb_color    = "#4caf93" if total_bb >= 0 else "#e94560"
-    bb100_color = "#4caf93" if bb_per_100 >= 0 else "#e94560"
-
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>クイック解析 — ポーカーGTO</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Meiryo',sans-serif;background:#1a1a2e;color:#eee;min-height:100vh}}
-.topbar{{background:#16213e;padding:12px 24px;display:flex;align-items:center;gap:16px;
-  box-shadow:0 2px 8px rgba(0,0,0,.5);position:sticky;top:0;z-index:100}}
-.topbar h1{{font-size:16px;color:#e94560;flex:1}}
-.btn-pdf{{padding:8px 20px;background:#e94560;color:#fff;border:none;border-radius:6px;
-  font-size:13px;font-weight:bold;cursor:pointer;transition:background .2s}}
-.btn-pdf:hover{{background:#c73652}}
-.btn-back{{padding:8px 16px;background:transparent;color:#aaa;border:1px solid #444;
-  border-radius:6px;font-size:13px;text-decoration:none;transition:border-color .2s,color .2s}}
-.btn-back:hover{{border-color:#e94560;color:#e94560}}
-.container{{max-width:1200px;margin:0 auto;padding:24px 20px}}
-/* サマリー */
-.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}}
-.stat-card{{background:#16213e;border-radius:12px;padding:20px 24px;text-align:center}}
-.stat-label{{font-size:12px;color:#888;margin-bottom:8px}}
-.stat-value{{font-size:32px;font-weight:bold}}
-.stat-sub{{font-size:11px;color:#555;margin-top:4px}}
-/* グリッド */
-.grid-2{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}}
-.grid-1{{margin-bottom:20px}}
-.card{{background:#16213e;border-radius:12px;padding:20px 24px}}
-.card-title{{font-size:14px;font-weight:bold;color:#e94560;margin-bottom:16px;
-  display:flex;align-items:center;gap:8px}}
-.chart-wrap{{position:relative;height:260px}}
-/* EV計算機 */
-.ev-grid{{display:flex;flex-direction:column;gap:16px}}
-.ev-row{{display:flex;flex-direction:column;gap:6px}}
-.ev-row label{{font-size:12px;color:#aaa}}
-.ev-slider-row{{display:flex;align-items:center;gap:12px}}
-.ev-slider-row input[type=range]{{flex:1;accent-color:#e94560}}
-.ev-slider-val{{font-size:14px;font-weight:bold;color:#eee;width:52px;text-align:right}}
-.ev-results{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}}
-.ev-stat{{background:#0f0f1a;border-radius:8px;padding:12px;text-align:center}}
-.ev-stat span{{display:block;font-size:11px;color:#888;margin-bottom:6px}}
-.ev-stat strong{{font-size:18px;font-weight:bold}}
-/* ヒートマップ */
-.heatmap-wrap{{overflow-x:auto}}
-.heatmap{{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;min-width:520px}}
-.hm-cell{{
-  aspect-ratio:1;border-radius:3px;display:flex;align-items:center;
-  justify-content:center;font-size:9px;font-weight:bold;cursor:pointer;
-  transition:transform .15s;position:relative
-}}
-.hm-cell:hover{{transform:scale(1.15);z-index:10}}
-.hm-label{{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;
-  min-width:520px;margin-bottom:4px}}
-.hm-lbl{{text-align:center;font-size:10px;color:#555}}
-/* ツールチップ */
-.tooltip{{
-  display:none;position:fixed;background:#16213e;border:1px solid #333;
-  border-radius:8px;padding:10px 14px;font-size:12px;z-index:999;
-  pointer-events:none;line-height:1.7;min-width:150px
-}}
-.tooltip.show{{display:block}}
-/* レスポンシブ */
-@media(max-width:700px){{
-  .summary{{grid-template-columns:1fr 1fr}}
-  .grid-2{{grid-template-columns:1fr}}
-  .ev-results{{grid-template-columns:1fr}}
-  .stat-value{{font-size:24px}}
-}}
-@media(max-width:400px){{.summary{{grid-template-columns:1fr}}}}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <h1>&#x1F0A1; クイック解析 — {_esc(hero)}</h1>
-  <a class="btn-back" href="/">&#x2190; 戻る</a>
-  <button class="btn-pdf" onclick="exportPDF()">&#x1F4C4; PDFとして保存</button>
-</div>
-
-<div class="container" id="dashboard">
-
-  <!-- サマリー -->
-  <div class="summary">
-    <div class="stat-card">
-      <div class="stat-label">総ハンド数</div>
-      <div class="stat-value" style="color:#7ec8e3">{total_hands}</div>
-      <div class="stat-sub">hands</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">総収支</div>
-      <div class="stat-value" style="color:{bb_color}">{'+' if total_bb >= 0 else ''}{total_bb}</div>
-      <div class="stat-sub">bb</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">bb/100</div>
-      <div class="stat-value" style="color:{bb100_color}">{'+' if bb_per_100 >= 0 else ''}{bb_per_100}</div>
-      <div class="stat-sub">bb per 100 hands</div>
-    </div>
-  </div>
-
-  <!-- 1. タイムライン -->
-  <div class="grid-1 card">
-    <div class="card-title">&#x1F4C8; セッション損益推移</div>
-    <div class="chart-wrap"><canvas id="chartTimeline"></canvas></div>
-  </div>
-
-  <!-- 2. ストリート / 3. ベットサイジング -->
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">&#x1F3AF; ストリート別決着率</div>
-      <div class="chart-wrap"><canvas id="chartStreets"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-title">&#x1F4B0; ベットサイジング分析</div>
-      <div class="chart-wrap"><canvas id="chartBetSizing"></canvas></div>
-    </div>
-  </div>
-
-  <!-- 4. 勝利パターン / 5. EV計算機 -->
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">&#x1F3C6; 勝利パターン分析</div>
-      <div class="chart-wrap"><canvas id="chartWinTypes"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-title">&#x1F9EE; EV計算機 <span style="font-size:11px;color:#555;font-weight:normal">(APIなし・即時計算)</span></div>
-      <div class="ev-grid">
-        <div class="ev-row">
-          <label>ポットサイズ (bb)</label>
-          <div class="ev-slider-row">
-            <input type="range" id="evPot" min="1" max="200" value="10">
-            <span class="ev-slider-val" id="evPotVal">10</span>
-          </div>
-        </div>
-        <div class="ev-row">
-          <label>コール額 (bb)</label>
-          <div class="ev-slider-row">
-            <input type="range" id="evCall" min="1" max="100" value="5">
-            <span class="ev-slider-val" id="evCallVal">5</span>
-          </div>
-        </div>
-        <div class="ev-row">
-          <label>相手のブラフ頻度 (%)</label>
-          <div class="ev-slider-row">
-            <input type="range" id="evBluff" min="0" max="100" value="30">
-            <span class="ev-slider-val" id="evBluffVal">30%</span>
-          </div>
-        </div>
-        <div class="ev-results">
-          <div class="ev-stat"><span>ポットオッズ</span><strong id="evOdds">—</strong></div>
-          <div class="ev-stat"><span>ブレークイーブン勝率</span><strong id="evBE">—</strong></div>
-          <div class="ev-stat"><span>EV (コール)</span><strong id="evResult">—</strong></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 6. コンボヒートマップ -->
-  <div class="grid-1 card">
-    <div class="card-title">&#x1F0CF; 169コンボ ヒートマップ
-      <span style="font-size:11px;color:#555;font-weight:normal">
-        上三角=スーテッド / 下三角=オフスート / 対角=ペア　|　5サンプル未満はグレー
-      </span>
-    </div>
-    <div class="heatmap-wrap">
-      <div class="hm-label" id="hmLabels"></div>
-      <div class="heatmap"  id="heatmap"></div>
-    </div>
-  </div>
-
-</div><!-- /container -->
-
-<div class="tooltip" id="tooltip"></div>
-
-<script>
-const DATA = {data_json};
-const RANKS = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
-
-// ─── Chart.js 共通設定 ─────────────────────────────────────────────────
-Chart.defaults.color = '#888';
-Chart.defaults.font.family = 'Meiryo, sans-serif';
-
-// ─── 1. タイムライン ───────────────────────────────────────────────────
-(function(){{
-  const tl = DATA.timeline || [];
-  const labels = tl.map(d => d.hand);
-  const values = tl.map(d => d.cumulative);
-  new Chart(document.getElementById('chartTimeline'), {{
-    type: 'line',
-    data: {{
-      labels,
-      datasets: [{{
-        label: '累積収支 (bb)',
-        data: values,
-        borderColor: '#4caf93',
-        backgroundColor: 'rgba(76,175,147,.12)',
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.3,
-      }}]
-    }},
-    options: {{
-      responsive: true, maintainAspectRatio: false,
-      plugins: {{ legend: {{ display: false }}, tooltip: {{ mode: 'index', intersect: false }} }},
-      scales: {{
-        x: {{ grid: {{ color: '#222' }}, ticks: {{ maxTicksLimit: 10 }} }},
-        y: {{ grid: {{ color: '#222' }},
-          ticks: {{ callback: v => (v >= 0 ? '+' : '') + v + 'bb' }} }}
-      }}
-    }}
-  }});
-}})();
-
-// ─── 2. ストリート別決着率 ────────────────────────────────────────────
-(function(){{
-  const sc = DATA.streets?.counts  || {{}};
-  const sd = DATA.streets?.showdown || {{}};
-  const labels = ['Preflop','Flop','Turn','River'];
-  const keys   = ['preflop','flop','turn','river'];
-  const noSD = keys.map(k => (sc[k] || 0) - (sd[k] || 0));
-  const withSD = keys.map(k => sd[k] || 0);
-  new Chart(document.getElementById('chartStreets'), {{
-    type: 'bar',
-    data: {{
-      labels,
-      datasets: [
-        {{ label: 'ショーダウンなし', data: noSD,   backgroundColor: 'rgba(233,69,96,.7)'   }},
-        {{ label: 'ショーダウンあり', data: withSD, backgroundColor: 'rgba(126,200,227,.7)' }},
-      ]
-    }},
-    options: {{
-      responsive: true, maintainAspectRatio: false,
-      plugins: {{ legend: {{ labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }} }},
-      scales: {{
-        x: {{ stacked: true, grid: {{ color: '#222' }} }},
-        y: {{ stacked: true, grid: {{ color: '#222' }},
-          ticks: {{ stepSize: 1 }} }}
-      }}
-    }}
-  }});
-}})();
-
-// ─── 3. ベットサイジング ──────────────────────────────────────────────
-(function(){{
-  const bs = DATA.bet_sizing || [];
-  const labels = bs.map(d => d.range);
-  const wr  = bs.map(d => d.winrate != null ? Math.round(d.winrate * 100) : null);
-  const cnt = bs.map(d => d.count);
-  new Chart(document.getElementById('chartBetSizing'), {{
-    type: 'bar',
-    data: {{
-      labels,
-      datasets: [
-        {{
-          label: '勝率 (%)',
-          data: wr,
-          backgroundColor: wr.map(v => v == null ? '#333' : v >= 50 ? 'rgba(76,175,147,.8)' : 'rgba(233,69,96,.8)'),
-          yAxisID: 'y',
-        }},
-      ]
-    }},
-    options: {{
-      responsive: true, maintainAspectRatio: false,
-      plugins: {{
-        legend: {{ display: false }},
-        tooltip: {{
-          callbacks: {{
-            afterBody: (items) => {{
-              const i = items[0].dataIndex;
-              const d = bs[i];
-              const lines = [`サンプル: ${{d.count}}件`];
-              if (d.avg_bb != null) lines.push(`平均収支: ${{d.avg_bb >= 0 ? '+' : ''}}${{d.avg_bb}}bb`);
-              else lines.push('サンプル不足 (5件未満)');
-              return lines;
-            }}
-          }}
-        }}
-      }},
-      scales: {{
-        x: {{ grid: {{ color: '#222' }} }},
-        y: {{ grid: {{ color: '#222' }}, min: 0, max: 100,
-          ticks: {{ callback: v => v + '%' }} }}
-      }}
-    }}
-  }});
-}})();
-
-// ─── 4. 勝利パターン ──────────────────────────────────────────────────
-(function(){{
-  const wt = DATA.win_types || {{}};
-  const labels = ['バリュー', 'ブラフ', 'ブラフキャッチ', 'その他'];
-  const keys   = ['value', 'bluff', 'bluff_catch', 'other'];
-  const values = keys.map(k => wt[k] || 0);
-  new Chart(document.getElementById('chartWinTypes'), {{
-    type: 'doughnut',
-    data: {{
-      labels,
-      datasets: [{{
-        data: values,
-        backgroundColor: ['rgba(76,175,147,.85)','rgba(233,69,96,.85)','rgba(126,200,227,.85)','rgba(100,100,120,.7)'],
-        borderWidth: 0,
-      }}]
-    }},
-    options: {{
-      responsive: true, maintainAspectRatio: false,
-      cutout: '58%',
-      plugins: {{
-        legend: {{ position: 'right', labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }},
-        tooltip: {{
-          callbacks: {{
-            label: ctx => ` ${{ctx.label}}: ${{ctx.raw}}件`
-          }}
-        }}
-      }}
-    }}
-  }});
-}})();
-
-// ─── 5. EV計算機 ─────────────────────────────────────────────────────
-function calcEV(){{
-  const pot   = parseFloat(document.getElementById('evPot').value);
-  const call  = parseFloat(document.getElementById('evCall').value);
-  const bluff = parseFloat(document.getElementById('evBluff').value) / 100;
-  document.getElementById('evPotVal').textContent   = pot;
-  document.getElementById('evCallVal').textContent  = call;
-  document.getElementById('evBluffVal').textContent = Math.round(bluff * 100) + '%';
-  const potOdds = call / (pot + call);
-  const ev = bluff * pot - (1 - bluff) * call;
-  document.getElementById('evOdds').textContent   = (potOdds * 100).toFixed(1) + '%';
-  document.getElementById('evBE').textContent     = (potOdds * 100).toFixed(1) + '%';
-  const evEl = document.getElementById('evResult');
-  evEl.textContent = (ev >= 0 ? '+' : '') + ev.toFixed(2) + 'bb';
-  evEl.style.color = ev >= 0 ? '#4caf93' : '#e94560';
-}}
-['evPot','evCall','evBluff'].forEach(id =>
-  document.getElementById(id).addEventListener('input', calcEV));
-calcEV();
-
-// ─── 6. ヒートマップ ──────────────────────────────────────────────────
-(function(){{
-  const combos = DATA.combos || {{}};
-  const tooltip = document.getElementById('tooltip');
-
-  function getKey(r, c){{
-    if (r === c) return RANKS[r] + RANKS[r];
-    if (r < c)   return RANKS[r] + RANKS[c] + 's';
-    return RANKS[c] + RANKS[r] + 'o';
-  }}
-
-  function cellColor(bb, count){{
-    if (!count || count < 5) return '#1e1e30';
-    const cap = 20;
-    if (bb > 0){{
-      const t = Math.min(bb / cap, 1);
-      return `rgba(76,175,147,${{(0.25 + t * 0.75).toFixed(2)}})`;
-    }} else {{
-      const t = Math.min(-bb / cap, 1);
-      return `rgba(233,69,96,${{(0.25 + t * 0.75).toFixed(2)}})`;
-    }}
-  }}
-
-  // ラベル行
-  const lblWrap = document.getElementById('hmLabels');
-  RANKS.forEach(r => {{
-    const d = document.createElement('div');
-    d.className = 'hm-lbl'; d.textContent = r;
-    lblWrap.appendChild(d);
-  }});
-
-  // セルグリッド
-  const wrap = document.getElementById('heatmap');
-  for (let row = 0; row < 13; row++){{
-    for (let col = 0; col < 13; col++){{
-      const key = getKey(row, col);
-      const d   = combos[key] || {{}};
-      const count = d.count || 0;
-      const bb    = d.bb || 0;
-      const wr    = d.winrate || 0;
-
-      const cell = document.createElement('div');
-      cell.className = 'hm-cell';
-      cell.style.background = cellColor(bb, count);
-      cell.textContent = count >= 5 ? key : (count > 0 ? key : '');
-      cell.style.color = count >= 5 ? '#fff' : '#444';
-      cell.style.fontSize = key.length <= 2 ? '9px' : '8px';
-
-      cell.addEventListener('mousemove', e => {{
-        if (count === 0) {{ tooltip.classList.remove('show'); return; }}
-        tooltip.innerHTML =
-          `<b>${{key}}</b><br>` +
-          `試行: ${{count}}回<br>` +
-          (count >= 5
-            ? `勝率: ${{(wr * 100).toFixed(1)}}%<br>収益: ${{bb >= 0 ? '+' : ''}}${{bb.toFixed(2)}}bb`
-            : `<span style="color:#888">サンプル不足</span>`);
-        tooltip.style.left = (e.clientX + 14) + 'px';
-        tooltip.style.top  = (e.clientY - 10) + 'px';
-        tooltip.classList.add('show');
-      }});
-      cell.addEventListener('mouseleave', () => tooltip.classList.remove('show'));
-
-      wrap.appendChild(cell);
-    }}
-  }}
-}})();
-
-// ─── PDF出力 ──────────────────────────────────────────────────────────
-async function exportPDF(){{
-  const btn = document.querySelector('.btn-pdf');
-  btn.textContent = '生成中...'; btn.disabled = true;
-  try{{
-    const canvas = await html2canvas(document.getElementById('dashboard'), {{
-      backgroundColor: '#1a1a2e', scale: 1.5, useCORS: true,
-    }});
-    const {{ jsPDF }} = window.jspdf;
-    const pdf = new jsPDF({{ orientation: 'p', unit: 'mm', format: 'a4' }});
-    const W = pdf.internal.pageSize.getWidth();
-    const H = pdf.internal.pageSize.getHeight();
-    const imgW = W;
-    const imgH = canvas.height * imgW / canvas.width;
-    const img = canvas.toDataURL('image/png');
-    let y = 0;
-    while (y < imgH){{
-      if (y > 0) pdf.addPage();
-      pdf.addImage(img, 'PNG', 0, -y, imgW, imgH);
-      y += H;
-    }}
-    pdf.save('poker_quick_report.pdf');
-  }} catch(e){{
-    alert('PDF生成に失敗しました: ' + e.message);
-  }} finally{{
-    btn.textContent = '&#x1F4C4; PDFとして保存'; btn.disabled = false;
-  }}
-}}
-</script>
-</body>
-</html>"""
-
-
-
-_LOGIN_PAGE_HTML = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PokerGTO ログイン</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.card {
-  background: #16213e;
-  border-radius: 16px;
-  padding: 48px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  text-align: center;
-}
-h1 { font-size: 22px; color: #e94560; margin-bottom: 8px; }
-.sub { font-size: 13px; color: #888; margin-bottom: 32px; }
-.btn-google {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px;
-  background: #fff;
-  color: #333;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-google:hover { background: #f0f0f0; }
-.btn-google img { width: 20px; height: 20px; }
-.status { margin-top: 16px; font-size: 13px; color: #888; min-height: 20px; }
-.error { color: #e94560; }
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>🃏 PokerGTO</h1>
-  <p class="sub">Googleアカウントでログインしてください</p>
-  <button class="btn-google" id="btn-login">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-    Googleでログイン
-  </button>
-  <p class="status" id="status"></p>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-  const cfg = await fetch("/api/firebase-config").then(r => r.json());
-  const app  = initializeApp(cfg);
-  const auth = getAuth(app);
-
-  // すでにログイン済みならセッション一覧へ
-  onAuthStateChanged(auth, user => {
-    if (user) window.location.href = "/sessions";
-  });
-
-  document.getElementById("btn-login").addEventListener("click", async () => {
-    const st = document.getElementById("status");
-    st.textContent = "ログイン中...";
-    st.classList.remove("error");
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      // onAuthStateChanged が /sessions にリダイレクトする
-    } catch (e) {
-      st.textContent = "ログイン失敗: " + e.message;
-      st.classList.add("error");
-    }
-  });
-</script>
-</body>
-</html>"""
-
-
-_RESTORE_PAGE_HTML = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>解析結果を復元中...</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Meiryo', sans-serif; background: #1a1a2e; color: #eee;
-       display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-.box { text-align: center; }
-.spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #e94560;
-           border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.msg { font-size: 14px; color: #9ab; }
-.err { color: #e94560; font-size: 14px; margin-top: 16px; display: none; }
-.btn-back { display: inline-block; margin-top: 20px; padding: 8px 20px;
-            border: 1px solid #444; border-radius: 6px; color: #9ab;
-            text-decoration: none; font-size: 13px; }
-</style>
-</head>
-<body>
-<div class="box">
-  <div class="spinner" id="spinner"></div>
-  <div class="msg" id="msg">解析結果をFirestoreから復元中...</div>
-  <div class="err" id="err"></div>
-  <a class="btn-back" href="/sessions">← セッション一覧に戻る</a>
-</div>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
-  const app  = initializeApp(cfg);
-  const auth = getAuth(app);
-
-  function showErr(msg) {
-    document.getElementById("spinner").style.display = "none";
-    const e = document.getElementById("err");
-    e.textContent = msg; e.style.display = "block";
-  }
-
-  onAuthStateChanged(auth, async user => {
-    if (!user) { window.location.href = "/login"; return; }
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/analyses/{job_id}/restore", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token },
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        showErr(d.error || "復元に失敗しました"); return;
-      }
-      window.location.href = "/classify_result/{job_id}";
-    } catch (e) {
-      showErr("エラー: " + e.message);
-    }
-  });
-</script>
-</body>
-</html>"""
-
-
-_SESSIONS_PAGE_HTML = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PokerGTO — ハンド解析</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Meiryo', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  min-height: 100vh;
-}
-/* ─── トップバー ─── */
-.topbar {
-  background: #12122a;
-  border-bottom: 1px solid #1e2535;
-  padding: 12px 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.topbar h1 { font-size: 16px; color: #e94560; flex: 1; }
-.user-email { font-size: 12px; color: #778; }
-.btn-logout {
-  padding: 5px 12px;
-  background: transparent;
-  border: 1px solid #444;
-  border-radius: 6px;
-  color: #889;
-  cursor: pointer;
-  font-size: 11px;
-}
-.btn-logout:hover { border-color: #e94560; color: #e94560; }
-
-/* ─── メインコンテナ ─── */
-.container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
-
-/* ─── ハンド数カード ─── */
-.stats-card {
-  background: #16213e;
-  border-radius: 16px;
-  padding: 28px 32px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-.stats-loading { color: #778; font-size: 14px; }
-.stats-count {
-  font-size: 64px;
-  font-weight: 700;
-  color: #e94560;
-  line-height: 1.1;
-  letter-spacing: -2px;
-}
-.stats-unit { font-size: 20px; color: #9ab; margin-left: 4px; font-weight: 400; }
-.stats-range { font-size: 12px; color: #778; margin-top: 6px; }
-.stats-live {
-  display: inline-block;
-  width: 8px; height: 8px;
-  background: #4caf93;
-  border-radius: 50%;
-  margin-right: 6px;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-/* ─── 解析パネル ─── */
-.analyze-panel {
-  background: #16213e;
-  border-radius: 16px;
-  padding: 24px 28px;
-  margin-bottom: 16px;
-}
-.panel-title {
-  font-size: 13px;
-  color: #9ab;
-  font-weight: 600;
-  margin-bottom: 16px;
-  letter-spacing: 0.5px;
-}
-
-.select-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.select-label {
-  font-size: 11px;
-  color: #778;
-  margin-bottom: 5px;
-}
-select {
-  width: 100%;
-  padding: 10px 12px;
-  background: #0f1828;
-  border: 1px solid #2a3550;
-  border-radius: 8px;
-  color: #eee;
-  font-size: 13px;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23778'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-}
-select:focus { outline: none; border-color: #e94560; }
-
-.btn-analyze-main {
-  width: 100%;
-  padding: 16px;
-  background: #e94560;
-  border: none;
-  border-radius: 12px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-}
-.btn-analyze-main:hover { background: #c73652; }
-.btn-analyze-main:active { transform: scale(0.98); }
-.btn-analyze-main:disabled { background: #3a2030; color: #666; cursor: not-allowed; }
-
-/* ─── サブリンク ─── */
-.sub-links {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.sub-link {
-  font-size: 12px;
-  color: #556;
-  text-decoration: none;
-  transition: color 0.15s;
-}
-.sub-link:hover { color: #9ab; }
-
-/* ─── アラート ─── */
-.alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-.alert-error { background: #3a1a1a; color: #e94560; border: 1px solid #5a2a2a; }
-
-/* ─── 解析履歴 ─── */
-.history-section {
-  background: #16213e;
-  border-radius: 16px;
-  padding: 20px 24px;
-  margin-top: 20px;
-}
-.history-title {
-  font-size: 13px;
-  color: #9ab;
-  font-weight: 600;
-  margin-bottom: 12px;
-  letter-spacing: 0.5px;
-}
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid #1e2535;
-  font-size: 12px;
-}
-.history-item:last-child { border-bottom: none; }
-.history-date { color: #778; min-width: 110px; font-size: 11px; }
-.history-counts { flex: 1; color: #ccd; }
-.history-link {
-  color: #e94560;
-  text-decoration: none;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.history-link:hover { text-decoration: underline; }
-.history-no-snap { color: #556; font-size: 11px; white-space: nowrap; cursor: default; }
-.history-empty { color: #556; font-size: 12px; text-align: center; padding: 16px 0; }
-</style>
-</head>
-<body>
-<div class="topbar">
-  <h1>🃏 PokerGTO</h1>
-  <span class="user-email" id="user-email"></span>
-  <button class="btn-logout" id="btn-logout">ログアウト</button>
-</div>
-
-<div class="container">
-  <div id="alert-area"></div>
-
-  <!-- ハンド数カード -->
-  <div class="stats-card" id="stats-card">
-    <div class="stats-loading">蓄積ハンド数を確認中...</div>
-  </div>
-
-  <!-- 解析パネル -->
-  <div class="analyze-panel">
-    <div class="panel-title">解析範囲を選択</div>
-    <div class="select-group">
-      <div>
-        <div class="select-label">件数</div>
-        <select id="sel-limit">
-          <option value="50">直近 50 手</option>
-          <option value="100" selected>直近 100 手</option>
-          <option value="200">直近 200 手</option>
-          <option value="500">直近 500 手</option>
-          <option value="9999">全て</option>
-        </select>
-      </div>
-      <div>
-        <div class="select-label">期間</div>
-        <select id="sel-period">
-          <option value="0" selected>全期間</option>
-          <option value="1">直近 1 時間</option>
-          <option value="6">直近 6 時間</option>
-          <option value="24">直近 24 時間</option>
-          <option value="168">直近 7 日</option>
-        </select>
-      </div>
-    </div>
-    <button class="btn-analyze-main" id="btn-analyze" disabled>⚡ 解析する</button>
-  </div>
-
-  <div class="sub-links">
-    <a class="sub-link" href="/download-extension">⬇ 拡張機能ZIP</a>
-    <a class="sub-link" href="/legacy">手動アップロード（旧版）</a>
-    <a class="sub-link" href="/">トップ</a>
-  </div>
-
-  <!-- 解析履歴 -->
-  <div class="history-section" id="history-section" style="display:none">
-    <div class="history-title">📊 解析履歴</div>
-    <div id="history-list"><div class="history-empty">読み込み中...</div></div>
-  </div>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth, signOut, onAuthStateChanged }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-  const cfg  = await fetch("/api/firebase-config").then(r => r.json());
-  const app  = initializeApp(cfg);
-  const auth = getAuth(app);
-  let currentUser = null;
-
-  function showAlert(msg) {
-    document.getElementById("alert-area").innerHTML =
-      `<div class="alert alert-error">${msg}</div>`;
-  }
-
-  async function getIdToken() {
-    if (!currentUser) throw new Error("未ログイン");
-    return currentUser.getIdToken();
-  }
-
-
-  function fmtDate(iso) {
-    if (!iso) return "—";
-    return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
-  }
-
-  async function loadStats() {
-    const card = document.getElementById("stats-card");
-    const btn  = document.getElementById("btn-analyze");
-    try {
-      const token = await getIdToken();
-      const res = await fetch("/api/hands/stats", {
-        headers: { "Authorization": "Bearer " + token }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "取得失敗");
-
-      const count = data.count || 0;
-      const rangeStr = (data.oldest && data.newest && data.oldest !== data.newest)
-        ? `${fmtDate(data.oldest)} 〜 ${fmtDate(data.newest)}`
-        : data.newest ? fmtDate(data.newest) : "—";
-
-      card.innerHTML = `
-        <div style="font-size:12px;color:#778;margin-bottom:8px">
-          <span class="stats-live"></span>自動取得中
-        </div>
-        <div>
-          <span class="stats-count">${count.toLocaleString()}</span>
-          <span class="stats-unit">手</span>
-        </div>
-        <div class="stats-range">${rangeStr}</div>
-      `;
-
-      // 件数ドロップダウンに「全て（N手）」を更新
-      const selLimit = document.getElementById("sel-limit");
-      const allOpt = selLimit.querySelector('option[value="9999"]');
-      if (allOpt) allOpt.textContent = `全て（${count.toLocaleString()}手）`;
-
-      if (count > 0) btn.disabled = false;
-      else {
-        btn.disabled = true;
-        card.innerHTML += `<div style="font-size:12px;color:#778;margin-top:12px">
-          T4でプレイしながら拡張機能を動かすと自動でハンドが蓄積されます
-        </div>`;
-      }
-    } catch (e) {
-      card.innerHTML = `<div class="stats-loading">取得失敗: ${e.message}</div>`;
-    }
-  }
-
-  document.getElementById("btn-analyze").addEventListener("click", async () => {
-    const btn       = document.getElementById("btn-analyze");
-    const limit     = parseInt(document.getElementById("sel-limit").value);
-    const sinceHours = parseInt(document.getElementById("sel-period").value);
-    btn.disabled = true;
-    btn.textContent = "解析を開始中...";
-    try {
-      const token = await getIdToken();
-      const res = await fetch("/api/hands/analyze", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ limit, since_hours: sinceHours }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error || "解析開始失敗"); btn.disabled = false; btn.textContent = "⚡ 解析する"; return; }
-      window.location.href = data.progress_url;
-    } catch (e) {
-      showAlert("エラー: " + e.message);
-      btn.disabled = false;
-      btn.textContent = "⚡ 解析する";
-    }
-  });
-
-  document.getElementById("btn-logout").addEventListener("click", async () => {
-    await signOut(auth);
-    window.location.href = "/login";
-  });
-
-  async function loadHistory() {
-    try {
-      const token = await getIdToken();
-      const res = await fetch("/api/analyses", {
-        headers: { "Authorization": "Bearer " + token }
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const analyses = data.analyses || [];
-      const section = document.getElementById("history-section");
-      const list    = document.getElementById("history-list");
-      if (analyses.length === 0) {
-        list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
-      } else {
-        list.innerHTML = analyses.map(a => {
-          const linkHtml = (a.has_snapshot !== false)
-            ? `<a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>`
-            : `<span class="history-no-snap" title="ハンド数が多すぎるためスナップショットを保存できませんでした。再解析すると閲覧可能になります。">⚠ 再表示不可</span>`;
-          return `
-          <div class="history-item">
-            <div class="history-date">${fmtDate(a.created_at)}</div>
-            <div class="history-counts">
-              ${(a.hand_count||0).toLocaleString()}手
-              &nbsp;<span style="color:#4a9eff">&#11044;${a.blue_count||0}</span>
-              <span style="color:#e94560">&#11044;${a.red_count||0}</span>
-              <span style="color:#778">PF:${a.pf_count||0}</span>
-            </div>
-            ${linkHtml}
-          </div>`;
-        }).join("");
-      }
-      section.style.display = "block";
-    } catch (e) { /* silent */ }
-  }
-
-  onAuthStateChanged(auth, user => {
-    if (!user) { window.location.href = "/login"; return; }
-    currentUser = user;
-    document.getElementById("user-email").textContent = user.email || user.displayName || "";
-    loadStats();
-    loadHistory();
-  });
-</script>
-</body>
-</html>"""
-

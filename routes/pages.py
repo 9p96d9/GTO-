@@ -1,6 +1,7 @@
 """
 routes/pages.py - 現役Webページルート
 / /legacy /classify_progress /classify_result /generate_pdf
+/progress /error /report /pdf /download
 /stream /status /login /sessions /api/firebase-config /download-extension /api/extension.zip
 """
 
@@ -13,14 +14,16 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
-from state import jobs, jobs_lock, event_queues, DATA_DIR, ROOT
+from state import jobs, jobs_lock, event_queues, DATA_DIR, ROOT, OUTPUT_DIR
 from pipelines import run_classify_pipeline, run_pdf_pipeline
 from html.pages import (
     LANDING_PAGE, UPLOAD_PAGE, ERROR_PAGE,
     classify_progress_page, classify_result_page,
+    three_d_view_page,
+    progress_page, report_page,
     _RESTORE_PAGE_HTML, _LOGIN_PAGE_HTML, _SESSIONS_PAGE_HTML,
     _esc,
 )
@@ -142,6 +145,30 @@ async def classify_result_view(job_id: str):
     ))
 
 
+@router.get("/3d_view/{job_id}", response_class=HTMLResponse)
+async def three_d_view(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job or job.get("status") != "done":
+        candidate = DATA_DIR / f"{job_id}_classified.json"
+        if candidate.exists():
+            classified_path = str(candidate)
+        else:
+            return HTMLResponse(_RESTORE_PAGE_HTML.replace("{job_id}", job_id))
+    else:
+        classified_path = job.get("classified_path", "")
+
+    try:
+        with open(classified_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return HTMLResponse("<h1>データが見つかりません</h1>", status_code=404)
+
+    hands = data.get("hands", [])
+    return HTMLResponse(three_d_view_page(job_id, hands))
+
+
 @router.post("/generate_pdf/{job_id}")
 async def generate_pdf(job_id: str, background_tasks: BackgroundTasks):
     with jobs_lock:
@@ -243,3 +270,44 @@ async def download_extension():
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=pokergto-extension-v2.2.0.zip"},
     )
+
+
+# ─── PDF生成フロー（旧 legacy.py より移動） ─────────────────────────────────
+@router.get("/progress/{job_id}", response_class=HTMLResponse)
+async def progress(job_id: str):
+    with jobs_lock:
+        if job_id not in jobs:
+            return HTMLResponse("<h1>404</h1>", status_code=404)
+        mode = jobs[job_id].get("mode", "api")
+    return progress_page(job_id, mode)
+
+
+@router.get("/error/{job_id}", response_class=HTMLResponse)
+async def error_view(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id, {})
+    return HTMLResponse(ERROR_PAGE.format(log=_esc(job.get("log", "不明なエラー"))), status_code=500)
+
+
+@router.get("/report/{name}", response_class=HTMLResponse)
+async def report(name: str):
+    fpath = OUTPUT_DIR / name
+    if not fpath.exists() or fpath.suffix != ".pdf":
+        return HTMLResponse("<h1>404</h1>", status_code=404)
+    return report_page(name)
+
+
+@router.get("/pdf/{name}")
+async def serve_pdf(name: str):
+    fpath = OUTPUT_DIR / name
+    if not fpath.exists() or fpath.suffix != ".pdf":
+        return HTMLResponse("<h1>404</h1>", status_code=404)
+    return FileResponse(fpath, media_type="application/pdf", headers={"Content-Disposition": "inline"})
+
+
+@router.get("/download/{name}")
+async def download_pdf(name: str):
+    fpath = OUTPUT_DIR / name
+    if not fpath.exists() or fpath.suffix != ".pdf":
+        return HTMLResponse("<h1>404</h1>", status_code=404)
+    return FileResponse(fpath, media_type="application/pdf", filename=name)

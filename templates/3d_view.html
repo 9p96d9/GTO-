@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D可視化 - PokerGTO</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #1a1a2e;
+  --bg2:     #16213e;
+  --surface: #1e2240;
+  --surface2:#252a4a;
+  --border:  #2a2d4a;
+  --text:    #ccd6f6;
+  --text2:   #8892b0;
+  --blue:    #4a9eff;
+  --red:     #e94560;
+  --green:   #64ffda;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow: hidden; }
+
+/* ─── HEADER ─── */
+header {
+  height: 50px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; position: relative; z-index: 100;
+}
+.logo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; }
+.logo span { color: var(--blue); }
+.btn-back {
+  padding: 5px 14px; background: transparent;
+  border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text2); font-size: 12px; cursor: pointer;
+  text-decoration: none; transition: all .15s;
+}
+.btn-back:hover { border-color: var(--blue); color: var(--text); }
+.header-stats { display: flex; gap: 20px; }
+.stat-pill { font-size: 11px; color: var(--text2); }
+.stat-pill strong { color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; }
+
+/* ─── LAYOUT ─── */
+.app-body { display: flex; height: calc(100vh - 50px); }
+
+/* ─── SIDEBAR ─── */
+.sidebar {
+  width: 210px; min-width: 210px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.sidebar-section h4 {
+  font-size: 9px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text2); margin-bottom: 8px;
+}
+.y-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.y-btn {
+  flex: 1; padding: 7px 0; text-align: center;
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  color: var(--text2); background: transparent; border: none;
+  transition: all .15s;
+}
+.y-btn.active { background: var(--blue); color: #fff; }
+
+.filter-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text2);
+  font-size: 12px; cursor: pointer; transition: all .15s; margin-bottom: 4px;
+}
+.filter-btn:hover { border-color: var(--blue); color: var(--text); }
+.filter-btn.active { background: var(--surface2); border-color: var(--blue); color: var(--text); }
+.filter-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text2); margin-bottom: 5px; }
+.legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+.mini-stat { padding: 9px 10px; background: var(--surface); border-radius: 7px; margin-bottom: 6px; }
+.mini-stat .label { font-size: 10px; color: var(--text2); margin-bottom: 2px; }
+.mini-stat .value { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 600; }
+.mini-stat .value.pos { color: var(--green); }
+.mini-stat .value.neg { color: var(--red); }
+.mini-stat .value.blue { color: var(--blue); }
+
+/* ─── MAIN CANVAS ─── */
+.main-view { flex: 1; position: relative; overflow: hidden; }
+#three-canvas { display: block; width: 100%; height: 100%; }
+
+/* ─── TOOLTIP ─── */
+#tooltip {
+  position: absolute; z-index: 200;
+  background: rgba(15,20,40,.95);
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; pointer-events: none;
+  display: none; min-width: 180px;
+  backdrop-filter: blur(8px);
+}
+#tooltip .tt-title { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+#tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px; color: var(--text2); }
+#tooltip .tt-row span:last-child { color: var(--text); font-weight: 500; }
+
+/* ─── AXIS LABELS ─── */
+#axis-labels { position: absolute; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; }
+
+/* ─── CONTROLS HINT ─── */
+.controls-hint {
+  position: absolute; bottom: 14px; right: 14px;
+  font-size: 10px; color: var(--text2);
+  background: rgba(15,20,40,.7);
+  padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+/* ─── EMPTY STATE ─── */
+.empty-state {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; color: var(--text2);
+}
+.empty-state h2 { font-size: 18px; color: var(--text); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="btn-back" href="/classify_result/{{ job_id }}">&#x2190; 解析結果へ</a>
+  <div class="logo">Poker<span>GTO</span> 3D Visualizer</div>
+  <div class="header-stats">
+    <div class="stat-pill">青線 <strong id="hdr-blue" style="color:var(--blue)">—</strong></div>
+    <div class="stat-pill">赤線 <strong id="hdr-red" style="color:var(--red)">—</strong></div>
+    <div class="stat-pill">合計 <strong id="hdr-total">—</strong></div>
+  </div>
+</header>
+
+<div class="app-body">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h4>Y 軸</h4>
+      <div class="y-toggle">
+        <button class="y-btn active" id="y-hands">手数</button>
+        <button class="y-btn" id="y-profit">損益</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>フィルター</h4>
+      <button class="filter-btn active" data-filter="all">
+        <span class="filter-dot" style="background:var(--text2)"></span>すべて
+      </button>
+      <button class="filter-btn" data-filter="blue">
+        <span class="filter-dot" style="background:var(--blue)"></span>青線のみ
+      </button>
+      <button class="filter-btn" data-filter="red">
+        <span class="filter-dot" style="background:var(--red)"></span>赤線のみ
+      </button>
+      <button class="filter-btn" data-filter="3bet">
+        <span class="filter-dot" style="background:#f6c90e"></span>3BETポット
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>凡例</h4>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--blue)"></div>青線（ポジティブ）</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--red)"></div>赤線（要改善）</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>統計</h4>
+      <div class="mini-stat">
+        <div class="label">総損益</div>
+        <div class="value" id="stat-total-pl">—</div>
+      </div>
+      <div class="mini-stat">
+        <div class="label">青線 平均損益</div>
+        <div class="value blue" id="stat-avg-blue">—</div>
+      </div>
+      <div class="mini-stat">
+        <div class="label">赤線 平均損益</div>
+        <div class="value neg" id="stat-avg-red">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN VIEW -->
+  <div class="main-view" id="main-view">
+    <canvas id="three-canvas"></canvas>
+    <div id="tooltip"></div>
+    <div id="axis-labels"></div>
+    <div class="controls-hint">ドラッグ: 回転 &nbsp;|&nbsp; スクロール: ズーム &nbsp;|&nbsp; 右クリック: パン</div>
+  </div>
+</div>
+
+<!-- THREE.JS -->
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<!-- SERVER DATA -->
+<script>
+const HANDS_DATA = {{ hands_json }};
+const JOB_ID = "{{ job_id }}";
+</script>
+
+<script>
+// ─── 定数 ───────────────────────────────────────────────────────────────────
+const POS_ORDER = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
+
+const BLUE_COLOR = '#4a9eff';
+const RED_COLOR  = '#e94560';
+
+// ─── データ集計ユーティリティ ───────────────────────────────────────────────
+function getPositions(hands) {
+  const inData = new Set(hands.map(h => h.position));
+  const ordered = POS_ORDER.filter(p => inData.has(p));
+  // POS_ORDERに含まれない不明なポジションを末尾に追加
+  inData.forEach(p => { if (!ordered.includes(p)) ordered.push(p); });
+  return ordered;
+}
+
+function getCategories(hands) {
+  const blueCats = [...new Set(hands.filter(h => h.line === 'blue').map(h => h.category))];
+  const redCats  = [...new Set(hands.filter(h => h.line === 'red').map(h => h.category))];
+  return [...blueCats, ...redCats];
+}
+
+function getCatLine(hands) {
+  const map = {};
+  hands.forEach(h => { map[h.category] = h.line; });
+  return map;
+}
+
+function aggregate(hands, positions, categories) {
+  const grid = {};
+  positions.forEach(pos => {
+    grid[pos] = {};
+    categories.forEach(cat => { grid[pos][cat] = { count: 0, profit: 0 }; });
+  });
+  hands.forEach(h => {
+    if (grid[h.position] && grid[h.position][h.category] !== undefined) {
+      grid[h.position][h.category].count++;
+      grid[h.position][h.category].profit += h.profit;
+    }
+  });
+  return grid;
+}
+
+function computeStats(hands) {
+  const blue = hands.filter(h => h.line === 'blue');
+  const red  = hands.filter(h => h.line === 'red');
+  const totalPl  = hands.reduce((s, h) => s + h.profit, 0);
+  const avgBlue  = blue.length ? blue.reduce((s, h) => s + h.profit, 0) / blue.length : 0;
+  const avgRed   = red.length  ? red.reduce((s,  h) => s + h.profit, 0) / red.length  : 0;
+  return { totalPl, avgBlue, avgRed, blueCount: blue.length, redCount: red.length };
+}
+
+function updateSidebarStats(hands) {
+  const s = computeStats(hands);
+  const fmt = (v, dec=1) => (v >= 0 ? '+' : '') + v.toFixed(dec) + 'bb';
+
+  document.getElementById('hdr-blue').textContent  = s.blueCount;
+  document.getElementById('hdr-red').textContent   = s.redCount;
+  document.getElementById('hdr-total').textContent = hands.length;
+
+  const plEl = document.getElementById('stat-total-pl');
+  plEl.textContent = fmt(s.totalPl, 1);
+  plEl.className = 'value ' + (s.totalPl >= 0 ? 'pos' : 'neg');
+
+  document.getElementById('stat-avg-blue').textContent = fmt(s.avgBlue);
+  document.getElementById('stat-avg-red').textContent  = fmt(s.avgRed);
+}
+
+// ─── THREE.JS 変数 ──────────────────────────────────────────────────────────
+let scene, camera, renderer, controls;
+let barMeshes = [];
+let yMode = 'hands';
+let activeFilter = 'all';
+let filteredHands = [...HANDS_DATA];
+
+// ─── 初期化 ─────────────────────────────────────────────────────────────────
+function initThree() {
+  if (!HANDS_DATA.length) {
+    document.getElementById('main-view').innerHTML =
+      '<div class="empty-state"><h2>データがありません</h2><p>青線・赤線のハンドがありません</p></div>';
+    return;
+  }
+
+  const canvas    = document.getElementById('three-canvas');
+  const container = document.getElementById('main-view');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  renderer.setClearColor(0x1a1a2e, 1);
+  renderer.shadowMap.enabled = true;
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.016);
+
+  camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 500);
+  camera.position.set(16, 13, 20);
+  camera.lookAt(0, 0, 0);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance   = 6;
+  controls.maxDistance   = 60;
+  controls.maxPolarAngle = Math.PI / 2 + 0.05;
+
+  // ライト
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(20, 30, 20);
+  dir.castShadow = true;
+  scene.add(dir);
+  const fill = new THREE.DirectionalLight(0x4a9eff, 0.15);
+  fill.position.set(-10, 5, -10);
+  scene.add(fill);
+
+  updateSidebarStats(filteredHands);
+  buildGrid();
+  rebuildBars();
+  setupTooltip();
+  animate();
+
+  window.addEventListener('resize', onResize);
+}
+
+// ─── グリッド ────────────────────────────────────────────────────────────────
+const GAP = 0.5;
+
+function gridDimensions() {
+  const positions  = getPositions(filteredHands.length ? filteredHands : HANDS_DATA);
+  const categories = getCategories(filteredHands.length ? filteredHands : HANDS_DATA);
+  const nPos = positions.length || 1;
+  const nCat = categories.length || 1;
+  const totalX = nPos * (1 + GAP) - GAP;
+  const totalZ = nCat * (1 + GAP) - GAP;
+  return { nPos, nCat, totalX, totalZ, offX: -totalX / 2, offZ: -totalZ / 2 };
+}
+
+function buildGrid() {
+  scene.children.filter(c => c.userData.isGrid).forEach(c => scene.remove(c));
+
+  const { nPos, nCat, totalX, totalZ, offX, offZ } = gridDimensions();
+  const mat = new THREE.LineBasicMaterial({ color: 0x2a3550, transparent: true, opacity: 0.7 });
+
+  for (let i = 0; i <= nPos; i++) {
+    const x = offX + i * (1 + GAP) - GAP / 2;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, 0, offZ - GAP / 2),
+        new THREE.Vector3(x, 0, offZ + totalZ + GAP / 2),
+      ]), mat
+    );
+    line.userData.isGrid = true; scene.add(line);
+  }
+  for (let j = 0; j <= nCat; j++) {
+    const z = offZ + j * (1 + GAP) - GAP / 2;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(offX - GAP / 2, 0, z),
+        new THREE.Vector3(offX + totalX + GAP / 2, 0, z),
+      ]), mat
+    );
+    line.userData.isGrid = true; scene.add(line);
+  }
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(totalX + 2, totalZ + 2),
+    new THREE.MeshStandardMaterial({ color: 0x12152a, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.01;
+  floor.userData.isGrid = true;
+  scene.add(floor);
+}
+
+// ─── バー構築 ────────────────────────────────────────────────────────────────
+function rebuildBars() {
+  barMeshes.forEach(m => scene.remove(m));
+  barMeshes = [];
+
+  const hands      = filteredHands.length ? filteredHands : [];
+  const positions  = getPositions(hands);
+  const categories = getCategories(hands);
+  const catLine    = getCatLine(hands);
+  const data       = aggregate(hands, positions, categories);
+
+  if (!positions.length || !categories.length) return;
+
+  buildGrid();
+
+  const { totalX, totalZ, offX, offZ } = gridDimensions();
+
+  let maxVal = 0;
+  positions.forEach(pos => {
+    categories.forEach(cat => {
+      const v = yMode === 'hands'
+        ? data[pos][cat].count
+        : Math.abs(data[pos][cat].profit);
+      if (v > maxVal) maxVal = v;
+    });
+  });
+  if (maxVal === 0) maxVal = 1;
+  const MAX_H = 10;
+
+  positions.forEach((pos, pi) => {
+    categories.forEach((cat, ci) => {
+      const val = yMode === 'hands'
+        ? data[pos][cat].count
+        : Math.abs(data[pos][cat].profit);
+      if (val === 0) return;
+
+      const h = Math.max((val / maxVal) * MAX_H, 0.05);
+      const x = offX + pi * (1 + GAP);
+      const z = offZ + ci * (1 + GAP);
+
+      const line = catLine[cat] || 'blue';
+      const col  = new THREE.Color(line === 'blue' ? BLUE_COLOR : RED_COLOR);
+
+      // バー本体
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, h, 0.85),
+        new THREE.MeshStandardMaterial({
+          color: col, transparent: true, opacity: 0.82,
+          roughness: 0.3, metalness: 0.35,
+        })
+      );
+      mesh.position.set(x, h / 2, z);
+      mesh.castShadow = true;
+      mesh.userData = {
+        pos, cat, line,
+        count:  data[pos][cat].count,
+        profit: data[pos][cat].profit,
+        origColor: col.clone(),
+        isCap: false,
+      };
+      scene.add(mesh);
+      barMeshes.push(mesh);
+
+      // 上部キャップ（グロー）
+      const capCol = col.clone().lerp(new THREE.Color(1, 1, 1), 0.45);
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.87, 0.04, 0.87),
+        new THREE.MeshStandardMaterial({
+          color: capCol, emissive: capCol, emissiveIntensity: 0.5,
+          transparent: true, opacity: 0.9,
+        })
+      );
+      cap.position.set(x, h + 0.02, z);
+      cap.userData = { isCap: true };
+      scene.add(cap);
+      barMeshes.push(cap);
+    });
+  });
+
+  updateAxisLabels();
+}
+
+// ─── 軸ラベル ────────────────────────────────────────────────────────────────
+function updateAxisLabels() {
+  requestAnimationFrame(projectLabels);
+}
+
+function projectLabels() {
+  const ax        = document.getElementById('axis-labels');
+  const container = document.getElementById('main-view');
+  ax.innerHTML = '';
+  if (!renderer || !camera) return;
+
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  const hands      = filteredHands.length ? filteredHands : HANDS_DATA;
+  const positions  = getPositions(hands);
+  const categories = getCategories(hands);
+  const catLine    = getCatLine(hands);
+  const { offX, offZ, totalX, totalZ } = gridDimensions();
+
+  const project = (x, y, z) => {
+    const v = new THREE.Vector3(x, y, z).project(camera);
+    return { sx: (v.x * .5 + .5) * W, sy: (-v.y * .5 + .5) * H, behind: v.z > 1 };
+  };
+
+  // X軸ラベル（ポジション）
+  positions.forEach((pos, pi) => {
+    const x = offX + pi * (1 + GAP);
+    const p = project(x, 0, offZ + totalZ + 0.9);
+    if (p.behind) return;
+    const el = document.createElement('div');
+    el.style.cssText = `position:absolute;left:${p.sx}px;top:${p.sy}px;
+      transform:translate(-50%,-50%);font-size:10px;font-weight:700;
+      color:#ccd6f6;font-family:'Space Grotesk',sans-serif;
+      pointer-events:none;text-shadow:0 1px 4px #000`;
+    el.textContent = pos;
+    ax.appendChild(el);
+  });
+
+  // Z軸ラベル（カテゴリ）
+  categories.forEach((cat, ci) => {
+    const line = catLine[cat] || 'blue';
+    const z = offZ + ci * (1 + GAP);
+    const p = project(offX + totalX + 0.9, 0, z);
+    if (p.behind) return;
+    const el = document.createElement('div');
+    el.style.cssText = `position:absolute;left:${p.sx + 4}px;top:${p.sy}px;
+      transform:translateY(-50%);font-size:9px;
+      color:${line === 'blue' ? '#4a9eff' : '#e94560'};
+      font-family:'Inter',sans-serif;pointer-events:none;
+      white-space:nowrap;text-shadow:0 1px 3px #000;
+      max-width:110px;overflow:hidden;text-overflow:ellipsis`;
+    el.textContent = cat;
+    ax.appendChild(el);
+  });
+}
+
+// ─── ツールチップ ────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+let hoveredMesh = null;
+
+function setupTooltip() {
+  const canvas = document.getElementById('three-canvas');
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseleave', () => {
+    clearHover();
+    document.getElementById('tooltip').style.display = 'none';
+  });
+}
+
+function clearHover() {
+  if (hoveredMesh && !hoveredMesh.userData.isCap) {
+    hoveredMesh.material.emissive.set(0, 0, 0);
+    hoveredMesh.material.emissiveIntensity = 0;
+    hoveredMesh = null;
+  }
+}
+
+function onMouseMove(e) {
+  const rect = e.target.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const targets = barMeshes.filter(m => !m.userData.isCap);
+  const hits    = raycaster.intersectObjects(targets);
+  const tt      = document.getElementById('tooltip');
+
+  if (hits.length) {
+    const mesh = hits[0].object;
+    if (hoveredMesh && hoveredMesh !== mesh) clearHover();
+    hoveredMesh = mesh;
+    mesh.material.emissive = mesh.userData.origColor.clone().multiplyScalar(0.35);
+    mesh.material.emissiveIntensity = 1;
+
+    const d   = mesh.userData;
+    const avg = d.count > 0 ? (d.profit / d.count).toFixed(2) : '0.00';
+    const col = d.line === 'blue' ? '#4a9eff' : '#e94560';
+    const plSign = d.profit >= 0 ? '+' : '';
+    const avgSign = parseFloat(avg) >= 0 ? '+' : '';
+
+    tt.style.display = 'block';
+    tt.style.left    = (e.clientX - rect.left + 14) + 'px';
+    tt.style.top     = (e.clientY - rect.top  - 10) + 'px';
+    tt.innerHTML = `
+      <div class="tt-title" style="color:${col}">${d.cat}</div>
+      <div class="tt-row"><span>ポジション</span><span>${d.pos}</span></div>
+      <div class="tt-row"><span>手数</span><span>${d.count}</span></div>
+      <div class="tt-row"><span>損益合計</span>
+        <span style="color:${d.profit>=0?'#64ffda':'#e94560'}">${plSign}${d.profit.toFixed(1)}bb</span>
+      </div>
+      <div class="tt-row"><span>平均損益</span>
+        <span style="color:${parseFloat(avg)>=0?'#64ffda':'#e94560'}">${avgSign}${avg}bb</span>
+      </div>`;
+  } else {
+    clearHover();
+    tt.style.display = 'none';
+  }
+}
+
+// ─── アニメーションループ ────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  projectLabels();
+}
+
+// ─── リサイズ ────────────────────────────────────────────────────────────────
+function onResize() {
+  const container = document.getElementById('main-view');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+}
+
+// ─── フィルター ──────────────────────────────────────────────────────────────
+function applyFilter() {
+  if (activeFilter === 'all')  filteredHands = [...HANDS_DATA];
+  else if (activeFilter === 'blue') filteredHands = HANDS_DATA.filter(h => h.line === 'blue');
+  else if (activeFilter === 'red')  filteredHands = HANDS_DATA.filter(h => h.line === 'red');
+  else if (activeFilter === '3bet') filteredHands = HANDS_DATA.filter(h => h.is_3bet);
+  updateSidebarStats(filteredHands);
+  rebuildBars();
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    applyFilter();
+  });
+});
+
+document.getElementById('y-hands').addEventListener('click', () => {
+  yMode = 'hands';
+  document.getElementById('y-hands').classList.add('active');
+  document.getElementById('y-profit').classList.remove('active');
+  rebuildBars();
+});
+document.getElementById('y-profit').addEventListener('click', () => {
+  yMode = 'profit';
+  document.getElementById('y-profit').classList.add('active');
+  document.getElementById('y-hands').classList.remove('active');
+  rebuildBars();
+});
+
+// ─── 起動 ───────────────────────────────────────────────────────────────────
+initThree();
+</script>
+</body>
+</html>
