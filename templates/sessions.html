@@ -179,6 +179,12 @@ select:focus { outline: none; border-color: #e94560; }
 .history-link:hover { text-decoration: underline; }
 .history-no-snap { color: #556; font-size: 11px; white-space: nowrap; cursor: default; }
 .history-empty { color: #556; font-size: 12px; text-align: center; padding: 16px 0; }
+.history-del {
+  background: none; border: none; color: #334; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; line-height: 1;
+  transition: color .15s; flex-shrink: 0;
+}
+.history-del:hover { color: #e94560; }
 </style>
 </head>
 <body>
@@ -354,7 +360,7 @@ select:focus { outline: none; border-color: #e94560; }
             ? `<a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>`
             : `<span class="history-no-snap" title="ハンド数が多すぎるためスナップショットを保存できませんでした。再解析すると閲覧可能になります。">⚠ 再表示不可</span>`;
           return `
-          <div class="history-item">
+          <div class="history-item" id="hist-${a.job_id}">
             <div class="history-date">${fmtDate(a.created_at)}</div>
             <div class="history-counts">
               ${(a.hand_count||0).toLocaleString()}手
@@ -363,12 +369,38 @@ select:focus { outline: none; border-color: #e94560; }
               <span style="color:#778">PF:${a.pf_count||0}</span>
             </div>
             ${linkHtml}
+            <button class="history-del" onclick="deleteAnalysis('${a.job_id}')" title="この解析ログを削除">🗑</button>
           </div>`;
         }).join("");
       }
       section.style.display = "block";
     } catch (e) { /* silent */ }
   }
+
+  window.deleteAnalysis = async function(jobId) {
+    if (!confirm("この解析ログを削除しますか？\n（元に戻せません）")) return;
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`/api/analyses/${jobId}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token },
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        showAlert("削除失敗: " + (d.error || res.status));
+        return;
+      }
+      const el = document.getElementById("hist-" + jobId);
+      if (el) el.remove();
+      // 全削除後は空メッセージ表示
+      const list = document.getElementById("history-list");
+      if (list && !list.querySelector(".history-item")) {
+        list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
+      }
+    } catch (e) {
+      showAlert("削除エラー: " + e.message);
+    }
+  };
 
   onAuthStateChanged(auth, user => {
     if (!user) { window.location.href = "/login"; return; }

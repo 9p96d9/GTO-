@@ -346,6 +346,22 @@ async def api_analyses_list(request: Request):
     return JSONResponse({"analyses": analyses})
 
 
+@router.delete("/api/analyses/{job_id}")
+async def api_analyses_delete(job_id: str, request: Request):
+    from scripts.firebase_utils import is_firebase_enabled, delete_analysis
+    if not is_firebase_enabled():
+        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    try:
+        uid = get_uid_from_request(request)
+    except Exception as e:
+        return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
+    try:
+        delete_analysis(uid, job_id)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"ok": True})
+
+
 @router.post("/api/analyses/{job_id}/restore")
 async def api_analyses_restore(job_id: str, request: Request):
     from scripts.firebase_utils import is_firebase_enabled, get_analysis

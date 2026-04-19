@@ -281,24 +281,38 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
 
 
 def get_analyses(uid: str, limit: int = 20) -> list[dict]:
-    """Firestore から解析一覧を取得する（最新順、snapshot は除外）。"""
+    """Firestore から解析一覧を取得する（最新順、snapshot は除外）。
+    classified_snapshot / gemini_results はフィールドマスクで除外し転送量を削減する。
+    """
     db = get_db()
+    _META_FIELDS = [
+        "job_id", "created_at", "hand_count", "blue_count", "red_count", "pf_count",
+        "snapshot_encoding", "active_cart",
+    ]
     docs = (
         db.collection("users").document(uid).collection("analyses")
         .order_by("created_at", direction="DESCENDING")
         .limit(limit)
+        .select(_META_FIELDS)
         .stream()
     )
     result = []
     for doc in docs:
         d = doc.to_dict()
-        d["has_snapshot"] = "classified_snapshot" in d
-        d.pop("classified_snapshot", None)
+        # snapshot_encoding がある → 新形式スナップショットあり
+        # ない → スナップショットなし or 旧形式（旧形式は再表示不可として扱う）
+        d["has_snapshot"] = "snapshot_encoding" in d
         d.pop("snapshot_encoding", None)
         if hasattr(d.get("created_at"), "isoformat"):
             d["created_at"] = d["created_at"].isoformat()
         result.append(d)
     return result
+
+
+def delete_analysis(uid: str, job_id: str) -> None:
+    """Firestore から解析ドキュメントを削除する。"""
+    db = get_db()
+    db.collection("users").document(uid).collection("analyses").document(job_id).delete()
 
 
 def is_firebase_enabled() -> bool:
