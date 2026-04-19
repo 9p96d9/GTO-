@@ -2575,6 +2575,7 @@ select:focus { outline: none; border-color: #e94560; }
   white-space: nowrap;
 }
 .history-link:hover { text-decoration: underline; }
+.history-no-snap { color: #556; font-size: 11px; white-space: nowrap; cursor: default; }
 .history-empty { color: #556; font-size: 12px; text-align: center; padding: 16px 0; }
 </style>
 </head>
@@ -2746,7 +2747,11 @@ select:focus { outline: none; border-color: #e94560; }
       if (analyses.length === 0) {
         list.innerHTML = '<div class="history-empty">まだ解析履歴がありません</div>';
       } else {
-        list.innerHTML = analyses.map(a => `
+        list.innerHTML = analyses.map(a => {
+          const linkHtml = (a.has_snapshot !== false)
+            ? `<a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>`
+            : `<span class="history-no-snap" title="ハンド数が多すぎるためスナップショットを保存できませんでした。再解析すると閲覧可能になります。">⚠ 再表示不可</span>`;
+          return `
           <div class="history-item">
             <div class="history-date">${fmtDate(a.created_at)}</div>
             <div class="history-counts">
@@ -2755,9 +2760,9 @@ select:focus { outline: none; border-color: #e94560; }
               <span style="color:#e94560">&#11044;${a.red_count||0}</span>
               <span style="color:#778">PF:${a.pf_count||0}</span>
             </div>
-            <a class="history-link" href="/classify_result/${a.job_id}">結果を見る →</a>
-          </div>
-        `).join("");
+            ${linkHtml}
+          </div>`;
+        }).join("");
       }
       section.style.display = "block";
     } catch (e) { /* silent */ }

@@ -217,10 +217,12 @@ def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
 def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
     """
     解析結果を Firestore users/{uid}/analyses/{job_id} に保存する。
-    classified_snapshot が 900KB 以下の場合は全データを保存し True を返す。
+    gzip+base64 圧縮後に 900KB 以下の場合はスナップショットを保存し True を返す。
     超過する場合はメタデータのみ保存して False を返す。
     """
     import json as _json
+    import gzip as _gzip
+    import base64 as _b64
     db = get_db()
 
     hands = classified_data.get("hands", [])
@@ -234,8 +236,9 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
         if label:
             categories[label] = categories.get(label, 0) + 1
 
-    snapshot     = _json.dumps(classified_data, ensure_ascii=False)
-    has_snapshot = len(snapshot.encode("utf-8")) <= 900_000
+    raw_bytes    = _json.dumps(classified_data, ensure_ascii=False).encode("utf-8")
+    compressed   = _b64.b64encode(_gzip.compress(raw_bytes, compresslevel=9)).decode("ascii")
+    has_snapshot = len(compressed.encode("ascii")) <= 900_000
 
     doc_data: dict = {
         "job_id":     job_id,
@@ -247,14 +250,17 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
         "categories": categories,
     }
     if has_snapshot:
-        doc_data["classified_snapshot"] = snapshot
+        doc_data["classified_snapshot"]  = compressed
+        doc_data["snapshot_encoding"]    = "gzip_b64"
 
     db.collection("users").document(uid).collection("analyses").document(job_id).set(doc_data)
     return has_snapshot
 
 
 def get_analysis(uid: str, job_id: str) -> dict | None:
-    """Firestore から解析結果を取得する（classified_snapshot を含む）。"""
+    """Firestore から解析結果を取得する（classified_snapshot を含む・gzip_b64 は自動解凍）。"""
+    import gzip as _gzip
+    import base64 as _b64
     db = get_db()
     doc = (
         db.collection("users").document(uid)
@@ -266,6 +272,11 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
     d = doc.to_dict()
     if hasattr(d.get("created_at"), "isoformat"):
         d["created_at"] = d["created_at"].isoformat()
+    # gzip+base64 圧縮スナップショットを透過的に解凍（後方互換: encoding なし = 旧来の生JSON）
+    if d.get("snapshot_encoding") == "gzip_b64" and d.get("classified_snapshot"):
+        d["classified_snapshot"] = _gzip.decompress(
+            _b64.b64decode(d["classified_snapshot"])
+        ).decode("utf-8")
     return d
 
 
@@ -281,7 +292,9 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
     result = []
     for doc in docs:
         d = doc.to_dict()
+        d["has_snapshot"] = "classified_snapshot" in d
         d.pop("classified_snapshot", None)
+        d.pop("snapshot_encoding", None)
         if hasattr(d.get("created_at"), "isoformat"):
             d["created_at"] = d["created_at"].isoformat()
         result.append(d)
