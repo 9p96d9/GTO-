@@ -26,8 +26,8 @@
 | Phase 13 | AI解析品質向上（analyze2.py・detailモード・explainモード） | ✅ 完了 |
 | Phase 14 | server.py リファクタ（routes/ / pipelines.py / state.py 分割） | ✅ 完了 |
 | **Phase 15** | UI/UX改善・Groq統合・トークン見積もり・ソート | ✅ 完了（15-5のみ動画待ち） |
-| **Phase 16** | AI解析表示改善（スートカラーリング・ストリート別BET額） | ⬜ 次回 |
-| **Phase 17** | ランディング・セッションページ リデザイン（claude.ai/design活用） | ⬜ 次回 |
+| **Phase 16** | AI解析表示改善（スートカラーリング・ストリート別BET額） | ✅ 完了 |
+| **Phase 17** | ランディング・セッションページ リデザイン（claude.ai/design活用） | ✅ 完了（ランディングのみ） |
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・セキュリティ学習） | ⬜ 計画中 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
 | **Phase 20** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
