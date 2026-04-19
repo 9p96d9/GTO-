@@ -191,7 +191,7 @@ function esc(s) {
 }
 
 // 4色スート（♠黒・♥赤・♦青・♣緑）
-var _SUIT_COLORS = {'♠':'#1a1a1a','♥':'#d32f2f','♦':'#1565c0','♣':'#2e7d32'};
+var _SUIT_COLORS = {'♠':'#000000','♥':'#e53935','♦':'#1e88e5','♣':'#43a047'};
 function cardHtml(s) {
   if (!s) return '';
   return String(s).replace(/([23456789TJQKA]{1,2})([\u2660\u2665\u2666\u2663])/g, function(_, rank, suit) {
