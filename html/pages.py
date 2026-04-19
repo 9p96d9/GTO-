@@ -1457,14 +1457,8 @@ def classify_result_page(
         for cat in cat_order:
             cat_hands = [h for h in filtered_hands
                          if h.get("bluered_classification", {}).get("category") == cat]
-            # 3BETポット優先、次にラストストリート順、次にハンド番号順
-            cat_hands.sort(key=lambda h: (
-                0 if h.get("is_3bet_pot") else 1,
-                ["preflop","flop","turn","river"].index(
-                    h.get("bluered_classification", {}).get("last_street", "preflop")
-                ),
-                h.get("hand_number", 0)
-            ))
+            # ハンド番号順
+            cat_hands.sort(key=lambda h: h.get("hand_number", 0))
             if not cat_hands: continue
             cat_label = cat_hands[0].get("bluered_classification", {}).get("category_label", cat)
             cat_pl    = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
