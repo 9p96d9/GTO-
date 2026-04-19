@@ -84,7 +84,7 @@ LANDING_PAGE = """<!DOCTYPE html>
   .nav-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
   .hero {
     position: relative; display: flex; align-items: center; justify-content: center;
-    text-align: center; padding: 140px 5% 80px; overflow: hidden;
+    text-align: center; padding: 96px 5% 48px; overflow: hidden;
   }
   .hero::after {
     content: ''; position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
@@ -109,26 +109,26 @@ LANDING_PAGE = """<!DOCTYPE html>
   }
   .hero-inner { position: relative; z-index: 2; max-width: 780px; }
   .hero-badge {
-    display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px;
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px;
     border-radius: 100px; border: 1px solid rgba(76,175,147,0.35); background: rgba(76,175,147,0.08);
-    font-size: 0.78rem; font-weight: 500; color: var(--green); letter-spacing: 0.05em;
-    text-transform: uppercase; margin-bottom: 32px; animation: fadeUp 0.6s ease both;
+    font-size: 0.75rem; font-weight: 500; color: var(--green); letter-spacing: 0.05em;
+    text-transform: uppercase; margin-bottom: 16px; animation: fadeUp 0.6s ease both;
   }
   .hero-badge::before { content: '♠'; font-size: 0.7em; }
   .hero-title {
-    font-family: 'Space Grotesk', sans-serif; font-size: clamp(3.5rem, 9vw, 7.5rem);
-    font-weight: 800; line-height: 1; letter-spacing: -3px; color: #fff; margin-bottom: 28px;
+    font-family: 'Space Grotesk', sans-serif; font-size: clamp(2.8rem, 7vw, 5.5rem);
+    font-weight: 800; line-height: 1; letter-spacing: -2px; color: #fff; margin-bottom: 16px;
     animation: fadeUp 0.6s ease 0.1s both;
   }
   .hero-title .red { color: var(--red); }
   .hero-sub {
-    font-size: clamp(1rem, 2vw, 1.2rem); color: var(--text-muted); line-height: 1.7;
-    max-width: 560px; margin: 0 auto 12px; font-weight: 400; animation: fadeUp 0.6s ease 0.2s both;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem); color: var(--text-muted); line-height: 1.6;
+    max-width: 580px; margin: 0 auto; font-weight: 400; animation: fadeUp 0.6s ease 0.2s both;
   }
   .hero-sub strong { color: var(--text); font-weight: 500; }
   .hero-ctas {
     display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
-    margin-top: 36px; animation: fadeUp 0.6s ease 0.3s both;
+    margin-top: 24px; animation: fadeUp 0.6s ease 0.3s both;
   }
   .btn-primary {
     display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px;
@@ -147,8 +147,8 @@ LANDING_PAGE = """<!DOCTYPE html>
     transition: transform 0.15s, background 0.2s, border-color 0.2s;
   }
   .btn-secondary:hover { transform: translateY(-2px); background: var(--surface-hover); border-color: rgba(255,255,255,0.22); }
-  .section { position: relative; z-index: 1; padding: 100px 5%; }
-  .section-header { text-align: center; margin-bottom: 64px; }
+  .section { position: relative; z-index: 1; padding: 60px 5%; }
+  .section-header { text-align: center; margin-bottom: 40px; }
   .section-eyebrow { font-size: 0.75rem; font-weight: 600; color: var(--red); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 16px; }
   .section-title { font-family: 'Space Grotesk', sans-serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -1.5px; color: #fff; line-height: 1.1; }
   .section-title span { color: var(--red); }
@@ -195,9 +195,9 @@ LANDING_PAGE = """<!DOCTYPE html>
   .video-toggle-btn:hover { background: rgba(233,69,96,0.14); border-color: rgba(233,69,96,0.5); }
   .video-toggle-btn .play-icon { width: 16px; height: 16px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .video-toggle-btn .play-icon svg { width: 7px; height: 7px; }
-  .video-collapse { overflow: hidden; max-height: 0; transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, margin-top 0.3s ease; opacity: 0; margin-top: 0; }
-  .video-collapse.open { max-height: 400px; opacity: 1; margin-top: 16px; }
-  .video-collapse video { width: 100%; border-radius: 10px; border: 1px solid rgba(233,69,96,0.2); background: #000; display: block; position: relative; z-index: 1; }
+  .video-collapse { overflow: visible; max-height: 0; transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, margin-top 0.3s ease; opacity: 0; margin-top: 0; pointer-events: none; }
+  .video-collapse.open { max-height: 1200px; opacity: 1; margin-top: 16px; pointer-events: auto; }
+  .video-collapse video { width: 100%; border-radius: 10px; border: 1px solid rgba(233,69,96,0.2); background: #000; display: block; }
   .copy-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 8px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted); cursor: pointer; transition: background 0.2s; font-family: 'Inter', sans-serif; }
   .copy-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
   .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1100px; margin: 64px auto 0; }
@@ -261,8 +261,7 @@ LANDING_PAGE = """<!DOCTYPE html>
   <div class="hero-inner">
     <div class="hero-badge">T4 Poker · ハンド自動収集 &amp; GTO 分析</div>
     <h1 class="hero-title">Poker<span class="red">GTO</span></h1>
-    <p class="hero-sub">T4 ポーカーのハンドを自動収集し、プレイ後すぐに<strong> GTO 分析レポート</strong>を生成。</p>
-    <p class="hero-sub" style="font-size:clamp(0.875rem,1.5vw,1rem)">Chrome 拡張機能をインストールするだけ。T4 でプレイすれば自動でハンドをクラウドに保存、ボタン1つで分析します。</p>
+    <p class="hero-sub">Chrome 拡張機能をインストールするだけ。T4 でプレイすれば自動でハンドを収集し、ボタン1つで<strong> GTO 分析レポート</strong>を生成します。</p>
     <div class="hero-ctas">
       <a href="/download-extension" class="btn-primary">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
