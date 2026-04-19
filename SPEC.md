@@ -1,7 +1,7 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 6.4
-**最終更新:** 2026-04-19
+**バージョン:** 6.5
+**最終更新:** 2026-04-20
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
 
@@ -225,7 +225,9 @@ users/{uid}/analyses/{job_id}   # Phase 8: 解析結果永続化
   ├── created_at:   timestamp
   ├── hand_count / blue_count / red_count / pf_count: number
   ├── categories:   object       # カテゴリ別内訳
-  ├── classified_snapshot: string  # classified.json（900KB上限、超過時は省略）
+  ├── classified_snapshot: string  # classified.json の gzip+base64 圧縮（圧縮後900KB上限、超過時は省略）
+  ├── snapshot_encoding:  string  # "gzip_b64"（旧レコードはフィールドなし＝生JSON）
+  ├── has_snapshot:       bool    # 一覧取得API（get_analyses）が付与する派生フラグ（Firestoreには非保存）
   ├── active_cart:  [42, 17, 88]   # アクティブカートのhand_number配列（Phase 12）
   └── gemini_results: {           # AI解析結果（Phase 12）※フィールド名はGroq使用時も維持（後方互換）
         "42": {
@@ -491,7 +493,7 @@ Phase 12 からの持ち越し。Phase 15 で実装予定。
 
 ---
 
-## 11. Phase 15: UI/UX改善・Groq統合・ソート（⬜ 次回）
+## 11. Phase 15: UI/UX改善・Groq統合・ソート（✅ 完了）
 
 ### 実装順序
 
@@ -820,6 +822,14 @@ user_settings  (id, user_id FK UNIQUE, encrypted_api_key, auto_cart BOOL, update
 ## 17. Phase 20: バグ修正・仕上げ（⬜ 計画中）
 
 既知バグの洗い出しと修正。現行機能のエッジケース対応。
+
+### 実施済み改善（Phase 20 先行対応）
+
+| 日付 | 内容 |
+|---|---|
+| 2026-04-20 | 分類カテゴリ内のソートをハンド番号昇順（H1, H2...）に変更 |
+| 2026-04-20 | classified_snapshot を gzip+base64 圧縮保存（圧縮前比5〜10倍のハンド数を格納可能に） |
+| 2026-04-20 | sessions 解析履歴で has_snapshot=false の場合「⚠ 再表示不可」を表示しリンクを非表示化 |
 
 ### バグ調査方針
 
