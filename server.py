@@ -28,15 +28,13 @@ STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ─── ルーター登録 ────────────────────────────────────────────────────────────
-from routes.pages  import router as pages_router
-from routes.api    import router as api_router
-from routes.cart   import router as cart_router
-from routes.legacy import router as legacy_router
+from routes.pages import router as pages_router
+from routes.api   import router as api_router
+from routes.cart  import router as cart_router
 
 app.include_router(pages_router)
 app.include_router(api_router)
 app.include_router(cart_router)
-app.include_router(legacy_router)
 
 # ─── メイン ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
