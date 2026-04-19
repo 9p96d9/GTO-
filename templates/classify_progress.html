@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>解析中... - ポーカーGTO</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e; color: #eee;
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+.card {
+  background: #16213e; border-radius: 16px;
+  padding: 48px 56px; width: 100%; max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center;
+}
+h1 { font-size: 20px; margin-bottom: 8px; color: #e94560; }
+.status-msg { font-size: 14px; color: #aaa; margin-bottom: 24px; min-height: 20px; }
+.progress-bar-wrap {
+  background: #0f0f1a; border-radius: 99px;
+  height: 6px; overflow: hidden; margin-bottom: 6px;
+}
+.progress-bar {
+  height: 100%; background: #e94560; border-radius: 99px;
+  transition: width 0.5s ease; width: 5%;
+}
+.elapsed { font-size: 12px; color: #555; margin-bottom: 24px; }
+.steps { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px; border-radius: 8px;
+  background: #0f0f1a; font-size: 14px; color: #555;
+  transition: all 0.3s; border-left: 3px solid transparent;
+}
+.step.active { background: rgba(233,69,96,0.1); color: #eee; border-left-color: #e94560; }
+.step.done   { background: rgba(76,175,147,0.08); color: #4caf93; border-left-color: #4caf93; }
+.step-icon { width: 22px; text-align: center; flex-shrink: 0; font-size: 16px; margin-top: 1px; }
+.step-body { flex: 1; }
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid #444; border-top-color: #e94560;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 540px) { .card { padding: 28px 16px; } }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>&#x1F0A1; 解析中...</h1>
+  <p class="status-msg" id="msg">処理を開始しています...</p>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="pbar"></div></div>
+  <p class="elapsed" id="elapsed"></p>
+  <div class="steps">
+    <div class="step active" id="step1">
+      <span class="step-icon" id="icon1"><span class="spinner"></span></span>
+      <div class="step-body"><span id="label1">ハンド履歴をパース中...</span></div>
+    </div>
+    <div class="step" id="step2">
+      <span class="step-icon" id="icon2">2</span>
+      <div class="step-body"><span id="label2">青線/赤線を分類</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const JOB_ID = '{{ job_id }}';
+let startTime = Date.now();
+let sseActive = false;
+
+setInterval(() => {
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  document.getElementById('elapsed').textContent =
+    m > 0 ? `経過時間: ${m}分${sec}秒` : `経過時間: ${sec}秒`;
+}, 1000);
+
+function setPbar(pct) { document.getElementById('pbar').style.width = pct + '%'; }
+function markDone(n) {
+  document.getElementById('step' + n).className = 'step done';
+  document.getElementById('icon' + n).textContent = '✓';
+}
+function markActive(n) {
+  document.getElementById('step' + n).className = 'step active';
+  document.getElementById('icon' + n).innerHTML = '<span class="spinner"></span>';
+}
+
+const es = new EventSource('/stream/' + JOB_ID);
+const fallbackTimer = setTimeout(() => {
+  if (!sseActive) { es.close(); pollFallback(); }
+}, 10000);
+
+es.onmessage = function(e) {
+  sseActive = true;
+  clearTimeout(fallbackTimer);
+  const d = JSON.parse(e.data);
+
+  if (d.type === 'parse_done') {
+    markDone(1);
+    document.getElementById('label1').textContent =
+      `ハンド履歴を解析しました（${d.hands_total}ハンド検出）`;
+    markActive(2);
+    setPbar(50);
+    document.getElementById('msg').textContent = '青線/赤線を分類中...';
+
+  } else if (d.type === 'classify_done' || d.type === 'done') {
+    markDone(1); markDone(2);
+    setPbar(100);
+    document.getElementById('msg').textContent = '完了！結果を表示します...';
+    es.close();
+    setTimeout(() => { window.location.href = '/classify_result/' + JOB_ID; }, 500);
+
+  } else if (d.type === 'error') {
+    document.getElementById('msg').textContent = 'エラーが発生しました';
+    es.close();
+    setTimeout(() => { window.location.href = '/error/' + JOB_ID; }, 1000);
+  }
+};
+
+es.onerror = function() {
+  if (sseActive) return;
+  es.close();
+  clearTimeout(fallbackTimer);
+  pollFallback();
+};
+
+async function pollFallback() {
+  if (sseActive) return;
+  try {
+    const res  = await fetch('/status/' + JOB_ID);
+    const data = await res.json();
+    if (data.status === 'done') {
+      window.location.href = '/classify_result/' + JOB_ID;
+      return;
+    }
+    if (data.status === 'error') {
+      window.location.href = '/error/' + JOB_ID;
+      return;
+    }
+    const s = data.step || 0;
+    setPbar(s >= 2 ? 50 : 10);
+    if (s >= 1) markDone(1);
+    if (s >= 2) markActive(2);
+  } catch(_) {}
+  if (!sseActive) setTimeout(pollFallback, 2000);
+}
+</script>
+</body>
+</html>

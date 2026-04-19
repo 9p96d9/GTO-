@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokerGTO — リアルタイム GTO 分析</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a; --bg2: #0d1224;
+    --surface: rgba(255,255,255,0.04); --surface-hover: rgba(255,255,255,0.07);
+    --border: rgba(255,255,255,0.08); --border-bright: rgba(255,255,255,0.14);
+    --red: #e94560; --red-dim: rgba(233,69,96,0.15); --red-glow: rgba(233,69,96,0.3);
+    --green: #4caf93; --green-dim: rgba(76,175,147,0.15);
+    --text: #e0e0e0; --text-muted: #7a8099; --text-dim: #4a5168;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 60px 60px; pointer-events: none; z-index: 0;
+  }
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 5%; height: 64px;
+    background: rgba(10,14,26,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-user {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+    cursor: pointer; transition: background 0.2s; text-decoration: none;
+  }
+  .nav-user:hover { background: var(--surface-hover); }
+  .nav-user-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--red), #c0392b);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .nav-user-name { font-size: 0.82rem; font-weight: 500; color: var(--text); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-login-btn {
+    display: flex; align-items: center; gap: 7px; padding: 7px 14px;
+    border-radius: 8px; border: 1px solid rgba(233,69,96,0.35); background: rgba(233,69,96,0.08);
+    color: var(--red); font-size: 0.82rem; font-weight: 500; text-decoration: none;
+    transition: background 0.2s; font-family: 'Inter', sans-serif;
+  }
+  .nav-login-btn:hover { background: rgba(233,69,96,0.15); }
+  .nav-logo {
+    font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 800;
+    letter-spacing: -0.5px; color: var(--text); text-decoration: none;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .nav-logo .suit { color: var(--red); font-size: 1.1rem; }
+  .nav-logo span { color: var(--red); }
+  .nav-btn {
+    display: flex; align-items: center; gap: 8px; padding: 9px 20px;
+    border-radius: 8px; border: 1px solid var(--border-bright); background: var(--surface);
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500;
+    cursor: pointer; text-decoration: none; transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  }
+  .nav-btn:hover { background: var(--surface-hover); transform: translateY(-1px); }
+  .nav-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .hero {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 96px 5% 48px; overflow: hidden;
+  }
+  .hero::after {
+    content: ''; position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
+    width: 700px; height: 500px;
+    background: radial-gradient(ellipse at center, rgba(233,69,96,0.12) 0%, rgba(76,175,147,0.05) 40%, transparent 70%);
+    pointer-events: none;
+  }
+  .suits-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .suit-mark {
+    position: absolute; font-size: 180px; opacity: 0.028; color: var(--text);
+    user-select: none; animation: floatSuit 20s ease-in-out infinite;
+  }
+  .suit-mark:nth-child(1) { top: 8%; left: 5%; animation-delay: 0s; }
+  .suit-mark:nth-child(2) { top: 60%; left: 2%; font-size: 120px; animation-delay: -5s; }
+  .suit-mark:nth-child(3) { top: 10%; right: 4%; animation-delay: -10s; }
+  .suit-mark:nth-child(4) { bottom: 15%; right: 6%; font-size: 140px; animation-delay: -15s; }
+  .suit-mark:nth-child(5) { top: 40%; left: 50%; font-size: 260px; opacity: 0.015; animation-delay: -7s; }
+  @keyframes floatSuit {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    33% { transform: translateY(-18px) rotate(3deg); }
+    66% { transform: translateY(10px) rotate(-2deg); }
+  }
+  .hero-inner { position: relative; z-index: 2; max-width: 780px; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px;
+    border-radius: 100px; border: 1px solid rgba(76,175,147,0.35); background: rgba(76,175,147,0.08);
+    font-size: 0.75rem; font-weight: 500; color: var(--green); letter-spacing: 0.05em;
+    text-transform: uppercase; margin-bottom: 16px; animation: fadeUp 0.6s ease both;
+  }
+  .hero-badge::before { content: '♠'; font-size: 0.7em; }
+  .hero-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: clamp(2.8rem, 7vw, 5.5rem);
+    font-weight: 800; line-height: 1; letter-spacing: -2px; color: #fff; margin-bottom: 16px;
+    animation: fadeUp 0.6s ease 0.1s both;
+  }
+  .hero-title .red { color: var(--red); }
+  .hero-sub {
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem); color: var(--text-muted); line-height: 1.6;
+    max-width: 580px; margin: 0 auto; font-weight: 400; animation: fadeUp 0.6s ease 0.2s both;
+  }
+  .hero-sub strong { color: var(--text); font-weight: 500; }
+  .hero-ctas {
+    display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+    margin-top: 24px; animation: fadeUp 0.6s ease 0.3s both;
+  }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px;
+    border-radius: 10px; background: var(--red); color: #fff;
+    font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 600;
+    border: none; cursor: pointer; text-decoration: none;
+    transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+    box-shadow: 0 0 30px rgba(233,69,96,0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 45px rgba(233,69,96,0.5); background: #f25470; }
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px;
+    border-radius: 10px; background: transparent; color: var(--text);
+    font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 500;
+    border: 1px solid var(--border-bright); cursor: pointer; text-decoration: none;
+    transition: transform 0.15s, background 0.2s, border-color 0.2s;
+  }
+  .btn-secondary:hover { transform: translateY(-2px); background: var(--surface-hover); border-color: rgba(255,255,255,0.22); }
+  .section { position: relative; z-index: 1; padding: 60px 5%; }
+  .section-header { text-align: center; margin-bottom: 40px; }
+  .section-eyebrow { font-size: 0.75rem; font-weight: 600; color: var(--red); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 16px; }
+  .section-title { font-family: 'Space Grotesk', sans-serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -1.5px; color: #fff; line-height: 1.1; }
+  .section-title span { color: var(--red); }
+  .section-desc { font-size: 1rem; color: var(--text-muted); margin-top: 16px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+  .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto; }
+  @media (min-width: 900px) {
+    .steps-grid { grid-template-columns: repeat(4, 1fr); }
+    .step-card:nth-child(1) { grid-column: 1 / -1; }
+  }
+  @media (min-width: 600px) and (max-width: 899px) {
+    .steps-grid { grid-template-columns: repeat(2, 1fr); }
+    .step-card:nth-child(1) { grid-column: 1 / -1; }
+  }
+  .step-card {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .step-card::before {
+    content: ''; position: absolute; inset: 0; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+  .step-card:hover { transform: translateY(-4px); border-color: rgba(233,69,96,0.3); box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 30px rgba(233,69,96,0.08); }
+  .step-number {
+    font-family: 'Space Grotesk', sans-serif; font-size: 0.7rem; font-weight: 700; color: var(--red);
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .step-number::before { content: ''; display: inline-block; width: 24px; height: 2px; background: var(--red); border-radius: 2px; }
+  .step-icon { width: 44px; height: 44px; border-radius: 10px; background: var(--red-dim); border: 1px solid rgba(233,69,96,0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 1.2rem; }
+  .step-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 10px; letter-spacing: -0.3px; }
+  .step-desc { font-size: 0.875rem; color: var(--text-muted); line-height: 1.7; }
+  .step-desc a { color: var(--red); text-decoration: none; }
+  .step-desc a:hover { text-decoration: underline; }
+  .step-desc code { background: rgba(255,255,255,0.08); border-radius: 4px; padding: 1px 6px; font-size: 0.82em; color: var(--text); }
+  .step-suit { position: absolute; bottom: 16px; right: 20px; font-size: 3.5rem; opacity: 0.06; color: var(--text); pointer-events: none; user-select: none; }
+  .video-toggle-btn {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; padding: 7px 14px;
+    border-radius: 8px; border: 1px solid rgba(233,69,96,0.3); background: rgba(233,69,96,0.08);
+    color: var(--red); font-size: 0.78rem; font-weight: 500; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: background 0.2s, border-color 0.2s; user-select: none;
+  }
+  .video-toggle-btn:hover { background: rgba(233,69,96,0.14); border-color: rgba(233,69,96,0.5); }
+  .video-toggle-btn .play-icon { width: 16px; height: 16px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .video-toggle-btn .play-icon svg { width: 7px; height: 7px; }
+  .video-collapse { overflow: visible; max-height: 0; transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, margin-top 0.3s ease; opacity: 0; margin-top: 0; pointer-events: none; }
+  .video-collapse.open { max-height: 1200px; opacity: 1; margin-top: 16px; pointer-events: auto; }
+  .video-collapse video { width: 100%; border-radius: 10px; border: 1px solid rgba(233,69,96,0.2); background: #000; display: block; }
+  .copy-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 8px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted); cursor: pointer; transition: background 0.2s; font-family: 'Inter', sans-serif; }
+  .copy-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1100px; margin: 64px auto 0; }
+  @media (max-width: 700px) { .feature-row { grid-template-columns: 1fr; } }
+  .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; transition: transform 0.2s, border-color 0.2s; }
+  .feature-card:hover { transform: translateY(-3px); border-color: var(--border-bright); }
+  .feature-card.accent-green { border-color: rgba(76,175,147,0.2); }
+  .feature-card.accent-green:hover { border-color: rgba(76,175,147,0.4); box-shadow: 0 16px 40px rgba(76,175,147,0.08); }
+  .feature-card-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px; }
+  .tag-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(233,69,96,0.2); }
+  .tag-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,147,0.2); }
+  .feature-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-bottom: 10px; }
+  .feature-card-desc { font-size: 0.875rem; color: var(--text-muted); line-height: 1.7; }
+  .feature-card-mock { margin-top: 24px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 16px; font-family: 'Space Grotesk', monospace; font-size: 0.8rem; }
+  .mock-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .mock-row:last-child { border-bottom: none; }
+  .mock-action { color: var(--text-muted); }
+  .mock-val { font-weight: 700; }
+  .mock-val.pos { color: var(--green); }
+  .mock-val.neg { color: var(--red); }
+  .mock-val.neutral { color: var(--text); }
+  footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 40px 5%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+  .footer-logo { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700; color: var(--text-muted); text-decoration: none; }
+  .footer-logo span { color: var(--red); }
+  .footer-links { display: flex; gap: 28px; list-style: none; }
+  .footer-links a { font-size: 0.82rem; color: var(--text-dim); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text-muted); }
+  .footer-copy { font-size: 0.78rem; color: var(--text-dim); }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+  @media (max-width: 600px) {
+    footer { flex-direction: column; align-items: flex-start; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo"><span class="suit">♠</span>Poker<span>GTO</span></a>
+  <div class="nav-right">
+    <div id="nav-login-area">
+      <a href="/login" class="nav-login-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
+        </svg>
+        Google でログイン
+      </a>
+    </div>
+    <a href="/sessions" class="nav-btn"><span class="dot"></span>セッション一覧</a>
+  </div>
+</nav>
+
+<section class="hero" id="home">
+  <div class="suits-bg">
+    <div class="suit-mark">♠</div><div class="suit-mark">♥</div>
+    <div class="suit-mark">♦</div><div class="suit-mark">♣</div>
+    <div class="suit-mark">♠</div>
+  </div>
+  <div class="hero-inner">
+    <div class="hero-badge">T4 Poker · ハンド自動収集 &amp; GTO 分析</div>
+    <h1 class="hero-title">Poker<span class="red">GTO</span></h1>
+    <p class="hero-sub">Chrome 拡張機能をインストールするだけ。T4 でプレイすれば自動でハンドを収集し、ボタン1つで<strong> GTO 分析レポート</strong>を生成します。</p>
+    <div class="hero-ctas">
+      <a href="/download-extension" class="btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        ⬇ 拡張機能をダウンロード
+      </a>
+      <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="howto">
+  <div class="section-header fade-in">
+    <div class="section-eyebrow">使い方</div>
+    <h2 class="section-title">5ステップで<span>始める</span></h2>
+    <p class="section-desc">セットアップから初回解析まで、すぐに始められます。</p>
+  </div>
+
+  <div class="steps-grid">
+    <div class="step-card fade-in">
+      <div class="step-number">STEP 01</div>
+      <div class="step-icon">⬇</div>
+      <div class="step-title">拡張機能をインストール</div>
+      <div class="step-desc">「拡張機能をダウンロード」から ZIP を取得して解凍。Chrome のアドレスバーに
+        <code>chrome://extensions</code>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('chrome://extensions').then(()=>{this.textContent='✓ コピー済';setTimeout(()=>this.textContent='コピー',1500)})">コピー</button>
+        と入力して「パッケージ化されていない拡張機能を読み込む」から <code>tenfour-scraper</code> フォルダを選択。
+      </div>
+      <button class="video-toggle-btn" onclick="toggleVideo('step1-video', this)" aria-expanded="false">
+        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
+        <span class="btn-label">インストール動画を見る</span>
+      </button>
+      <div class="video-collapse" id="step1-video">
+        <video controls preload="none"><source src="/static/exex.mp4" type="video/mp4"></video>
+      </div>
+      <div class="step-suit">♠</div>
+    </div>
+    <div class="step-card fade-in">
+      <div class="step-number">STEP 02</div>
+      <div class="step-icon">🔑</div>
+      <div class="step-title">Google ログイン</div>
+      <div class="step-desc">拡張機能のポップアップを開いて Google アカウントでログイン。ハンドログがクラウドに自動保存されるようになります。</div>
+      <button class="video-toggle-btn" onclick="toggleVideo('step2-video', this)" aria-expanded="false">
+        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
+        <span class="btn-label">ログイン動画を見る</span>
+      </button>
+      <div class="video-collapse" id="step2-video">
+        <video controls preload="none"><source src="/static/PR.mp4" type="video/mp4"></video>
+      </div>
+      <div class="step-suit">♥</div>
+    </div>
+    <div class="step-card fade-in">
+      <div class="step-number">STEP 03</div>
+      <div class="step-icon">🃏</div>
+      <div class="step-title">T4 でプレイするだけ</div>
+      <div class="step-desc"><a href="https://tenfour-poker.com" target="_blank" rel="noopener">tenfour-poker.com</a> にアクセスしてプレイ。拡張機能が WebSocket を傍受し、各ハンドをリアルタイムでクラウドに蓄積します。手動操作は一切不要。</div>
+      <div class="step-suit">♦</div>
+    </div>
+    <div class="step-card fade-in">
+      <div class="step-number">STEP 04</div>
+      <div class="step-icon">⚡</div>
+      <div class="step-title">セッション画面で解析</div>
+      <div class="step-desc">プレイ後に <a href="/sessions">/sessions</a> を開いて「⚡ 解析する」ボタンを押すだけ。GTO 観点でハンドを分類した結果レポートが生成されます。</div>
+      <div class="step-suit">♣</div>
+    </div>
+    <div class="step-card fade-in">
+      <div class="step-number">STEP 05</div>
+      <div class="step-icon">🤖</div>
+      <div class="step-title">（任意）AI 解説で深掘り</div>
+      <div class="step-desc">解析結果で気になったハンドを「解析カート」に追加。<a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a> の無料 API キー（カード登録不要）を登録するだけで AI が GTO 評価と改善ポイントを詳しく解説します。</div>
+      <div class="step-suit">♠</div>
+    </div>
+  </div>
+
+  <div class="feature-row">
+    <div class="feature-card fade-in">
+      <div class="feature-card-tag tag-red">⚡ GTO 分類レポート</div>
+      <div class="feature-card-title">GTO 分類レポート</div>
+      <div class="feature-card-desc">ハンドをショーダウンの有無・アグレッション・最終ストリートで自動分類。「青線（ショーダウン）」「赤線（ノーショーダウン）」に分けて弱点を可視化します。</div>
+      <div class="feature-card-mock">
+        <div class="mock-row"><span class="mock-action">バリュー成功</span><span class="mock-val pos">✓</span></div>
+        <div class="mock-row"><span class="mock-action">ブラフ失敗</span><span class="mock-val neg">△</span></div>
+        <div class="mock-row"><span class="mock-action">フォールド判断</span><span class="mock-val neutral">要確認 ★</span></div>
+      </div>
+    </div>
+    <div class="feature-card accent-green fade-in">
+      <div class="feature-card-tag tag-green">🤖 Groq AI 解説</div>
+      <div class="feature-card-title">Groq AI 解説</div>
+      <div class="feature-card-desc">Groq の高速 LLM がハンドを GTO 観点で評価。「代替ライン」「EV 損失推定」「Hero 表現レンジ」まで具体的にフィードバックします。API キーは無料で取得可能。</div>
+      <div class="feature-card-mock">
+        <div class="mock-row"><span class="mock-action">GTO 評価</span><span class="mock-val neg">改善</span></div>
+        <div class="mock-row"><span class="mock-action">一言</span><span class="mock-val neutral">リバーでベットを検討</span></div>
+        <div class="mock-row"><span class="mock-action">EV 損失推定</span><span class="mock-val neg">−1.2bb</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <a href="/" class="footer-logo">Poker<span>GTO</span> ♠</a>
+  <ul class="footer-links">
+    <li><a href="/">ホーム</a></li>
+    <li><a href="#howto">使い方</a></li>
+    <li><a href="/sessions">セッション一覧</a></li>
+    <li><a href="/legacy">手動アップロード（旧版）</a></li>
+    <li><a href="/login">ログイン</a></li>
+  </ul>
+  <div class="footer-copy">© 2026 PokerGTO.</div>
+</footer>
+
+<script type="module">
+  // ── ナビ: Firebase でログイン状態を反映 ──
+  try {
+    const { initializeApp, getApps, getApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const cfg = await fetch('/api/firebase-config').then(r => r.json());
+    const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
+    const auth = getAuth(app);
+    onAuthStateChanged(auth, user => {
+      if (!user) return;
+      const name = user.displayName || user.email || 'User';
+      const initials = name.slice(0, 2).toUpperCase();
+      document.getElementById('nav-login-area').innerHTML =
+        `<a href="/sessions" class="nav-user">
+           <div class="nav-user-avatar">${initials}</div>
+           <span class="nav-user-name">${name}</span>
+         </a>`;
+    });
+  } catch(e) { /* Firebase 未設定環境ではスキップ */ }
+</script>
+
+<script>
+  function toggleVideo(id, btn) {
+    const panel = document.getElementById(id);
+    const isOpen = panel.classList.toggle('open');
+    btn.setAttribute('aria-expanded', isOpen);
+    btn.querySelector('.btn-label').textContent = isOpen ? '動画を閉じる' : btn.querySelector('.btn-label').textContent.replace('動画を閉じる', btn.id);
+    if (!isOpen) panel.querySelector('video').pause();
+  }
+
+  // ラベルを最初に保存してトグル時に復元
+  document.querySelectorAll('.video-toggle-btn').forEach(btn => {
+    const label = btn.querySelector('.btn-label');
+    label.dataset.original = label.textContent;
+    btn.onclick = function() {
+      const targetId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+      const panel = document.getElementById(targetId);
+      const isOpen = panel.classList.toggle('open');
+      this.setAttribute('aria-expanded', isOpen);
+      label.textContent = isOpen ? '動画を閉じる' : label.dataset.original;
+      if (!isOpen) panel.querySelector('video').pause();
+    };
+  });
+
+  // スクロールフェードイン
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

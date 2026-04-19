@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>クイック解析 — ポーカーGTO</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Meiryo',sans-serif;background:#1a1a2e;color:#eee;min-height:100vh}
+.topbar{background:#16213e;padding:12px 24px;display:flex;align-items:center;gap:16px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);position:sticky;top:0;z-index:100}
+.topbar h1{font-size:16px;color:#e94560;flex:1}
+.btn-pdf{padding:8px 20px;background:#e94560;color:#fff;border:none;border-radius:6px;
+  font-size:13px;font-weight:bold;cursor:pointer;transition:background .2s}
+.btn-pdf:hover{background:#c73652}
+.btn-back{padding:8px 16px;background:transparent;color:#aaa;border:1px solid #444;
+  border-radius:6px;font-size:13px;text-decoration:none;transition:border-color .2s,color .2s}
+.btn-back:hover{border-color:#e94560;color:#e94560}
+.container{max-width:1200px;margin:0 auto;padding:24px 20px}
+/* サマリー */
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.stat-card{background:#16213e;border-radius:12px;padding:20px 24px;text-align:center}
+.stat-label{font-size:12px;color:#888;margin-bottom:8px}
+.stat-value{font-size:32px;font-weight:bold}
+.stat-sub{font-size:11px;color:#555;margin-top:4px}
+/* グリッド */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.grid-1{margin-bottom:20px}
+.card{background:#16213e;border-radius:12px;padding:20px 24px}
+.card-title{font-size:14px;font-weight:bold;color:#e94560;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px}
+.chart-wrap{position:relative;height:260px}
+/* EV計算機 */
+.ev-grid{display:flex;flex-direction:column;gap:16px}
+.ev-row{display:flex;flex-direction:column;gap:6px}
+.ev-row label{font-size:12px;color:#aaa}
+.ev-slider-row{display:flex;align-items:center;gap:12px}
+.ev-slider-row input[type=range]{flex:1;accent-color:#e94560}
+.ev-slider-val{font-size:14px;font-weight:bold;color:#eee;width:52px;text-align:right}
+.ev-results{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+.ev-stat{background:#0f0f1a;border-radius:8px;padding:12px;text-align:center}
+.ev-stat span{display:block;font-size:11px;color:#888;margin-bottom:6px}
+.ev-stat strong{font-size:18px;font-weight:bold}
+/* ヒートマップ */
+.heatmap-wrap{overflow-x:auto}
+.heatmap{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;min-width:520px}
+.hm-cell{
+  aspect-ratio:1;border-radius:3px;display:flex;align-items:center;
+  justify-content:center;font-size:9px;font-weight:bold;cursor:pointer;
+  transition:transform .15s;position:relative
+}
+.hm-cell:hover{transform:scale(1.15);z-index:10}
+.hm-label{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;
+  min-width:520px;margin-bottom:4px}
+.hm-lbl{text-align:center;font-size:10px;color:#555}
+/* ツールチップ */
+.tooltip{
+  display:none;position:fixed;background:#16213e;border:1px solid #333;
+  border-radius:8px;padding:10px 14px;font-size:12px;z-index:999;
+  pointer-events:none;line-height:1.7;min-width:150px
+}
+.tooltip.show{display:block}
+/* レスポンシブ */
+@media(max-width:700px){
+  .summary{grid-template-columns:1fr 1fr}
+  .grid-2{grid-template-columns:1fr}
+  .ev-results{grid-template-columns:1fr}
+  .stat-value{font-size:24px}
+}
+@media(max-width:400px){.summary{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>&#x1F0A1; クイック解析 — {{ hero }}</h1>
+  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <button class="btn-pdf" onclick="exportPDF()">&#x1F4C4; PDFとして保存</button>
+</div>
+
+<div class="container" id="dashboard">
+
+  <!-- サマリー -->
+  <div class="summary">
+    <div class="stat-card">
+      <div class="stat-label">総ハンド数</div>
+      <div class="stat-value" style="color:#7ec8e3">{{ total_hands }}</div>
+      <div class="stat-sub">hands</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">総収支</div>
+      <div class="stat-value" style="color:{{ bb_color }}">{{ total_bb_sign }}{{ total_bb }}</div>
+      <div class="stat-sub">bb</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">bb/100</div>
+      <div class="stat-value" style="color:{{ bb100_color }}">{{ bb_per_100_sign }}{{ bb_per_100 }}</div>
+      <div class="stat-sub">bb per 100 hands</div>
+    </div>
+  </div>
+
+  <!-- 1. タイムライン -->
+  <div class="grid-1 card">
+    <div class="card-title">&#x1F4C8; セッション損益推移</div>
+    <div class="chart-wrap"><canvas id="chartTimeline"></canvas></div>
+  </div>
+
+  <!-- 2. ストリート / 3. ベットサイジング -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">&#x1F3AF; ストリート別決着率</div>
+      <div class="chart-wrap"><canvas id="chartStreets"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x1F4B0; ベットサイジング分析</div>
+      <div class="chart-wrap"><canvas id="chartBetSizing"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 4. 勝利パターン / 5. EV計算機 -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">&#x1F3C6; 勝利パターン分析</div>
+      <div class="chart-wrap"><canvas id="chartWinTypes"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x1F9EE; EV計算機 <span style="font-size:11px;color:#555;font-weight:normal">(APIなし・即時計算)</span></div>
+      <div class="ev-grid">
+        <div class="ev-row">
+          <label>ポットサイズ (bb)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evPot" min="1" max="200" value="10">
+            <span class="ev-slider-val" id="evPotVal">10</span>
+          </div>
+        </div>
+        <div class="ev-row">
+          <label>コール額 (bb)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evCall" min="1" max="100" value="5">
+            <span class="ev-slider-val" id="evCallVal">5</span>
+          </div>
+        </div>
+        <div class="ev-row">
+          <label>相手のブラフ頻度 (%)</label>
+          <div class="ev-slider-row">
+            <input type="range" id="evBluff" min="0" max="100" value="30">
+            <span class="ev-slider-val" id="evBluffVal">30%</span>
+          </div>
+        </div>
+        <div class="ev-results">
+          <div class="ev-stat"><span>ポットオッズ</span><strong id="evOdds">—</strong></div>
+          <div class="ev-stat"><span>ブレークイーブン勝率</span><strong id="evBE">—</strong></div>
+          <div class="ev-stat"><span>EV (コール)</span><strong id="evResult">—</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. コンボヒートマップ -->
+  <div class="grid-1 card">
+    <div class="card-title">&#x1F0CF; 169コンボ ヒートマップ
+      <span style="font-size:11px;color:#555;font-weight:normal">
+        上三角=スーテッド / 下三角=オフスート / 対角=ペア　|　5サンプル未満はグレー
+      </span>
+    </div>
+    <div class="heatmap-wrap">
+      <div class="hm-label" id="hmLabels"></div>
+      <div class="heatmap"  id="heatmap"></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const DATA = {{ data_json }};
+const RANKS = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+
+// ─── Chart.js 共通設定 ─────────────────────────────────────────────────
+Chart.defaults.color = '#888';
+Chart.defaults.font.family = 'Meiryo, sans-serif';
+
+// ─── 1. タイムライン ───────────────────────────────────────────────────
+(function(){
+  const tl = DATA.timeline || [];
+  const labels = tl.map(d => d.hand);
+  const values = tl.map(d => d.cumulative);
+  new Chart(document.getElementById('chartTimeline'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '累積収支 (bb)',
+        data: values,
+        borderColor: '#4caf93',
+        backgroundColor: 'rgba(76,175,147,.12)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { grid: { color: '#222' }, ticks: { maxTicksLimit: 10 } },
+        y: { grid: { color: '#222' },
+          ticks: { callback: v => (v >= 0 ? '+' : '') + v + 'bb' } }
+      }
+    }
+  });
+})();
+
+// ─── 2. ストリート別決着率 ────────────────────────────────────────────
+(function(){
+  const sc = DATA.streets?.counts  || {};
+  const sd = DATA.streets?.showdown || {};
+  const labels = ['Preflop','Flop','Turn','River'];
+  const keys   = ['preflop','flop','turn','river'];
+  const noSD = keys.map(k => (sc[k] || 0) - (sd[k] || 0));
+  const withSD = keys.map(k => sd[k] || 0);
+  new Chart(document.getElementById('chartStreets'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'ショーダウンなし', data: noSD,   backgroundColor: 'rgba(233,69,96,.7)'   },
+        { label: 'ショーダウンあり', data: withSD, backgroundColor: 'rgba(126,200,227,.7)' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { stacked: true, grid: { color: '#222' } },
+        y: { stacked: true, grid: { color: '#222' },
+          ticks: { stepSize: 1 } }
+      }
+    }
+  });
+})();
+
+// ─── 3. ベットサイジング ──────────────────────────────────────────────
+(function(){
+  const bs = DATA.bet_sizing || [];
+  const labels = bs.map(d => d.range);
+  const wr  = bs.map(d => d.winrate != null ? Math.round(d.winrate * 100) : null);
+  const cnt = bs.map(d => d.count);
+  new Chart(document.getElementById('chartBetSizing'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '勝率 (%)',
+          data: wr,
+          backgroundColor: wr.map(v => v == null ? '#333' : v >= 50 ? 'rgba(76,175,147,.8)' : 'rgba(233,69,96,.8)'),
+          yAxisID: 'y',
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const i = items[0].dataIndex;
+              const d = bs[i];
+              const lines = [`サンプル: ${d.count}件`];
+              if (d.avg_bb != null) lines.push(`平均収支: ${d.avg_bb >= 0 ? '+' : ''}${d.avg_bb}bb`);
+              else lines.push('サンプル不足 (5件未満)');
+              return lines;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#222' } },
+        y: { grid: { color: '#222' }, min: 0, max: 100,
+          ticks: { callback: v => v + '%' } }
+      }
+    }
+  });
+})();
+
+// ─── 4. 勝利パターン ──────────────────────────────────────────────────
+(function(){
+  const wt = DATA.win_types || {};
+  const labels = ['バリュー', 'ブラフ', 'ブラフキャッチ', 'その他'];
+  const keys   = ['value', 'bluff', 'bluff_catch', 'other'];
+  const values = keys.map(k => wt[k] || 0);
+  new Chart(document.getElementById('chartWinTypes'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: ['rgba(76,175,147,.85)','rgba(233,69,96,.85)','rgba(126,200,227,.85)','rgba(100,100,120,.7)'],
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '58%',
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.raw}件`
+          }
+        }
+      }
+    }
+  });
+})();
+
+// ─── 5. EV計算機 ─────────────────────────────────────────────────────
+function calcEV(){
+  const pot   = parseFloat(document.getElementById('evPot').value);
+  const call  = parseFloat(document.getElementById('evCall').value);
+  const bluff = parseFloat(document.getElementById('evBluff').value) / 100;
+  document.getElementById('evPotVal').textContent   = pot;
+  document.getElementById('evCallVal').textContent  = call;
+  document.getElementById('evBluffVal').textContent = Math.round(bluff * 100) + '%';
+  const potOdds = call / (pot + call);
+  const ev = bluff * pot - (1 - bluff) * call;
+  document.getElementById('evOdds').textContent   = (potOdds * 100).toFixed(1) + '%';
+  document.getElementById('evBE').textContent     = (potOdds * 100).toFixed(1) + '%';
+  const evEl = document.getElementById('evResult');
+  evEl.textContent = (ev >= 0 ? '+' : '') + ev.toFixed(2) + 'bb';
+  evEl.style.color = ev >= 0 ? '#4caf93' : '#e94560';
+}
+['evPot','evCall','evBluff'].forEach(id =>
+  document.getElementById(id).addEventListener('input', calcEV));
+calcEV();
+
+// ─── 6. ヒートマップ ──────────────────────────────────────────────────
+(function(){
+  const combos = DATA.combos || {};
+  const tooltip = document.getElementById('tooltip');
+
+  function getKey(r, c){
+    if (r === c) return RANKS[r] + RANKS[r];
+    if (r < c)   return RANKS[r] + RANKS[c] + 's';
+    return RANKS[c] + RANKS[r] + 'o';
+  }
+
+  function cellColor(bb, count){
+    if (!count || count < 5) return '#1e1e30';
+    const cap = 20;
+    if (bb > 0){
+      const t = Math.min(bb / cap, 1);
+      return `rgba(76,175,147,${(0.25 + t * 0.75).toFixed(2)})`;
+    } else {
+      const t = Math.min(-bb / cap, 1);
+      return `rgba(233,69,96,${(0.25 + t * 0.75).toFixed(2)})`;
+    }
+  }
+
+  // ラベル行
+  const lblWrap = document.getElementById('hmLabels');
+  RANKS.forEach(r => {
+    const d = document.createElement('div');
+    d.className = 'hm-lbl'; d.textContent = r;
+    lblWrap.appendChild(d);
+  });
+
+  // セルグリッド
+  const wrap = document.getElementById('heatmap');
+  for (let row = 0; row < 13; row++){
+    for (let col = 0; col < 13; col++){
+      const key = getKey(row, col);
+      const d   = combos[key] || {};
+      const count = d.count || 0;
+      const bb    = d.bb || 0;
+      const wr    = d.winrate || 0;
+
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = cellColor(bb, count);
+      cell.textContent = count >= 5 ? key : (count > 0 ? key : '');
+      cell.style.color = count >= 5 ? '#fff' : '#444';
+      cell.style.fontSize = key.length <= 2 ? '9px' : '8px';
+
+      cell.addEventListener('mousemove', e => {
+        if (count === 0) { tooltip.classList.remove('show'); return; }
+        tooltip.innerHTML =
+          `<b>${key}</b><br>` +
+          `試行: ${count}回<br>` +
+          (count >= 5
+            ? `勝率: ${(wr * 100).toFixed(1)}%<br>収益: ${bb >= 0 ? '+' : ''}${bb.toFixed(2)}bb`
+            : `<span style="color:#888">サンプル不足</span>`);
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top  = (e.clientY - 10) + 'px';
+        tooltip.classList.add('show');
+      });
+      cell.addEventListener('mouseleave', () => tooltip.classList.remove('show'));
+
+      wrap.appendChild(cell);
+    }
+  }
+})();
+
+// ─── PDF出力 ──────────────────────────────────────────────────────────
+async function exportPDF(){
+  const btn = document.querySelector('.btn-pdf');
+  btn.textContent = '生成中...'; btn.disabled = true;
+  try{
+    const canvas = await html2canvas(document.getElementById('dashboard'), {
+      backgroundColor: '#1a1a2e', scale: 1.5, useCORS: true,
+    });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const W = pdf.internal.pageSize.getWidth();
+    const H = pdf.internal.pageSize.getHeight();
+    const imgW = W;
+    const imgH = canvas.height * imgW / canvas.width;
+    const img = canvas.toDataURL('image/png');
+    let y = 0;
+    while (y < imgH){
+      if (y > 0) pdf.addPage();
+      pdf.addImage(img, 'PNG', 0, -y, imgW, imgH);
+      y += H;
+    }
+    pdf.save('poker_quick_report.pdf');
+  } catch(e){
+    alert('PDF生成に失敗しました: ' + e.message);
+  } finally{
+    btn.textContent = '&#x1F4C4; PDFとして保存'; btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

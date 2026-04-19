@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerGTO ログイン</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 48px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}
+h1 { font-size: 22px; color: #e94560; margin-bottom: 8px; }
+.sub { font-size: 13px; color: #888; margin-bottom: 32px; }
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  background: #fff;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-google:hover { background: #f0f0f0; }
+.btn-google img { width: 20px; height: 20px; }
+.status { margin-top: 16px; font-size: 13px; color: #888; min-height: 20px; }
+.error { color: #e94560; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🃏 PokerGTO</h1>
+  <p class="sub">Googleアカウントでログインしてください</p>
+  <button class="btn-google" id="btn-login">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+    Googleでログイン
+  </button>
+  <p class="status" id="status"></p>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const cfg = await fetch("/api/firebase-config").then(r => r.json());
+  const app  = initializeApp(cfg);
+  const auth = getAuth(app);
+
+  // すでにログイン済みならセッション一覧へ
+  onAuthStateChanged(auth, user => {
+    if (user) window.location.href = "/sessions";
+  });
+
+  document.getElementById("btn-login").addEventListener("click", async () => {
+    const st = document.getElementById("status");
+    st.textContent = "ログイン中...";
+    st.classList.remove("error");
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged が /sessions にリダイレクトする
+    } catch (e) {
+      st.textContent = "ログイン失敗: " + e.message;
+      st.classList.add("error");
+    }
+  });
+</script>
+</body>
+</html>

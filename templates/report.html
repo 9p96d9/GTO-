@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTO レポート</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.toolbar {
+  background: #16213e;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.toolbar h1 { font-size: 15px; color: #e94560; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-download {
+  padding: 10px 20px; min-height: 44px;
+  background: #e94560;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: background 0.2s;
+}
+.btn-download:hover { background: #c73652; }
+.btn-back {
+  padding: 10px 16px; min-height: 44px;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: border-color 0.2s, color 0.2s;
+}
+.btn-back:hover { border-color: #e94560; color: #e94560; }
+iframe { flex: 1; width: 100%; border: none; }
+.mobile-hint {
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px 20px;
+  text-align: center;
+}
+.mobile-hint p { color: #888; font-size: 14px; margin-bottom: 8px; }
+@media (max-width: 600px) {
+  iframe { display: none; }
+  .mobile-hint { display: flex; }
+  .toolbar h1 { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h1>&#x1F0A1; GTO レポート — {{ pdf_name }}</h1>
+  <a class="btn-back" href="/">&#x2190; 戻る</a>
+  <a class="btn-download" href="/download/{{ pdf_name }}" download="{{ pdf_name }}">&#x2B07; ダウンロード</a>
+</div>
+<iframe src="/pdf/{{ pdf_name }}" type="application/pdf"></iframe>
+<div class="mobile-hint">
+  <p>スマートフォンではPDFビューアを直接表示できません。<br>下のボタンからダウンロードしてご確認ください。</p>
+  <a class="btn-download" href="/download/{{ pdf_name }}" download="{{ pdf_name }}">&#x2B07; PDFをダウンロード</a>
+</div>
+</body>
+</html>
