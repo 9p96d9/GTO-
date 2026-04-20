@@ -170,21 +170,28 @@ header {
 .dr-street { color: var(--text2); font-size: 10px; }
 .dr-pl { margin-left: auto; font-weight: 700; white-space: nowrap; font-size: 11px; }
 .dr-pl.pos { color: var(--green); } .dr-pl.neg { color: var(--red); } .dr-pl.zero { color: var(--text2); }
-#drill-firebase {
-  border-top: 1px solid var(--border); padding: 12px;
-  font-size: 11px; color: var(--text2);
+/* ─── HAND DETAIL ─── */
+#hand-detail {
+  border-top: 1px solid var(--border); padding: 10px 14px;
+  font-size: 11px; display: none; flex-direction: column; gap: 6px;
 }
-#drill-firebase textarea, #drill-firebase input {
-  width: 100%; background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px;
-  font-size: 10px; margin-bottom: 6px;
+#hand-detail.open { display: flex; }
+.hd-back {
+  background: none; border: none; color: var(--blue); font-size: 11px;
+  cursor: pointer; text-align: left; padding: 0 0 4px; display: flex; align-items: center; gap: 4px;
 }
-#drill-firebase textarea { height: 56px; font-family: monospace; resize: none; }
-#fb-connect {
-  width: 100%; padding: 6px; background: var(--blue);
-  color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;
+.hd-back:hover { opacity: .75; }
+.hd-header { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 700; }
+.hd-cards { font-size: 15px; letter-spacing: .04em; margin: 2px 0; }
+.hd-street { margin-top: 6px; }
+.hd-street-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text2); margin-bottom: 3px;
 }
-#fb-connect:hover { opacity: .85; }
+.hd-board { font-size: 13px; margin-bottom: 2px; }
+.hd-pot { font-size: 10px; color: var(--text2); margin-bottom: 3px; }
+.hd-action { font-size: 10px; color: var(--text2); padding: 1px 0; }
+.hd-action span { color: var(--text); }
 
 /* ─── EMPTY STATE ─── */
 .empty-state {
@@ -303,14 +310,9 @@ header {
           </div>
         </div>
         <div id="drill-list"></div>
-        <div id="drill-firebase">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span>🔥 Firebase</span>
-            <span id="fb-status" style="font-size:10px;color:var(--text2)">未接続</span>
-          </div>
-          <textarea id="fb-config" placeholder="Firebase Config JSON をここに貼り付け"></textarea>
-          <input id="fb-path" placeholder="コレクションパス (例: users/uid/analyses/job_id)">
-          <button id="fb-connect">接続する</button>
+        <div id="hand-detail">
+          <button class="hd-back" id="hd-back">&#x2190; 一覧に戻る</button>
+          <div id="hd-content"></div>
         </div>
       </div>
     </div>
@@ -340,6 +342,16 @@ const JOB_ID   = "{{ job_id }}";
 // ═══════════════════════════════════════════════════════════════════
 // 共通定数・ユーティリティ
 // ═══════════════════════════════════════════════════════════════════
+// ─── スートカラーリング ───────────────────────────────────────────────
+const SUIT_COLORS = {'♠':'#ccd6f6','♥':'#e94560','♦':'#4a9eff','♣':'#64ffda'};
+function cardHtml(cards) {
+  if (!cards || !cards.length) return '<span style="color:var(--text2)">—</span>';
+  return cards.map(s => String(s).replace(
+    /([23456789TJQKA]{1,2})([\u2660\u2665\u2666\u2663])/,
+    (_, rank, suit) => `<span style="font-weight:700">${rank}</span><span style="color:${SUIT_COLORS[suit]||'#fff'}">${suit}</span>`
+  )).join(' ');
+}
+
 const POS_ORDER   = ['BTN','CO','HJ','LJ','UTG','UTG+1','SB','BB'];
 const BLUE_COLOR  = '#4a9eff';
 const RED_COLOR   = '#e94560';
@@ -818,13 +830,22 @@ function openDrillPanel(catName) {
       const plStr = (pl >= 0 ? '+' : '') + pl.toFixed(2) + 'bb';
       const stMap = { preflop:'PF', flop:'F', turn:'T', river:'R' };
       const st = stMap[h.last_street] || h.last_street;
-      return `<div class="drill-hand-row">
+      return `<div class="drill-hand-row" data-hnum="${h.hand_number}" style="cursor:pointer">
         <span class="dr-num">H${h.hand_number}</span>
         <span class="dr-pos">${h.position}</span>
         <span class="dr-street">${st}</span>
         <span class="dr-pl ${plCls}">${plStr}</span>
       </div>`;
     }).join('');
+
+    // 行クリック → ハンド詳細
+    list.querySelectorAll('.drill-hand-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const num = parseInt(row.dataset.hnum);
+        const h = hands.find(x => x.hand_number === num);
+        if (h) openHandDetail(h);
+      });
+    });
   }
 
   panel.classList.add('open');
@@ -832,6 +853,8 @@ function openDrillPanel(catName) {
 
 function closeDrillPanel() {
   document.getElementById('drill-panel').classList.remove('open');
+  document.getElementById('hand-detail').classList.remove('open');
+  document.getElementById('drill-list').style.display = '';
 }
 
 document.getElementById('drill-close').addEventListener('click', closeDrillPanel);
@@ -839,45 +862,57 @@ document.getElementById('sankey-svg').addEventListener('click', e => {
   if (e.target === document.getElementById('sankey-svg')) closeDrillPanel();
 });
 
-// ─── Firebase 接続ゾーン ──────────────────────────────────────────
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = src;
-    s.onload = res; s.onerror = rej; document.head.appendChild(s);
-  });
+// ─── ハンド詳細表示 ──────────────────────────────────────────────
+function openHandDetail(h) {
+  document.getElementById('drill-list').style.display = 'none';
+  const det = document.getElementById('hand-detail');
+  det.classList.add('open');
+
+  const pl = h.profit;
+  const plColor = pl >= 0 ? 'var(--green)' : 'var(--red)';
+  const plStr = (pl >= 0 ? '+' : '') + pl.toFixed(2) + 'bb';
+  const badge = h.is_3bet ? '<span style="background:#f6c90e22;color:#f6c90e;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:6px">3BET</span>' : '';
+  const oppHtml = (h.opponents || []).map(o =>
+    `<span style="color:var(--text2)">${o.position}</span> ${cardHtml(o.cards)}`
+  ).join(' / ') || '<span style="color:var(--text2)">—</span>';
+
+  const ST_NAMES = { preflop:'PREFLOP', flop:'FLOP', turn:'TURN', river:'RIVER' };
+  const ACT_COLOR = { Bet:'#f6c90e', Raise:'#f6c90e', Call:'#74b9ff', Fold:'#e94560', Check:'#8892b0' };
+
+  let streetsHtml = '';
+  for (const st of ['preflop','flop','turn','river']) {
+    const s = (h.streets || {})[st];
+    if (!s) continue;
+    const boardHtml = s.board && s.board.length
+      ? `<div class="hd-board">${cardHtml(s.board)}</div>` : '';
+    const potHtml = s.pot_bb
+      ? `<div class="hd-pot">ポット: ${s.pot_bb}bb</div>` : '';
+    const actionsHtml = (s.actions || []).map(a => {
+      const col = ACT_COLOR[a.action] || '#8892b0';
+      const amt = a.amount_bb != null ? ` <span style="color:${col}">${a.amount_bb}bb</span>` : '';
+      return `<div class="hd-action"><span style="color:var(--text2)">${a.position}</span> <span style="color:${col}">${a.action}</span>${amt}</div>`;
+    }).join('');
+    streetsHtml += `<div class="hd-street">
+      <div class="hd-street-label">${ST_NAMES[st]}</div>
+      ${boardHtml}${potHtml}${actionsHtml}
+    </div>`;
+  }
+
+  document.getElementById('hd-content').innerHTML = `
+    <div class="hd-header">H${h.hand_number} &nbsp;<span style="color:${h.line==='blue'?'var(--blue)':'var(--red)'}">${h.category}</span>${badge}</div>
+    <div style="margin:4px 0;font-size:11px;color:var(--text2)">
+      自分: <strong style="color:var(--text)">${h.position}</strong>&nbsp;&nbsp;
+      相手: ${oppHtml}
+    </div>
+    <div class="hd-cards">${cardHtml(h.hero_cards)}</div>
+    ${streetsHtml}
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:${plColor}">${plStr}</div>
+  `;
 }
 
-document.getElementById('fb-connect').addEventListener('click', async () => {
-  const statusEl = document.getElementById('fb-status');
-  statusEl.textContent = '接続中...'; statusEl.style.color = '#f6c90e';
-  try {
-    const config = JSON.parse(document.getElementById('fb-config').value);
-    if (!window.firebase) {
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js');
-    }
-    const app = window.firebase.apps.length ? window.firebase.apps[0] : window.firebase.initializeApp(config);
-    const db = window.firebase.firestore(app);
-    const path = document.getElementById('fb-path').value.trim();
-    const snap = await db.doc(path).get();
-    if (snap.exists) {
-      const data = snap.data();
-      if (data.hands && Array.isArray(data.hands)) {
-        HANDS_DATA = data.hands;
-        filteredHands = [...HANDS_DATA];
-        applyFilter();
-        statusEl.textContent = `接続済み (${data.hands.length}手)`;
-        statusEl.style.color = '#64ffda';
-        buildSankey();
-      } else {
-        statusEl.textContent = 'データ形式エラー'; statusEl.style.color = '#e94560';
-      }
-    } else {
-      statusEl.textContent = 'ドキュメントが見つかりません'; statusEl.style.color = '#e94560';
-    }
-  } catch(err) {
-    statusEl.textContent = 'エラー: ' + err.message.slice(0, 40); statusEl.style.color = '#e94560';
-  }
+document.getElementById('hd-back').addEventListener('click', () => {
+  document.getElementById('hand-detail').classList.remove('open');
+  document.getElementById('drill-list').style.display = '';
 });
 
 // ═══════════════════════════════════════════════════════════════════

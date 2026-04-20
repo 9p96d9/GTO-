@@ -102,6 +102,39 @@ def three_d_view_page(job_id: str, hands: list) -> str:
         line = clf.get("line", "")
         if line not in ("blue", "red"):
             continue
+
+        # 相手情報（非ヒーロープレイヤー）
+        opponents = [
+            {"position": p.get("position", "?"), "cards": p.get("hole_cards", [])}
+            for p in h.get("players", [])
+            if not p.get("is_hero")
+        ]
+
+        # ストリート情報を整形
+        raw_st = h.get("streets", {})
+        streets_data = {}
+        pf = raw_st.get("preflop")
+        if pf:
+            streets_data["preflop"] = {
+                "actions": [
+                    {"position": a.get("position", ""), "action": a.get("action", ""),
+                     "amount_bb": a.get("amount_bb")}
+                    for a in (pf if isinstance(pf, list) else [])
+                ]
+            }
+        for st in ("flop", "turn", "river"):
+            s = raw_st.get(st)
+            if s and isinstance(s, dict):
+                streets_data[st] = {
+                    "board":    s.get("board", []),
+                    "pot_bb":   s.get("pot_bb", 0),
+                    "actions": [
+                        {"position": a.get("position", ""), "action": a.get("action", ""),
+                         "amount_bb": a.get("amount_bb")}
+                        for a in (s.get("actions") or [])
+                    ],
+                }
+
         filtered.append({
             "hand_number": h.get("hand_number"),
             "position":    h.get("hero_position", "?"),
@@ -110,6 +143,9 @@ def three_d_view_page(job_id: str, hands: list) -> str:
             "profit":      float(h.get("hero_result_bb", 0)),
             "is_3bet":     bool(h.get("is_3bet_pot", False)),
             "last_street": clf.get("last_street", "?"),
+            "hero_cards":  h.get("hero_cards", []),
+            "opponents":   opponents,
+            "streets":     streets_data,
         })
     blue_count = sum(1 for h in filtered if h["line"] == "blue")
     red_count  = sum(1 for h in filtered if h["line"] == "red")
