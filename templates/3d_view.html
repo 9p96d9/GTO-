@@ -1127,6 +1127,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 
     // 表示切替
     document.getElementById('view-3d').style.display      = id === '3d'         ? 'block' : 'none';
+    if (id === '3d') setTimeout(onResize3D, 0);
     document.getElementById('view-sankey').classList.toggle('active', id === 'sankey');
     document.getElementById('view-bubble').classList.toggle('active', id === 'bubble');
     document.getElementById('view-ts').classList.toggle('active', id === 'timeseries');
