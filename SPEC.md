@@ -29,10 +29,10 @@
 | **Phase 16** | AI解析表示改善（スートカラーリング・ストリート別BET額） | ✅ 完了 |
 | **Phase 17** | ランディング・セッションページ リデザイン（claude.ai/design活用） | ✅ 完了（ランディングのみ） |
 | **Phase 20a** | セッション解析履歴 削除機能 ＋ Firestore転送量削減（フィールドマスク） | ✅ 完了 |
-| **Phase 20b** | 3D可視化ページ `/3d_view/{job_id}`（Three.js 4タブ） | 🔄 実装中（4タブ完了・調整中） |
+| **Phase 20b** | 3D可視化ページ `/3d_view/{job_id}`（Three.js 4タブ） | ✅ 完了 |
+| **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・セキュリティ学習） | ⬜ 計画中 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
-| **Phase 20c** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
 
 ---
 
@@ -112,7 +112,7 @@ GTO-/
 │   └── pages.py                # HTML生成ラッパー関数（全ページをJinja2テンプレートに外出し済み）
 ├── templates/
 │   ├── classify_result.html    # 解析結果画面（フッターに3D可視化ボタン）
-│   ├── 3d_view.html            # 3D可視化（Three.js 4タブ: 3Dバー/サンキー/バブル/時系列）
+│   ├── 3d_view.html            # 3D可視化（Three.js 4タブ: 3Dバー/サンキー/バブル/時系列）ドリルパネルにハンド詳細（カード・アクション履歴）表示
 │   ├── landing.html            # トップページ
 │   ├── upload.html             # 手動アップロード（/legacy）
 │   ├── classify_progress.html  # 解析進捗
