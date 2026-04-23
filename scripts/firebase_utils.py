@@ -473,7 +473,7 @@ def get_admin_users() -> list[dict]:
             auth_users[u.uid] = {
                 "uid": u.uid,
                 "email": u.email or "",
-                "last_login": u.user_metadata.last_sign_in_time,  # ms epoch
+                "last_login": getattr(u.user_metadata, "last_sign_in_time", None) or getattr(u.user_metadata, "last_refresh_time", None),
             }
         page = page.get_next_page()
 
