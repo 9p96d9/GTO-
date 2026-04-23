@@ -1,7 +1,7 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 7.0
-**最終更新:** 2026-04-20
+**バージョン:** 7.1
+**最終更新:** 2026-04-23
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL:** https://gto-production.up.railway.app
 
@@ -15,7 +15,7 @@
 | Phase 2 | Chrome拡張機能（スクレイプ→Firebase保存） | ✅ 完了 |
 | Phase 3 | セッション一覧・解析フロー | ✅ 完了 |
 | Phase 4 | ユーザー機能アップグレード（複数選択解析・テキスト保存） | ✅ 完了 |
-| Phase 5 | 管理者ダッシュボード | ⬜ 未着手 |
+| Phase 5 | 管理者ダッシュボード（ユーザー一覧・KPI・Firestoreクォータ監視） | ⬜ 実装予定 |
 | Phase 6 | 仕上げ・UX改善 | ⬜ 未着手 |
 | Phase 7 | リアルタイムハンドログ自動取得 | ✅ 完了 |
 | Phase 8 | 解析結果の永続化（Firestore保存）＋履歴表示 | ✅ 完了 |
@@ -829,6 +829,179 @@ user_settings  (id, user_id FK UNIQUE, encrypted_api_key, auto_cart BOOL, update
 | カテゴリ分布（blue/red/preflop比率） | ドーナツチャート |
 | AI解析利用率 | 数値カード |
 | ポジション別損益分布 | ヒートマップ |
+
+---
+
+## 18. Phase 5: 管理者ダッシュボード（⬜ 実装予定）
+
+### 概要
+
+Firebase Admin SDK を使い、全ユーザーのデータをサーバーサイドで集計・表示する管理者専用画面。  
+現行の Firestore / Railway スタックで実装し、Phase 19（PostgreSQL 移行）時にデータ取得層のみ差し替える。
+
+**URL:** `/admin`（ログイン必須・管理者UIDのみアクセス可）
+
+---
+
+### 5-1. 認証・アクセス制御
+
+**方式:** 環境変数 `ADMIN_UID` に管理者の Firebase UID を設定し、JWT デコード後に照合。
+
+```python
+# routes/pages.py または routes/api.py 内
+ADMIN_UID = os.environ.get("ADMIN_UID", "")
+
+async def require_admin(request: Request) -> str:
+    uid = await get_uid_from_request(request)   # 既存のJWT検証関数を流用
+    if uid != ADMIN_UID:
+        raise HTTPException(status_code=403, detail="管理者権限が必要です")
+    return uid
+```
+
+- Railway の環境変数に自分の UID を設定するだけで完結
+- UID は Firebase コンソール → Authentication → ユーザー一覧で確認可能
+- 将来的に複数管理者が必要になったら `ADMIN_UIDS` をカンマ区切りに拡張
+
+**セキュリティ注意:**
+- `/admin` ルートは `require_admin` で必ずガードする
+- API エンドポイント `/api/admin/*` も同様に全て認証必須
+- フロントエンドで管理者判定するのは NG（サーバー側で必ずガード）
+
+---
+
+### 5-2. 画面構成
+
+```
+/admin
+├── サマリーカード（数値KPI 4枚）
+├── ユーザーテーブル（全ユーザー一覧）
+└── Firestoreクォータ使用状況（読み取り数カード）
+```
+
+#### サマリーカード（4枚）
+
+| カード | 内容 | 取得方法 |
+|---|---|---|
+| 総ユーザー数 | Firebase Auth の全ユーザー数 | `auth.list_users()` |
+| 総ハンド数 | 全ユーザーの hands ドキュメント数合計 | `collection_group("hands").count()` |
+| 総解析数 | 全ユーザーの analyses ドキュメント数合計 | `collection_group("analyses").count()` |
+| アクティブユーザー（7日） | 直近7日以内に saved_at があるユーザー数 | collection_group + where |
+
+#### ユーザーテーブル
+
+| カラム | 内容 |
+|---|---|
+| メール | Firebase Auth より |
+| 最終ログイン | Firebase Auth の `last_sign_in_time` |
+| ハンド数 | `users/{uid}/hands` の count |
+| 解析数 | `users/{uid}/analyses` の count |
+| APIキー設定 | `users/{uid}/settings/gemini` の有無 |
+| PFスコア平均 | 直近20件の analyses から `pf_count/hand_count` 平均 |
+
+ユーザー数が多い場合は Firebase Auth の `page_token` でページネーション。
+
+---
+
+### 5-3. API エンドポイント
+
+```
+GET /api/admin/summary     # サマリーカード用集計
+GET /api/admin/users       # ユーザーテーブル用一覧
+```
+
+**レスポンス例（summary）:**
+```json
+{
+  "total_users": 12,
+  "total_hands": 8430,
+  "total_analyses": 87,
+  "active_users_7d": 5,
+  "fetched_at": "2026-04-23T10:00:00+00:00"
+}
+```
+
+**レスポンス例（users）:**
+```json
+{
+  "users": [
+    {
+      "uid": "abc123",
+      "email": "user@example.com",
+      "last_login": "2026-04-23T09:00:00+00:00",
+      "hand_count": 1200,
+      "analysis_count": 14,
+      "has_api_key": true,
+      "avg_pf_score": 84.2
+    }
+  ]
+}
+```
+
+---
+
+### 5-4. ファイル構成
+
+```
+routes/
+  admin.py           # /admin ページルート・/api/admin/* エンドポイント
+templates/
+  admin.html         # 管理者ダッシュボード画面（ランディングデザイン統一）
+scripts/
+  firebase_utils.py  # get_admin_summary(), get_admin_users() を追加
+```
+
+`server.py` に `from routes.admin import router as admin_router` を追加してマウント。
+
+---
+
+### 5-5. Firestore クォータ設計
+
+**問題:** 全ユーザーを横断するクエリはコストが高い。
+
+| クエリ | 読み取りコスト |
+|---|---|
+| `collection_group("hands").count()` | **0**（Aggregate API は読み取り消費なし） |
+| `collection_group("analyses").count()` | **0**（同上） |
+| ユーザーごとの `analyses` 直近20件 | ユーザー数 × 最大20 |
+| PFスコア平均の計算 | ユーザー数 × 最大20（上と同クエリで賄う） |
+
+**対策:**
+- `count()` Aggregate API を使う（既に `get_hands_stats` で実装済み）
+- ユーザー詳細（ハンド数・解析数）は `count()` で取るため読み取りゼロ
+- PFスコアは `/api/admin/users` 取得時に1リクエストにまとめて計算（N+1防止）
+- 管理者ページは自分しか使わないためリアルタイム集計で十分（キャッシュ不要）
+
+**ユーザー50人時の1回の `/admin` 表示コスト概算:**
+
+| 操作 | 読み取り |
+|---|---|
+| `auth.list_users()` | 0（Auth API、Firestore 無関係） |
+| `hands.count()` × 50人 | 0（Aggregate API） |
+| `analyses.count()` × 50人 | 0（Aggregate API） |
+| `analyses` 直近20件 × 50人（PFスコア用） | 最大 1,000 |
+
+→ **50人規模で1回1,000読み取り**。無料枠50,000/日 = 管理者ページを1日50回開いても安全圏。
+
+---
+
+### 5-6. UI 設計
+
+- ランディング・sessions と同じデザインシステム（Inter / Space Grotesk / CSS変数）
+- ナビは sessions と同一（PokerGTO ロゴ + ログアウト）
+- テーブルはソート可能（ハンド数降順がデフォルト）
+- メールアドレスは直接表示（管理者のみ閲覧）
+- レスポンシブ対応（テーブルはスクロール）
+
+---
+
+### 5-7. 実装順序
+
+1. `ADMIN_UID` 環境変数設定（Railway）
+2. `firebase_utils.py` に `get_admin_summary()` / `get_admin_users()` 追加
+3. `routes/admin.py` 作成（ページルート + API エンドポイント）
+4. `server.py` にルーター登録
+5. `templates/admin.html` 作成
+6. SPEC.md 更新 + コミット
 
 ---
 
