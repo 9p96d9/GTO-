@@ -6,12 +6,18 @@ GET /api/admin/users    → ユーザー一覧
 """
 
 import os
+from pathlib import Path
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse, HTMLResponse
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
+
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
+def _render(name: str) -> str:
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=False)
+    return env.get_template(name).render()
 
 ADMIN_UID = os.environ.get("ADMIN_UID", "")
 
@@ -43,7 +49,7 @@ async def admin_page(request: Request):
         return HTMLResponse("<h2>Firebase未設定</h2>", status_code=503)
     if not ADMIN_UID:
         return HTMLResponse("<h2>ADMIN_UID 環境変数が設定されていません</h2>", status_code=503)
-    return templates.TemplateResponse("admin.html", {"request": request})
+    return HTMLResponse(_render("admin.html"))
 
 
 # ── API エンドポイント ────────────────────────────────────────────────────────
