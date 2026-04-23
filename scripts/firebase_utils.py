@@ -397,6 +397,158 @@ def save_user_settings(uid: str, api_key: str = None, needs_api_auto_cart: bool 
         )
 
 
+# ─── 管理者ダッシュボード（Phase 5） ────────────────────────────────────────
+
+def get_admin_summary() -> dict:
+    """
+    全ユーザー横断のサマリーを返す。
+    count() Aggregate API を使い Firestore 読み取りコストをゼロに抑える。
+    """
+    _init()
+    from firebase_admin import auth as _auth
+
+    # 総ユーザー数（Auth API、Firestore 読み取りなし）
+    total_users = 0
+    page = _auth.list_users()
+    while page:
+        total_users += len(page.users)
+        page = page.get_next_page()
+
+    # 全ユーザー横断のハンド数・解析数（Aggregate API = 読み取りコストなし）
+    try:
+        hands_count_result = _db.collection_group("hands").count().get()
+        total_hands = hands_count_result[0][0].value
+    except Exception:
+        total_hands = None  # SDK未対応環境
+
+    try:
+        analyses_count_result = _db.collection_group("analyses").count().get()
+        total_analyses = analyses_count_result[0][0].value
+    except Exception:
+        total_analyses = None
+
+    # 直近7日のアクティブユーザー数（saved_at >= 7日前 のハンドを持つユーザー）
+    try:
+        from datetime import timedelta
+        since_7d = datetime.now(timezone.utc) - timedelta(days=7)
+        active_docs = (
+            _db.collection_group("hands")
+            .where("saved_at", ">=", since_7d)
+            .select(["__name__"])
+            .stream()
+        )
+        # パスから uid を抽出して重複排除: users/{uid}/hands/{handId}
+        active_uids = set()
+        for doc in active_docs:
+            parts = doc.reference.path.split("/")
+            if len(parts) >= 2:
+                active_uids.add(parts[1])
+        active_users_7d = len(active_uids)
+    except Exception:
+        active_users_7d = None
+
+    return {
+        "total_users": total_users,
+        "total_hands": total_hands,
+        "total_analyses": total_analyses,
+        "active_users_7d": active_users_7d,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def get_admin_users() -> list[dict]:
+    """
+    全ユーザーの一覧を返す。
+    ハンド数・解析数は count() で取得（読み取りコストなし）。
+    PF スコア平均は直近 10 件の analyses から計算（最大 10 読み取り/ユーザー）。
+    """
+    _init()
+    from firebase_admin import auth as _auth
+
+    # Firebase Auth から全ユーザー取得
+    auth_users = {}
+    page = _auth.list_users()
+    while page:
+        for u in page.users:
+            auth_users[u.uid] = {
+                "uid": u.uid,
+                "email": u.email or "",
+                "last_login": u.user_metadata.last_sign_in_time,  # ms epoch
+            }
+        page = page.get_next_page()
+
+    result = []
+    for uid, info in auth_users.items():
+        user_ref = _db.collection("users").document(uid)
+
+        # ハンド数（count() = 読み取りなし）
+        try:
+            hand_count = user_ref.collection("hands").count().get()[0][0].value
+        except Exception:
+            hand_count = 0
+
+        # 解析数（count() = 読み取りなし）
+        try:
+            analysis_count = user_ref.collection("analyses").count().get()[0][0].value
+        except Exception:
+            analysis_count = 0
+
+        # PF スコア平均（直近 10 件 × 3フィールドのみ取得）
+        avg_pf = None
+        try:
+            recent = list(
+                user_ref.collection("analyses")
+                .order_by("created_at", direction="DESCENDING")
+                .limit(10)
+                .select(["hand_count", "pf_count"])
+                .stream()
+            )
+            scores = []
+            for doc in recent:
+                d = doc.to_dict()
+                hc = d.get("hand_count") or 0
+                pf = d.get("pf_count") or 0
+                if hc > 0:
+                    scores.append(round((hc - pf) / hc * 100, 1))
+            if scores:
+                avg_pf = round(sum(scores) / len(scores), 1)
+        except Exception:
+            pass
+
+        # APIキー設定の有無
+        try:
+            settings_doc = user_ref.collection("settings").document("gemini").get()
+            has_api_key = settings_doc.exists and bool(
+                settings_doc.to_dict().get("encrypted_api_key")
+            )
+        except Exception:
+            has_api_key = False
+
+        # last_login を ISO 文字列に変換（ms epoch → datetime）
+        last_login_iso = None
+        if info["last_login"]:
+            try:
+                last_login_iso = datetime.fromtimestamp(
+                    info["last_login"] / 1000, tz=timezone.utc
+                ).isoformat()
+            except Exception:
+                pass
+
+        result.append({
+            "uid": uid,
+            "email": info["email"],
+            "last_login": last_login_iso,
+            "hand_count": hand_count,
+            "analysis_count": analysis_count,
+            "has_api_key": has_api_key,
+            "avg_pf_score": avg_pf,
+        })
+
+    # ハンド数降順でソート
+    result.sort(key=lambda x: x["hand_count"], reverse=True)
+    return result
+
+
 # ─── Gemini 解析結果（Phase 12） ────────────────────────────────────────────
 
 def get_gemini_results(uid: str, job_id: str) -> dict:

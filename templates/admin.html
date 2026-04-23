@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokerGTO — 管理者ダッシュボード</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a; --bg2: #0d1224;
+    --surface: rgba(255,255,255,0.04); --surface-hover: rgba(255,255,255,0.07);
+    --border: rgba(255,255,255,0.08); --border-bright: rgba(255,255,255,0.14);
+    --red: #e94560; --red-dim: rgba(233,69,96,0.15);
+    --green: #4caf93; --green-dim: rgba(76,175,147,0.15);
+    --blue: #4a9eff; --blue-dim: rgba(74,158,255,0.15);
+    --yellow: #f5c842; --yellow-dim: rgba(245,200,66,0.15);
+    --text: #e0e0e0; --text-muted: #7a8099; --text-dim: #4a5168;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 60px 60px; pointer-events: none; z-index: 0;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 5%; height: 64px;
+    background: rgba(10,14,26,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo { font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .nav-logo span { color: var(--red); }
+  .nav-badge { font-size: 0.68rem; font-weight: 600; color: var(--yellow); background: var(--yellow-dim); border: 1px solid rgba(245,200,66,0.3); border-radius: 100px; padding: 2px 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .nav-right { display: flex; align-items: center; gap: 10px; }
+  .nav-user { font-size: 0.82rem; color: var(--text-muted); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-logout { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; transition: border-color 0.2s, color 0.2s; }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+  /* ── Layout ── */
+  .page-wrap { position: relative; z-index: 1; padding: 88px 5% 60px; max-width: 1200px; margin: 0 auto; }
+  .page-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.8rem; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 4px; }
+  .page-sub { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 32px; }
+
+  /* ── KPI cards ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 500px) { .kpi-grid { grid-template-columns: 1fr; } }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 22px 24px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    position: relative; overflow: hidden; transition: border-color 0.2s;
+  }
+  .kpi-card::before { content: ''; position: absolute; inset: 0; border-radius: 16px; background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%); pointer-events: none; }
+  .kpi-card.c-red   { border-color: rgba(233,69,96,0.2); }
+  .kpi-card.c-green { border-color: rgba(76,175,147,0.2); }
+  .kpi-card.c-blue  { border-color: rgba(74,158,255,0.2); }
+  .kpi-card.c-yellow{ border-color: rgba(245,200,66,0.2); }
+  .kpi-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 10px; }
+  .kpi-value { font-family: 'Space Grotesk', sans-serif; font-size: 2.4rem; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .kpi-card.c-red    .kpi-value { color: var(--red); }
+  .kpi-card.c-green  .kpi-value { color: var(--green); }
+  .kpi-card.c-blue   .kpi-value { color: var(--blue); }
+  .kpi-card.c-yellow .kpi-value { color: var(--yellow); }
+  .kpi-sub { font-size: 0.72rem; color: var(--text-dim); margin-top: 6px; }
+
+  /* ── Section header ── */
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-title { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-radius: 8px; border: 1px solid var(--border); background: transparent;
+    color: var(--text-muted); font-size: 0.78rem; font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--border-bright); color: var(--text); }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead th {
+    text-align: left; padding: 14px 16px;
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort-arrow { margin-left: 4px; opacity: 0.4; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--red); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-hover); }
+  tbody td { padding: 12px 16px; color: var(--text); vertical-align: middle; }
+  .td-email { color: var(--text-muted); font-size: 0.78rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .td-num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .td-num.big { color: var(--blue); }
+  .badge-key { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 0.68rem; font-weight: 600; }
+  .badge-key.yes { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,147,0.3); }
+  .badge-key.no  { background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid var(--border); }
+  .pf-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .pf-bar-bg { flex: 1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 99px; min-width: 60px; }
+  .pf-bar-fill { height: 100%; border-radius: 99px; background: var(--green); transition: width 0.4s; }
+  .pf-text { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 36px; text-align: right; }
+  .table-empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 0.875rem; }
+  .table-overflow { overflow-x: auto; }
+
+  /* ── Loading skeleton ── */
+  .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* ── Alert ── */
+  .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.85rem; }
+  .alert-error { background: var(--red-dim); color: var(--red); border: 1px solid rgba(233,69,96,0.3); }
+
+  /* ── Fetched at ── */
+  .fetched-at { font-size: 0.72rem; color: var(--text-dim); text-align: right; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div style="display:flex;align-items:center;gap:12px">
+    <a href="/" class="nav-logo"><span>♠</span>Poker<span>GTO</span></a>
+    <span class="nav-badge">Admin</span>
+  </div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <button class="btn-logout" id="btn-logout">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+      ログアウト
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+  <div id="alert-area"></div>
+
+  <div class="page-title">管理者ダッシュボード</div>
+  <div class="page-sub" id="page-sub">読み込み中...</div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card c-red">
+      <div class="kpi-label">総ユーザー数</div>
+      <div class="kpi-value" id="kpi-users">—</div>
+      <div class="kpi-sub">登録済みアカウント</div>
+    </div>
+    <div class="kpi-card c-blue">
+      <div class="kpi-label">総ハンド数</div>
+      <div class="kpi-value" id="kpi-hands">—</div>
+      <div class="kpi-sub">全ユーザー累計</div>
+    </div>
+    <div class="kpi-card c-green">
+      <div class="kpi-label">総解析数</div>
+      <div class="kpi-value" id="kpi-analyses">—</div>
+      <div class="kpi-sub">全ユーザー累計</div>
+    </div>
+    <div class="kpi-card c-yellow">
+      <div class="kpi-label">アクティブ（7日）</div>
+      <div class="kpi-value" id="kpi-active">—</div>
+      <div class="kpi-sub">直近7日にハンドあり</div>
+    </div>
+  </div>
+
+  <!-- Users Table -->
+  <div class="section-head">
+    <div class="section-title">ユーザー一覧</div>
+    <button class="refresh-btn" id="btn-refresh">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      再読み込み
+    </button>
+  </div>
+  <div class="table-wrap">
+    <div class="table-overflow">
+      <table id="users-table">
+        <thead>
+          <tr>
+            <th data-col="email">メール <span class="sort-arrow">↕</span></th>
+            <th data-col="last_login">最終ログイン <span class="sort-arrow">↕</span></th>
+            <th data-col="hand_count" class="sorted">ハンド数 <span class="sort-arrow">↓</span></th>
+            <th data-col="analysis_count">解析数 <span class="sort-arrow">↕</span></th>
+            <th data-col="avg_pf_score">PFスコア平均 <span class="sort-arrow">↕</span></th>
+            <th data-col="has_api_key">APIキー <span class="sort-arrow">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr><td colspan="6" class="table-empty">読み込み中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="fetched-at" id="fetched-at"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const cfg  = await fetch("/api/firebase-config").then(r => r.json());
+const app  = initializeApp(cfg);
+const auth = getAuth(app);
+let currentUser = null;
+
+function showAlert(msg) {
+  document.getElementById("alert-area").innerHTML =
+    `<div class="alert alert-error">${msg}</div>`;
+}
+
+async function getToken() {
+  if (!currentUser) throw new Error("未ログイン");
+  return currentUser.getIdToken();
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  });
+}
+
+// ── KPI サマリー ──────────────────────────────────────────────────────────
+async function loadSummary() {
+  try {
+    const token = await getToken();
+    const res = await fetch("/api/admin/summary", { headers: { "Authorization": "Bearer " + token } });
+    if (res.status === 403) { showAlert("管理者権限がありません"); return; }
+    const d = await res.json();
+    if (d.error) { showAlert(d.error); return; }
+    document.getElementById("kpi-users").textContent    = (d.total_users ?? "—").toLocaleString();
+    document.getElementById("kpi-hands").textContent    = d.total_hands    != null ? d.total_hands.toLocaleString()    : "—";
+    document.getElementById("kpi-analyses").textContent = d.total_analyses != null ? d.total_analyses.toLocaleString() : "—";
+    document.getElementById("kpi-active").textContent   = d.active_users_7d != null ? d.active_users_7d.toLocaleString() : "—";
+    document.getElementById("page-sub").textContent = `取得日時: ${fmtDate(d.fetched_at)}`;
+  } catch(e) {
+    showAlert("サマリー取得失敗: " + e.message);
+  }
+}
+
+// ── ユーザーテーブル ──────────────────────────────────────────────────────
+let allUsers = [];
+let sortCol = "hand_count";
+let sortAsc = false;
+
+function renderTable() {
+  const tbody = document.getElementById("users-tbody");
+  if (allUsers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="table-empty">ユーザーなし</td></tr>';
+    return;
+  }
+  const sorted = [...allUsers].sort((a, b) => {
+    let va = a[sortCol] ?? (typeof a[sortCol] === "string" ? "" : -1);
+    let vb = b[sortCol] ?? (typeof b[sortCol] === "string" ? "" : -1);
+    if (sortCol === "last_login") { va = va || ""; vb = vb || ""; }
+    if (sortCol === "has_api_key") { va = va ? 1 : 0; vb = vb ? 1 : 0; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  tbody.innerHTML = sorted.map(u => {
+    const pf = u.avg_pf_score;
+    const pfBar = pf != null
+      ? `<div class="pf-bar-wrap">
+           <div class="pf-bar-bg"><div class="pf-bar-fill" style="width:${Math.min(pf,100)}%"></div></div>
+           <span class="pf-text">${pf}%</span>
+         </div>`
+      : '<span style="color:var(--text-dim)">—</span>';
+
+    return `<tr>
+      <td class="td-email" title="${u.email}">${u.email || u.uid.slice(0,12) + "..."}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted)">${fmtDate(u.last_login)}</td>
+      <td class="td-num big">${(u.hand_count || 0).toLocaleString()}</td>
+      <td class="td-num">${(u.analysis_count || 0).toLocaleString()}</td>
+      <td>${pfBar}</td>
+      <td><span class="badge-key ${u.has_api_key ? 'yes' : 'no'}">${u.has_api_key ? '設定済み' : '未設定'}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+async function loadUsers() {
+  document.getElementById("users-tbody").innerHTML =
+    '<tr><td colspan="6" class="table-empty">読み込み中...</td></tr>';
+  try {
+    const token = await getToken();
+    const res = await fetch("/api/admin/users", { headers: { "Authorization": "Bearer " + token } });
+    if (res.status === 403) { showAlert("管理者権限がありません"); return; }
+    const d = await res.json();
+    if (d.error) { showAlert(d.error); return; }
+    allUsers = d.users || [];
+    renderTable();
+    document.getElementById("fetched-at").textContent =
+      `最終取得: ${new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} (${allUsers.length}人)`;
+  } catch(e) {
+    showAlert("ユーザー一覧取得失敗: " + e.message);
+  }
+}
+
+// ── テーブルソート ────────────────────────────────────────────────────────
+document.querySelectorAll("thead th[data-col]").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortAsc = !sortAsc;
+    } else {
+      sortCol = col;
+      sortAsc = false;
+    }
+    document.querySelectorAll("thead th").forEach(t => {
+      t.classList.remove("sorted");
+      const arrow = t.querySelector(".sort-arrow");
+      if (arrow) arrow.textContent = "↕";
+    });
+    th.classList.add("sorted");
+    const arrow = th.querySelector(".sort-arrow");
+    if (arrow) arrow.textContent = sortAsc ? "↑" : "↓";
+    renderTable();
+  });
+});
+
+document.getElementById("btn-refresh").addEventListener("click", () => {
+  loadSummary();
+  loadUsers();
+});
+
+document.getElementById("btn-logout").addEventListener("click", async () => {
+  await signOut(auth);
+  window.location.href = "/login";
+});
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, user => {
+  if (!user) { window.location.href = "/login"; return; }
+  currentUser = user;
+  document.getElementById("nav-user").textContent = user.email || user.displayName || "";
+  loadSummary();
+  loadUsers();
+});
+</script>
+</body>
+</html>

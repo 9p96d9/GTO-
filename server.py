@@ -31,10 +31,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 from routes.pages import router as pages_router
 from routes.api   import router as api_router
 from routes.cart  import router as cart_router
+from routes.admin import router as admin_router
 
 app.include_router(pages_router)
 app.include_router(api_router)
 app.include_router(cart_router)
+app.include_router(admin_router)
 
 # ─── メイン ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
