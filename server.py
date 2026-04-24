@@ -7,6 +7,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import state  # パス定数・グローバル変数の初期化（sys.path も設定される）
@@ -26,6 +27,11 @@ app.add_middleware(
 STATIC_DIR = state.ROOT / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ─── ヘルスチェック（ALB用） ─────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return JSONResponse({"status": "ok"})
 
 # ─── ルーター登録 ────────────────────────────────────────────────────────────
 from routes.pages import router as pages_router
