@@ -8,3 +8,6 @@ sse-starlette
 treys
 firebase-admin
 jinja2
+sqlalchemy
+psycopg2-binary
+alembic

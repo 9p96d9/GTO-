@@ -28,6 +28,8 @@ COPY templates/ ./templates/
 COPY html/ ./html/
 COPY routes/ ./routes/
 COPY state.py pipelines.py server.py ./
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
 
 # 各種ディレクトリ作成
 RUN mkdir -p input/done output data
@@ -35,4 +37,4 @@ RUN mkdir -p input/done output data
 ENV PYTHONIOENCODING=utf-8
 
 # RailwayはPORTを自動設定する
-CMD ["python", "server.py"]
+CMD ["sh", "-c", "python -m alembic upgrade head && python server.py"]

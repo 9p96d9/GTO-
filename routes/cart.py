@@ -23,7 +23,7 @@ async def api_get_cart(job_id: str, request: Request):
         uid = get_uid_from_request(request)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
-    from scripts.firebase_utils import is_firebase_enabled, get_cart, get_gemini_results
+    from scripts.db import is_firebase_enabled, get_cart, get_gemini_results
     if not is_firebase_enabled():
         return JSONResponse({"hand_numbers": [], "gemini_results": {}})
     return JSONResponse({
@@ -40,7 +40,7 @@ async def api_update_cart(job_id: str, request: Request):
         return JSONResponse({"error": str(e)}, status_code=401)
     body = await request.json()
     hand_numbers = [int(n) for n in body.get("hand_numbers", [])]
-    from scripts.firebase_utils import is_firebase_enabled, update_cart
+    from scripts.db import is_firebase_enabled, update_cart
     if is_firebase_enabled():
         update_cart(uid, job_id, hand_numbers)
     return JSONResponse({"ok": True, "hand_numbers": hand_numbers})
@@ -56,7 +56,7 @@ async def api_save_cart(job_id: str, request: Request):
     body = await request.json()
     name         = body.get("name", "")
     hand_numbers = [int(n) for n in body.get("hand_numbers", [])]
-    from scripts.firebase_utils import is_firebase_enabled, save_cart_snapshot
+    from scripts.db import is_firebase_enabled, save_cart_snapshot
     if not is_firebase_enabled():
         return JSONResponse({"ok": False, "error": "Firebase未設定"})
     cart_id = save_cart_snapshot(uid, job_id, name, hand_numbers)
@@ -70,7 +70,7 @@ async def api_list_carts(request: Request, job_id: str = None):
         uid = get_uid_from_request(request)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
-    from scripts.firebase_utils import is_firebase_enabled, list_saved_carts
+    from scripts.db import is_firebase_enabled, list_saved_carts
     if not is_firebase_enabled():
         return JSONResponse({"carts": []})
     return JSONResponse({"carts": list_saved_carts(uid, job_id)})
@@ -84,7 +84,7 @@ async def api_analyze_cart(job_id: str, request: Request):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
 
-    from scripts.firebase_utils import (
+    from scripts.db import (
         is_firebase_enabled, get_cart, get_user_settings,
         get_analysis, save_gemini_results,
     )
@@ -201,7 +201,7 @@ async def api_explain_hand(job_id: str, request: Request):
         return JSONResponse({"error": "hand_number が必要です"}, status_code=400)
     hand_number = int(hand_number)
 
-    from scripts.firebase_utils import (
+    from scripts.db import (
         is_firebase_enabled, get_user_settings, get_gemini_results, save_gemini_results,
     )
     if not is_firebase_enabled():
@@ -226,7 +226,7 @@ async def api_explain_hand(job_id: str, request: Request):
             pass
 
     if not classified_data:
-        from scripts.firebase_utils import get_analysis
+        from scripts.db import get_analysis
         analysis = get_analysis(uid, job_id)
         if analysis and analysis.get("classified_snapshot"):
             try:

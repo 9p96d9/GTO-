@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.post("/api/upload-from-extension")
 async def upload_from_extension(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, save_session
+    from scripts.db import is_firebase_enabled, save_session
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -46,7 +46,7 @@ async def upload_from_extension(request: Request):
 
 @router.get("/api/sessions")
 async def api_sessions(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, get_sessions
+    from scripts.db import is_firebase_enabled, get_sessions
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -62,7 +62,7 @@ async def api_sessions(request: Request):
 
 @router.delete("/api/sessions/{session_id}")
 async def api_delete_session(session_id: str, request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, delete_session
+    from scripts.db import is_firebase_enabled, delete_session
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -78,7 +78,7 @@ async def api_delete_session(session_id: str, request: Request):
 
 @router.post("/api/sessions/{session_id}/analyze")
 async def api_analyze_session(session_id: str, request: Request, background_tasks: BackgroundTasks):
-    from scripts.firebase_utils import is_firebase_enabled, get_session, update_session_status
+    from scripts.db import is_firebase_enabled, get_session, update_session_status
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -114,7 +114,7 @@ async def api_analyze_session(session_id: str, request: Request, background_task
 
 @router.post("/api/sessions/analyze-multi")
 async def api_analyze_multi(request: Request, background_tasks: BackgroundTasks):
-    from scripts.firebase_utils import is_firebase_enabled, get_session
+    from scripts.db import is_firebase_enabled, get_session
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -156,7 +156,7 @@ async def api_download_text(request: Request):
     import io
     from fastapi.responses import StreamingResponse
     from datetime import date
-    from scripts.firebase_utils import is_firebase_enabled, get_session
+    from scripts.db import is_firebase_enabled, get_session
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -194,7 +194,7 @@ async def api_download_text(request: Request):
 
 @router.get("/api/hands/stats")
 async def api_hands_stats(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, get_hands_stats
+    from scripts.db import is_firebase_enabled, get_hands_stats
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -210,7 +210,7 @@ async def api_hands_stats(request: Request):
 
 @router.post("/api/hands/analyze")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
-    from scripts.firebase_utils import is_firebase_enabled, get_hands
+    from scripts.db import is_firebase_enabled, get_hands
     from scripts.hand_converter import convert_hands_batch
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
@@ -261,7 +261,7 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
 
 @router.post("/api/hands/realtime")
 async def api_hands_realtime(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, save_hand
+    from scripts.db import is_firebase_enabled, save_hand
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -287,7 +287,7 @@ async def api_hands_realtime(request: Request):
 @router.get("/api/debug/hand-sample")
 async def api_debug_hand_sample(request: Request):
     """ポストフロップあり最新ハンドのactionHistory＋変換後streets（BET額確認用・認証必須）"""
-    from scripts.firebase_utils import is_firebase_enabled, get_db
+    from scripts.db import is_firebase_enabled, get_db
     from scripts.hand_converter import convert_hand_json
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
@@ -332,7 +332,7 @@ async def api_debug_hand_sample(request: Request):
 
 @router.get("/api/analyses")
 async def api_analyses_list(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, get_analyses
+    from scripts.db import is_firebase_enabled, get_analyses
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -348,7 +348,7 @@ async def api_analyses_list(request: Request):
 
 @router.delete("/api/analyses/{job_id}")
 async def api_analyses_delete(job_id: str, request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, delete_analysis
+    from scripts.db import is_firebase_enabled, delete_analysis
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -364,7 +364,7 @@ async def api_analyses_delete(job_id: str, request: Request):
 
 @router.post("/api/analyses/{job_id}/restore")
 async def api_analyses_restore(job_id: str, request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, get_analysis
+    from scripts.db import is_firebase_enabled, get_analysis
     if not is_firebase_enabled():
         return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
@@ -398,7 +398,7 @@ async def api_analyses_restore(job_id: str, request: Request):
 
 @router.get("/api/user/settings")
 async def api_get_user_settings(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, get_user_settings
+    from scripts.db import is_firebase_enabled, get_user_settings
     try:
         uid = get_uid_from_request(request)
     except ValueError as e:
@@ -418,7 +418,7 @@ async def api_get_user_settings(request: Request):
 
 @router.put("/api/user/settings")
 async def api_put_user_settings(request: Request):
-    from scripts.firebase_utils import is_firebase_enabled, save_user_settings
+    from scripts.db import is_firebase_enabled, save_user_settings
     try:
         uid = get_uid_from_request(request)
     except ValueError as e:

@@ -24,10 +24,11 @@
 | Phase 17 | ランディングページ リデザイン（claude.ai/design活用） | ✅ 完了（sessionsページは未着手） |
 | Phase 20a | sessions解析ログ削除機能・Firestoreフィールドマスク最適化 | ✅ 完了 |
 | Phase 20b | 3D可視化 4タブ全実装（Sankey/Bubble/TimeSeries） | ✅ 完了 |
-| Phase 5, 6, 11 | 管理者ダッシュボード・UX改善・対戦相手統計 | ⬜ 未着手 |
-| **Phase 20c** | バグ修正・仕上げ・UX polish | ⬜ 計画中 |
-| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC） | ⬜ 計画中 |
-| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード | ⬜ 計画中 |
+| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止予定: 2026-05-15） |
+| Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
+| **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
+| Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
+| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | 🔄 進行中（19-1: RDS作成から） |
 
 ---
 
