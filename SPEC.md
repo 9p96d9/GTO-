@@ -876,15 +876,15 @@ CREATE INDEX ON carts(user_id, created_at DESC);
 
 | # | 作業 | 状態 |
 |---|---|---|
-| 19-1 | RDS PostgreSQL作成（t3.micro・VPC内・gto-rds-sg） | ⬜ |
-| 19-2 | requirements.txtに`sqlalchemy psycopg2-binary alembic`追加 | ⬜ |
-| 19-3 | Alembicセットアップ・Initialマイグレーション作成 | ⬜ |
-| 19-4 | `scripts/postgres_utils.py`実装 | ⬜ |
-| 19-5 | `scripts/db.py`作成（USE_POSTGRESフラグで振り分け） | ⬜ |
-| 19-6 | routes 4ファイルのimportをfirebase_utils→dbに変更 | ⬜ |
-| 19-7 | Secrets Managerに`DATABASE_URL`・`USE_POSTGRES`追加 | ⬜ |
-| 19-8 | ECSタスク定義更新（新環境変数を参照） | ⬜ |
-| 19-9 | 動作確認（false→Firebaseの既存動作確認・true→PostgreSQL確認） | ⬜ |
+| 19-1 | RDS PostgreSQL作成（t4g.micro・VPC内・gto-rds-sg） | ✅ |
+| 19-2 | requirements.txtに`sqlalchemy psycopg2-binary alembic`追加 | ✅ |
+| 19-3 | Alembicセットアップ・Initialマイグレーション作成 | ✅ |
+| 19-4 | `scripts/postgres_utils.py`実装 | ✅ |
+| 19-5 | `scripts/db.py`作成（USE_POSTGRESフラグで振り分け） | ✅ |
+| 19-6 | routes 4ファイルのimportをfirebase_utils→dbに変更 | ✅ |
+| 19-7 | Secrets Managerに`DATABASE_URL`・`USE_POSTGRES`追加 | ✅ |
+| 19-8 | ECSタスク定義更新（新環境変数を参照） | ✅ |
+| 19-9 | 動作確認（false→Firebaseの既存動作確認・true→PostgreSQL確認） | 🔄 未実施 |
 
 ### アドミンアナリティクスダッシュボード
 

@@ -28,7 +28,7 @@
 | Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
-| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | 🔄 進行中（19-1: RDS作成から） |
+| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | 🔄 進行中（19-9: 動作確認のみ残り） |
 
 ---
 

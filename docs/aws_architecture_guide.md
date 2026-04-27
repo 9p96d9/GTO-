@@ -251,10 +251,52 @@ git push → Actions起動
 | リージョン | ap-northeast-1（東京） |
 | ECSクラスター | gto-cluster |
 | ECSサービス | gto-service |
-| タスク定義 | gto-task（最新版） |
+| タスク定義 | gto-task:8（最新） |
 | ECRリポジトリ | gto-app |
 | ALB DNS | gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com |
 | Secrets Manager | gto/production（ARN末尾: -cxsxWn） |
 | CloudWatch | /ecs/gto-app |
 | IAMロール | gto-ecs-task-execution-role |
+| RDS | gto-db（db.t4g.micro・PostgreSQL 18・VPC内） |
+| RDS エンドポイント | gto-db.c5suwic8avyn.ap-northeast-1.rds.amazonaws.com:5432 |
+| RDS SG | gto-rds-sg（ECSからの5432のみ許可） |
 | Railway停止予定 | 2026-05-15 |
+
+---
+
+## Phase 19 追加構成（PostgreSQL）
+
+```
+インターネット
+    │ HTTP:80
+    ▼
+  ALB（gto-alb）
+    │ HTTP:5000
+    ▼
+  ECS Fargate（gto-app）
+    ├── ECR
+    ├── Secrets Manager
+    │    ├── DATABASE_URL  ← NEW
+    │    └── USE_POSTGRES  ← NEW
+    └── RDS PostgreSQL（gto-db）← NEW・VPC内
+         └── gto-rds-sg（ECSからのみ5432許可）
+```
+
+**切り替え方法:**
+- `USE_POSTGRES=true` → PostgreSQL使用
+- `USE_POSTGRES=false` → Firebase使用（コスト超過時の退避先）
+
+**DB管理方法（ECS Exec）:**
+```bash
+# タスクID取得
+aws ecs list-tasks --cluster gto-cluster --output text
+
+# psqlでテーブル確認
+aws ecs execute-command \
+  --cluster gto-cluster \
+  --task <タスクID> \
+  --container gto-app \
+  --interactive \
+  --command "psql \$DATABASE_URL -c '\dt'"
+```
+※ ECS Execはサービスに`--enable-execute-command`が必要（設定済み）
