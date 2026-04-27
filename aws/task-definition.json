@@ -20,35 +20,35 @@
       "secrets": [
         {
           "name": "FIREBASE_SERVICE_ACCOUNT_JSON",
-          "valueFrom": "gto/production:FIREBASE_SERVICE_ACCOUNT_JSON::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:FIREBASE_SERVICE_ACCOUNT_JSON::"
         },
         {
           "name": "FIREBASE_API_KEY",
-          "valueFrom": "gto/production:FIREBASE_API_KEY::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:FIREBASE_API_KEY::"
         },
         {
           "name": "FIREBASE_AUTH_DOMAIN",
-          "valueFrom": "gto/production:FIREBASE_AUTH_DOMAIN::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:FIREBASE_AUTH_DOMAIN::"
         },
         {
           "name": "FIREBASE_PROJECT_ID",
-          "valueFrom": "gto/production:FIREBASE_PROJECT_ID::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:FIREBASE_PROJECT_ID::"
         },
         {
           "name": "ADMIN_UID",
-          "valueFrom": "gto/production:ADMIN_UID::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:ADMIN_UID::"
         },
         {
           "name": "GEMINI_API_KEY",
-          "valueFrom": "gto/production:GEMINI_API_KEY::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:GEMINI_API_KEY::"
         },
         {
           "name": "GROQ_API_KEY",
-          "valueFrom": "gto/production:GROQ_API_KEY::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:GROQ_API_KEY::"
         },
         {
           "name": "PORT",
-          "valueFrom": "gto/production:PORT::"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:PORT::"
         }
       ],
       "logConfiguration": {
