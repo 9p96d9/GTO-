@@ -1,9 +1,10 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 7.1
-**最終更新:** 2026-04-23
+**バージョン:** 7.2
+**最終更新:** 2026-04-27
 **リポジトリ:** https://github.com/9p96d9/GTO-
-**本番URL:** https://gto-production.up.railway.app
+**本番URL (AWS):** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com
+**旧URL (Railway・5月15日停止予定):** https://gto-production.up.railway.app
 
 ---
 
@@ -31,7 +32,7 @@
 | **Phase 20a** | セッション解析履歴 削除機能 ＋ Firestore転送量削減（フィールドマスク） | ✅ 完了 |
 | **Phase 20b** | 3D可視化ページ `/3d_view/{job_id}`（Three.js 4タブ） | ✅ 完了 |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
-| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・セキュリティ学習） | ⬜ 計画中 |
+| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway は5月15日停止予定） |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
 
 ---
@@ -95,7 +96,10 @@ run_classify_pipeline_from_json（バックグラウンド）
 | リアルタイム通信 | SSE（Server-Sent Events） |
 | 認証・DB | Firebase Auth（Google）/ Firestore |
 | ブラウザ拡張 | Chrome拡張機能（MV3） |
-| ホスティング | Railway（Docker、mainブランチ自動デプロイ） |
+| ホスティング | AWS ECS Fargate（Docker、GitHub Actions自動デプロイ） |
+| CI/CD | GitHub Actions（ECRプッシュ → タスク定義更新 → ECSデプロイ） |
+| シークレット管理 | AWS Secrets Manager（`gto/production`） |
+| ロードバランサー | AWS ALB（gto-alb、ap-northeast-1） |
 
 ### ファイル構成
 
