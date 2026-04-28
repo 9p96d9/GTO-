@@ -1,0 +1,221 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PokerGTO AWS 構成 学習シート（Phase 18/19）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ 全体構成図
+
+インターネット
+    │ HTTP:80
+    ▼
+ALB（gto-alb）                ← 固定入口。FargateはIPが毎回変わるため必要
+    │ HTTP:5000
+    ▼
+ECS Fargate（gto-app）        ← コンテナを常時1台管理・再起動自動化
+    ├── ECR                   ← Dockerイメージ保管庫
+    ├── Secrets Manager       ← 環境変数の金庫
+    │    ├── Firebase系キー / GEMINI / GROQ
+    │    ├── DATABASE_URL     ← Phase19追加
+    │    └── USE_POSTGRES     ← Phase19追加
+    └── RDS PostgreSQL（gto-db）← Phase19追加・VPC内・外部直接アクセス不可
+
+IAM Role（gto-ecs-task-execution-role）← ECSがECR/Secrets Managerにアクセスする許可証
+
+VPC内セキュリティグループ（通信の壁）
+  gto-alb-sg … ALB用。80/443をインターネットから許可
+  gto-ecs-sg … ECS用。gto-alb-sgからの5000のみ許可
+  gto-rds-sg … RDS用。gto-ecs-sgからの5432のみ許可
+
+通信フロー:
+  インターネット → gto-alb-sg:80 → ALB → gto-ecs-sg:5000 → ECS → gto-rds-sg:5432 → RDS
+
+デプロイフロー:
+  git push → GitHub Actions → Dockerビルド → ECR push → ECSローリングアップデート
+
+DB切り替え:
+  USE_POSTGRES=false → firebase_utils.py（Firestore）
+  USE_POSTGRES=true  → postgres_utils.py（RDS PostgreSQL）
+  ※Firebase Auth（ログイン認証）は常にFirebaseのまま変わらない
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ AWSサービス一覧
+
+サービス   略称の意味                       役割・今回の設定
+─────────────────────────────────────────────────────────
+ALB        Application Load Balancer        HTTP:80受信→ECSへ転送 / 設定名: gto-alb
+ECS        Elastic Container Service        コンテナ管理 / cluster:gto-cluster service:gto-service
+Fargate    (サーバーレスコンテナ基盤)        EC2不要でコンテナ実行 / 0.5vCPU・1024MB
+ECR        Elastic Container Registry       Dockerイメージ倉庫 / リポジトリ名: gto-app
+RDS        Relational Database Service      PostgreSQL管理サービス / gto-db・t4g.micro
+IAM        Identity and Access Management   AWSの許可証管理 / role: gto-ecs-task-execution-role
+SM         Secrets Manager                  APIキー・環境変数の金庫 / シークレット名: gto/production
+VPC        Virtual Private Cloud            AWS内の仮想ネットワーク / デフォルトVPC使用
+SG         Security Group                   クラウドのファイアウォール / 3つ作成
+CW         CloudWatch Logs                  コンテナログ収集 / ロググループ: /ecs/gto-app
+CI/CD      Continuous Integration/Delivery  GitHub Actions / mainブランチpushで自動デプロイ
+
+IAMアタッチポリシー:
+  AmazonECSTaskExecutionRolePolicy … ECRプル・CWログ書き込み
+  SecretsManagerReadWrite           … Secrets Manager読み書き
+  gto-secrets-access（インライン）   … 特定シークレットのGetSecretValue
+
+Secrets Managerキー一覧:
+  Phase18: FIREBASE_SERVICE_ACCOUNT_JSON / FIREBASE_API_KEY / FIREBASE_AUTH_DOMAIN
+           FIREBASE_PROJECT_ID / ADMIN_UID / GEMINI_API_KEY / GROQ_API_KEY / PORT
+  Phase19: DATABASE_URL / USE_POSTGRES
+
+タスク定義でのSecrets Manager参照形式（フルARN必須）:
+  "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:キー名::"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ セットアップ手順（Phase 18）
+
+STEP1  IAMユーザー作成（rootは使わない）
+  - ユーザー名: gto-admin-user
+  - ポリシー: ECS_Full / ECR_Full / VPC_Full / ELB_Full / SecretsManagerRW / CW_Full
+  - アクセスキーも発行（CLIから使うため）
+
+STEP2  AWS CLI設定
+  aws configure  →  ap-northeast-1 / json
+  aws sts get-caller-identity  →  アカウントID確認
+
+STEP3  ECRリポジトリ作成
+  - プライベート / 名前: gto-app
+
+STEP4  Secrets Manager登録
+  - 種類: その他のシークレット（キー/値ペア）
+  - シークレット名: gto/production
+  - ARNはコンソールではなくCLIで取得（サフィックス誤字防止）:
+    aws secretsmanager describe-secret --secret-id gto/production --query ARN --output text
+
+STEP5  セキュリティグループ作成
+  - gto-alb-sg: インバウンド80/443を0.0.0.0/0から許可
+  - gto-ecs-sg: インバウンド5000をgto-alb-sg（SGIDを指定）から許可
+
+STEP6  ECSタスク実行ロール作成
+  - 信頼エンティティ: Elastic Container Service Task
+  - ポリシー: AmazonECSTaskExecutionRolePolicy + SecretsManagerReadWrite
+  - インラインポリシー gto-secrets-access を追加:
+    Resource: "arn:aws:...:secret:gto/production-*"  ← 末尾は*（ワイルドカード必須）
+
+STEP7  ECSクラスター作成
+  - 名前: gto-cluster / インフラ: Fargate（サーバーレス）
+
+STEP8  ターゲットグループ → ALB作成
+  - TG: タイプ=IPアドレス（Fargateはこれ必須）/ 名前: gto-tg / ポート5000 / HC: /health
+  - ALB: 名前: gto-alb / インターネット向け / SG: gto-alb-sg / リスナー80→gto-tg
+
+STEP9  CloudWatchロググループを手動作成
+  - ロググループ名: /ecs/gto-app
+  （awslogs-create-group: trueだけでは作成されない場合がある）
+
+STEP10 タスク定義登録
+  aws ecs register-task-definition --cli-input-json file://aws/task-definition.json
+
+STEP11 GitHub Secretsに登録
+  - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+  → mainにpushすると自動でビルド・ECR push・ECSデプロイ
+
+STEP12 ECSサービス作成
+  - タスク定義: gto-task / サービス名: gto-service / タスク数: 1
+  - VPC: デフォルト / SG: gto-ecs-sg / パブリックIP: 有効 / LB: gto-alb / TG: gto-tg
+
+STEP13 動作確認
+  □ http://ALB-DNS/health → {"status":"ok"}
+  □ ランディングページ表示
+  □ Googleログイン動作（Firebase承認済みドメインにALB DNSを追加すること）
+  □ CloudWatch Logsでエラーなし
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ PostgreSQL追加手順（Phase 19）
+
+STEP19-1  RDS作成
+  - インスタンス名: gto-db / タイプ: db.t4g.micro / PostgreSQL 18
+  - VPC内・パブリックアクセス: なし
+  - セキュリティグループ: gto-rds-sg（gto-ecs-sgからの5432のみ許可）
+
+STEP19-2  requirements.txt追加
+  sqlalchemy / psycopg2-binary / alembic
+
+STEP19-3  Alembicセットアップ
+  alembic init alembic
+  alembic revision --autogenerate -m "initial_schema"
+  alembic upgrade head   ← スキーマをDBに適用（GitのcommitのDB版）
+
+STEP19-4～6  コード追加（別端末で実施済み）
+  scripts/postgres_utils.py … firebase_utilsと同じシグネチャで実装
+  scripts/db.py             … USE_POSTGRESフラグで振り分けるラッパー
+  routes/*.py               … importをfirebase_utils→dbに変更
+
+STEP19-7  Secrets Managerにキー追加
+  DATABASE_URL: postgresql://user:pass@エンドポイント:5432/dbname
+  USE_POSTGRES: false（最初はfalseで本番安定確認してからtrueへ）
+
+STEP19-8  ECSタスク定義更新（新キーを参照するよう更新）
+
+STEP19-9  動作確認（未実施）
+  USE_POSTGRES=false → 既存Firebase動作確認
+  USE_POSTGRES=true  → PostgreSQL動作確認
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ PostgreSQL テーブル設計
+
+users         (id PK, firebase_uid VARCHAR UNIQUE NOT NULL, email, created_at, deleted_at)
+hands         (id PK, user_id FK→users, hand_id VARCHAR UNIQUE NOT NULL,
+               hand_json JSONB NOT NULL, captured_at, saved_at NOT NULL)
+analyses      (id PK, user_id FK→users, job_id VARCHAR UNIQUE NOT NULL,
+               created_at NOT NULL, hand_count, blue_count, red_count, pf_count,
+               categories JSONB, classified_snapshot TEXT, snapshot_encoding,
+               active_cart JSONB, deleted_at)
+ai_results    (id PK, analysis_id FK→analyses, hand_number NOT NULL,
+               ai_text TEXT, analyzed_at)
+carts         (id PK, user_id FK→users, cart_id VARCHAR UNIQUE NOT NULL,
+               job_id NOT NULL, name, hand_numbers JSONB, created_at NOT NULL)
+user_settings (id PK, user_id FK→users UNIQUE, encrypted_api_key TEXT,
+               needs_api_auto_cart BOOL DEFAULT FALSE, updated_at)
+
+INDEX:
+  hands(user_id, saved_at DESC) / analyses(user_id, created_at DESC)
+  ai_results(analysis_id) / carts(user_id, created_at DESC)
+
+Alembicコマンド:
+  alembic upgrade head                              ← 最新スキーマ適用
+  alembic revision --autogenerate -m "説明"         ← 変更ファイル作成
+  alembic current                                   ← 現在の状態確認
+  alembic downgrade -1                              ← 1つ前に戻す
+
+スキーマ設計の注意点:
+  ・インデックス漏れ → user_id / saved_at / job_id には必ずINDEX
+  ・全カラムTIMESTAMPTZ（UTC）に統一（TAMESTAMPと混在しない）
+  ・論理削除は deleted_at TIMESTAMPTZ NULL で管理
+  ・外部キー制約を必ず設定（孤立レコード防止）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ よくあるミスと対処
+
+ミス                              症状                    対処
+─────────────────────────────────────────────────────────────────
+TGをインスタンスタイプで作成      ECSサービス作成エラー   IPアドレスタイプで再作成
+SecretのARNをシークレット名だけで  GitHub ActionsでSSMエラー フルARNで指定
+ARNサフィックス誤字（cxxWn等）    ResourceNotFoundException CLIでARNを正確に取得
+CWロググループが存在しない        AccessDeniedException    /ecs/gto-app を手動作成
+IAMインラインのResourceが完全一致  GetSecretValue拒否       ARN末尾を -* にする
+ALBリスナーが古いTGを向いている    503エラー               デフォルトルールをgto-tgに変更
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 本番環境値（2026-04-28時点）
+
+AWSアカウントID  : 273949555510
+リージョン       : ap-northeast-1（東京）
+ECR URI          : 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app
+ECSクラスター    : gto-cluster
+ECSサービス      : gto-service
+タスク定義       : gto-task（最新版）
+ALB DNS          : gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com
+Secrets Manager  : gto/production（ARN末尾: -cxsxWn）
+CloudWatch       : /ecs/gto-app
+IAMロール        : gto-ecs-task-execution-role
+RDSインスタンス  : gto-db（db.t4g.micro・PostgreSQL 18）
+RDSエンドポイント: gto-db.c5suwic8avyn.ap-northeast-1.rds.amazonaws.com:5432
+RDS SG           : gto-rds-sg
+AWSクレジット    : $97.95（2026-10月下旬まで有効・月$40消費で約2.5ヶ月分）
+Railway停止予定  : 2026-05-15
