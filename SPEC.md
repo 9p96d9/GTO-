@@ -1,10 +1,10 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 7.2
-**最終更新:** 2026-04-27
+**バージョン:** 7.3
+**最終更新:** 2026-04-30
 **リポジトリ:** https://github.com/9p96d9/GTO-
 **本番URL (AWS):** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com
-**旧URL (Railway・5月15日停止予定):** https://gto-production.up.railway.app
+**旧URL (Railway・停止済み 2026-05-15):** https://gto-production.up.railway.app
 
 ---
 
@@ -32,8 +32,8 @@
 | **Phase 20a** | セッション解析履歴 削除機能 ＋ Firestore転送量削減（フィールドマスク） | ✅ 完了 |
 | **Phase 20b** | 3D可視化ページ `/3d_view/{job_id}`（Three.js 4タブ） | ✅ 完了 |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
-| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway は5月15日停止予定） |
-| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ⬜ 計画中 |
+| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止済み: 2026-05-15） |
+| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
 
 ---
 
@@ -893,7 +893,7 @@ CREATE INDEX ON carts(user_id, created_at DESC);
 | 19-6 | routes 4ファイルのimportをfirebase_utils→dbに変更 | ✅ |
 | 19-7 | Secrets Managerに`DATABASE_URL`・`USE_POSTGRES`追加 | ✅ |
 | 19-8 | ECSタスク定義更新（新環境変数を参照） | ✅ |
-| 19-9  | 動作確認（false→Firebaseの既存動作確認・true→PostgreSQL確認） | 🔄 未実施 |
+| 19-9  | 動作確認（false→Firebaseの既存動作確認・true→PostgreSQL確認） | ✅ |
 | 19-10 | `analysis_hands`テーブル追加（Alembicマイグレーション） | ✅ |
 | 19-11 | `save_analysis()`更新（`analysis_hands`にも行INSERT） | ✅ |
 | 19-A  | KPIアナリティクスダッシュボード実装 | ✅ |

@@ -24,11 +24,11 @@
 | Phase 17 | ランディングページ リデザイン（claude.ai/design活用） | ✅ 完了（sessionsページは未着手） |
 | Phase 20a | sessions解析ログ削除機能・Firestoreフィールドマスク最適化 | ✅ 完了 |
 | Phase 20b | 3D可視化 4タブ全実装（Sankey/Bubble/TimeSeries） | ✅ 完了 |
-| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止予定: 2026-05-15） |
+| **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止済み: 2026-05-15） |
 | Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
+| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
-| **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | 🔄 進行中（19-9: 動作確認のみ残り） |
 
 ---
 
@@ -36,15 +36,15 @@
 
 T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → Firestore蓄積 → GTO分類 → Web表示。
 
-**本番URL:** https://gto-production.up.railway.app
+**本番URL:** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com/
 **リポジトリ:** https://github.com/9p96d9/GTO-
-**ホスティング:** Railway（Docker・mainブランチ自動デプロイ）
+**ホスティング:** AWS ECS Fargate（Docker・mainブランチ自動デプロイ）
 
 | レイヤー | 技術 |
 |---|---|
 | Backend | FastAPI + uvicorn / Python 3.11 |
 | AI | Groq(llama-3.3-70b) / Gemini 2.5 Flash 自動切替（BYOK・`gsk_`→Groq） |
-| DB / 認証 | Firestore / Firebase Auth（Google） |
+| DB / 認証 | PostgreSQL（RDS） / Firebase Auth（Google）/ USE_POSTGRESフラグで切替 |
 | PDF | puppeteer（Chromium内蔵・Docker必須の原因） |
 | 拡張機能 | Chrome MV3 |
 
@@ -76,6 +76,9 @@ scripts/
   hand_converter.py          # fastFoldTableState → parse.py互換JSON
   analyze2.py                # Groq/Gemini両対応・detailモード既定（現用）
   firebase_utils.py          # Firebase Admin SDK（フィールドマスク最適化済み）
+  postgres_utils.py          # PostgreSQL実装（firebase_utilsと同一シグネチャ）
+  db.py                      # USE_POSTGRESフラグでfirebase/postgres切り替え
+  export_firebase_csv.py     # FirebaseデータをCSVエクスポート（Power BI用）
 extension/
   background.js              # Service Worker・自動解析トリガー
   interceptor.js             # WebSocket傍受（MAIN world）
@@ -140,7 +143,7 @@ hand_results = hand_json.get("handResults") or []
 git push origin main
   ↓ GitHub Actions (.github/workflows/deploy.yml)
   ↓ Docker build → ECR push → ECS タスク定義更新 → サービス再起動
-  ↓ 所要時間: 約5〜10分
+  ↓ 所要時間: 約3〜5分（ALBヘルスチェック最適化済み: 間隔10秒・正常しきい値2回）
 ```
 
 進捗確認: https://github.com/9p96d9/GTO-/actions
