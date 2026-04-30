@@ -220,7 +220,7 @@ function barCell(pct, cls) {
   </div>`;
 }
 
-async function load() {
+window.load = async function load() {
   document.getElementById('loader').style.display = 'flex';
   document.getElementById('content').style.display = 'none';
 
