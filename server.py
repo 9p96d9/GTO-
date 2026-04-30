@@ -9,12 +9,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
-import state  # パス定数・グローバル変数の初期化（sys.path も設定される）
+import state  # パス定数・グローバル変数・limiter の初期化（sys.path も設定される）
 
 import uvicorn
 
 app = FastAPI()
+app.state.limiter = state.limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS（ブックマークレットからの別オリジンPOSTを許可）
 app.add_middleware(

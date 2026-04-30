@@ -11,7 +11,7 @@ import {
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const SERVER_URL = "https://gto-production.up.railway.app";
+const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
 
 // ─── Firebase初期化 ─────────────────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 
-from state import jobs, jobs_lock, DATA_DIR, ROOT, INPUT_DIR
+from state import jobs, jobs_lock, DATA_DIR, ROOT, INPUT_DIR, limiter
 from pipelines import run_classify_pipeline, run_classify_pipeline_from_json
 from routes.deps import get_uid_from_request
 
@@ -209,6 +209,7 @@ async def api_hands_stats(request: Request):
 
 
 @router.post("/api/hands/analyze")
+@limiter.limit("10/minute")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
     from scripts.db import is_firebase_enabled, get_hands
     from scripts.hand_converter import convert_hands_batch
@@ -260,6 +261,7 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
 
 
 @router.post("/api/hands/realtime")
+@limiter.limit("120/minute")
 async def api_hands_realtime(request: Request):
     from scripts.db import is_firebase_enabled, save_hand
     if not is_firebase_enabled():

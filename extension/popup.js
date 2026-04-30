@@ -1,6 +1,6 @@
 "use strict";
 
-const SERVER_URL = "https://gto-production.up.railway.app";
+const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
 
 function sendBg(msg) {
   return new Promise((resolve, reject) => {

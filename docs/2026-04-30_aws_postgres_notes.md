@@ -170,6 +170,47 @@ EC2 → ターゲットグループ → ヘルスチェック編集：
 
 **今の結論：** クレジットがある間は現状維持。残高$30〜50になったら再検討。
 
+### 攻撃への対策
+
+| 攻撃の種類 | リスク | 対策 |
+|---|---|---|
+| 大量リクエスト（DDoS） | ⚠️ 中程度 | FastAPIレート制限 / AWS WAF |
+| 大量ダウンロード | ⚠️ 中程度 | FastAPIレート制限 |
+| ネットワーク層DDoS | ✅ 対策済み | AWS Shield Standard（無料・自動適用） |
+
+**予算アラート設定済み（2026-04-30）：$30超で9p96d9@gmail.com・69pdp69@gmail.comに通知**
+
+#### FastAPIレート制限（`slowapi`）
+
+`requirements.txt`に`slowapi`を追加してIPごとのリクエスト数を制限する。無料。
+
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
+
+@app.get("/api/hands/analyze")
+@limiter.limit("10/minute")  # 解析APIは厳しめ
+async def analyze(...): ...
+```
+
+**デメリット：**
+- 制限値を厳しくしすぎると正規ユーザーもブロックされる
+- カウンターはタスクのメモリ内に保持 → 将来タスクを複数台に増やすと制限が機能しなくなる（Redisが必要）
+- ALB経由のためIPは`X-Forwarded-For`ヘッダーから取得する設定が必要
+
+**現在のFargate構成（1タスク・少数ユーザー）なら問題なし。**
+
+#### AWS WAF（知識用・今は不採用）
+
+ALBの前段に置くマネージドファイアウォール。
+
+- **料金：** $5/月（固定）+ $1/100万リクエスト
+- **できること：** IPレート制限・地域ブロック・SQLインジェクション検知・ボット対策
+- **メリット：** アプリコードに届く前にブロックするため確実
+- **デメリット：** 月$5の固定費。小規模プロジェクトには割高
+- **採用タイミング：** 有料サービス化して攻撃リスクが上がったとき
+
 ---
 
 ## 5. Railway vs AWS
