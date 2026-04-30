@@ -37,4 +37,4 @@ RUN mkdir -p input/done output data
 ENV PYTHONIOENCODING=utf-8
 
 # RailwayはPORTを自動設定する
-CMD ["sh", "-c", "python -m alembic upgrade head && python server.py"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL\" ]; then python -m alembic upgrade head; fi && python server.py"]
