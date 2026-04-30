@@ -7,3 +7,4 @@ input/
 .claude/
 __pycache__/
 *.pyc
+firebase_service_account.json
