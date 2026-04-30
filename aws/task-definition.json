@@ -49,6 +49,14 @@
         {
           "name": "PORT",
           "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:PORT::"
+        },
+        {
+          "name": "USE_POSTGRES",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:USE_POSTGRES::"
+        },
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:273949555510:secret:gto/production-cxsxWn:DATABASE_URL::"
         }
       ],
       "logConfiguration": {
