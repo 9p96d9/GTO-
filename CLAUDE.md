@@ -132,6 +132,19 @@ hand_results = hand_json.get("handResults") or []
 
 ## デプロイ手順
 
+**本番環境:** AWS ECS Fargate（Railway は 2026-05-15 停止済み）  
+**本番URL:** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com/  
+**CI/CD:** `main` ブランチへの push → GitHub Actions が自動実行
+
+```
+git push origin main
+  ↓ GitHub Actions (.github/workflows/deploy.yml)
+  ↓ Docker build → ECR push → ECS タスク定義更新 → サービス再起動
+  ↓ 所要時間: 約5〜10分
+```
+
+進捗確認: https://github.com/9p96d9/GTO-/actions
+
 ```bash
 # 構文チェック（必須）
 python -c "
@@ -141,10 +154,10 @@ for f in ['server.py','state.py','pipelines.py','routes/pages.py','routes/api.py
     if p.exists(): ast.parse(p.read_text(encoding='utf-8')); print(f'OK: {f}')
 "
 
-# コミット & プッシュ（Railway が main ブランチを自動デプロイ）
+# コミット & プッシュ
 git add <files>
 git commit -m "feat/fix/docs: 変更内容"
-git push origin master:main
+git push origin main
 ```
 
 ---
