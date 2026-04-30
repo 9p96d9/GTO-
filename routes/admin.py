@@ -1,8 +1,10 @@
 """
-routes/admin.py - 管理者ダッシュボード（Phase 5）
-GET /admin         → 管理者画面
-GET /api/admin/summary  → KPI サマリー
-GET /api/admin/users    → ユーザー一覧
+routes/admin.py - 管理者ダッシュボード（Phase 5・19-A）
+GET /admin                  → 管理者画面
+GET /admin/analytics        → PostgreSQL KPIアナリティクス画面
+GET /api/admin/summary      → KPI サマリー
+GET /api/admin/users        → ユーザー一覧
+GET /api/admin/analytics    → 全ユーザー横断集計（PostgreSQL専用）
 """
 
 import os
@@ -78,5 +80,24 @@ async def api_admin_users(request: Request):
         return JSONResponse({"error": "管理者権限が必要です"}, status_code=403)
     try:
         return JSONResponse({"users": get_admin_users()})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/admin/analytics", response_class=HTMLResponse)
+async def admin_analytics_page(request: Request):
+    if not ADMIN_UID:
+        return HTMLResponse("<h2>ADMIN_UID 環境変数が設定されていません</h2>", status_code=503)
+    return HTMLResponse(_render("admin_analytics.html"))
+
+
+@router.get("/api/admin/analytics")
+async def api_admin_analytics(request: Request):
+    from scripts.db import get_admin_analytics
+    uid = _get_uid(request)
+    if not _check_admin(uid):
+        return JSONResponse({"error": "管理者権限が必要です"}, status_code=403)
+    try:
+        return JSONResponse(get_admin_analytics())
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

@@ -566,3 +566,14 @@ def save_gemini_results(uid: str, job_id: str, results: dict):
     _db.collection("users").document(uid).collection("analyses").document(job_id).set(
         {"gemini_results": results}, merge=True
     )
+
+
+def get_admin_analytics() -> dict:
+    """PostgreSQL専用機能。Firebaseモードでは空データを返す。"""
+    from datetime import datetime, timezone
+    return {
+        "user_stats": [],
+        "worsened_users": [],
+        "firebase_mode": True,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }

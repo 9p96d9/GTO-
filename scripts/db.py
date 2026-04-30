@@ -16,7 +16,7 @@ if _use_postgres:
         get_cart, update_cart, save_cart_snapshot, list_saved_carts,
         get_user_settings, save_user_settings,
         get_gemini_results, save_gemini_results,
-        get_admin_summary, get_admin_users,
+        get_admin_summary, get_admin_users, get_admin_analytics,
         is_firebase_enabled, get_db,
     )
 else:
@@ -27,7 +27,7 @@ else:
         get_cart, update_cart, save_cart_snapshot, list_saved_carts,
         get_user_settings, save_user_settings,
         get_gemini_results, save_gemini_results,
-        get_admin_summary, get_admin_users,
+        get_admin_summary, get_admin_users, get_admin_analytics,
         is_firebase_enabled, get_db,
     )
 
@@ -42,6 +42,6 @@ __all__ = [
     "get_cart", "update_cart", "save_cart_snapshot", "list_saved_carts",
     "get_user_settings", "save_user_settings",
     "get_gemini_results", "save_gemini_results",
-    "get_admin_summary", "get_admin_users",
+    "get_admin_summary", "get_admin_users", "get_admin_analytics",
     "is_firebase_enabled", "get_db",
 ]

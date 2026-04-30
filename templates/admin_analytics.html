@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KPIアナリティクス — PokerGTO Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1a2e;--bg2:#16213e;--surface:#1e2240;--surface2:#252a4a;
+  --border:#2a2d4a;--text:#ccd6f6;--text2:#8892b0;
+  --blue:#4a9eff;--red:#e94560;--green:#64ffda;--yellow:#f6c90e;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── ヘッダー ── */
+header{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:0 24px;height:52px;display:flex;align-items:center;gap:16px;
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px}
+.logo span{color:var(--blue)}
+.header-nav{display:flex;gap:8px;margin-left:auto}
+.btn{
+  padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;
+  text-decoration:none;transition:all .15s;
+}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--blue);color:var(--text)}
+.btn-primary{background:var(--blue);border:none;color:#0a0a18;font-weight:600}
+.btn-primary:hover{opacity:.85}
+
+/* ── レイアウト ── */
+.container{max-width:1100px;margin:0 auto;padding:28px 20px}
+h2{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;margin-bottom:4px}
+.subtitle{font-size:12px;color:var(--text2);margin-bottom:24px}
+
+/* ── ステータスバナー ── */
+#mode-banner{
+  padding:10px 16px;border-radius:8px;font-size:12px;margin-bottom:24px;display:none;
+}
+#mode-banner.firebase{background:#f6c90e18;border:1px solid var(--yellow);color:var(--yellow)}
+#mode-banner.postgres{background:#64ffda18;border:1px solid var(--green);color:var(--green)}
+
+/* ── セクション ── */
+.section{margin-bottom:32px}
+.section-title{
+  font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;
+  color:var(--text2);text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── テーブル ── */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{
+  background:var(--surface);padding:10px 14px;text-align:left;
+  font-size:11px;font-weight:600;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;
+}
+tbody tr{border-top:1px solid var(--border);transition:background .1s}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:10px 14px;vertical-align:middle}
+
+/* ── バーゲージ ── */
+.bar-cell{display:flex;align-items:center;gap:8px;min-width:120px}
+.bar-bg{flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.bar-blue{background:var(--blue)}
+.bar-red{background:var(--red)}
+.bar-val{font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;
+  white-space:nowrap;min-width:38px;text-align:right}
+
+/* ── ランクバッジ ── */
+.rank{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;
+  font-family:'Space Grotesk',sans-serif;
+}
+.rank-1{background:var(--yellow);color:#1a1a0a}
+.rank-2{background:#c0c0c0;color:#1a1a2e}
+.rank-3{background:#cd7f32;color:#fff}
+.rank-n{background:var(--surface2);color:var(--text2)}
+
+/* ── 悪化ユーザーテーブル ── */
+.diff-bad{color:var(--red);font-weight:700;font-family:'Space Grotesk',sans-serif}
+.diff-good{color:var(--green);font-weight:700;font-family:'Space Grotesk',sans-serif}
+.alert-row{background:#e9456012 !important}
+
+/* ── 空状態 ── */
+.empty{
+  padding:40px;text-align:center;color:var(--text2);
+  font-size:13px;border:1px dashed var(--border);border-radius:10px;
+}
+
+/* ── ローダー ── */
+#loader{
+  display:flex;align-items:center;justify-content:center;
+  gap:10px;padding:48px;color:var(--text2);font-size:13px;
+}
+.spinner{
+  width:20px;height:20px;border:2px solid var(--border);
+  border-top-color:var(--blue);border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 最終取得時刻 ── */
+.fetched-at{font-size:11px;color:var(--text2);margin-top:16px;text-align:right}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Poker<span>GTO</span></div>
+  <span style="font-size:11px;color:var(--text2);background:var(--surface);
+    padding:3px 10px;border-radius:20px;border:1px solid var(--border)">Admin Analytics</span>
+  <nav class="header-nav">
+    <a href="/admin" class="btn btn-ghost">← 管理者TOP</a>
+    <button class="btn btn-primary" onclick="load()">更新</button>
+  </nav>
+</header>
+
+<div class="container">
+  <h2>KPIアナリティクス</h2>
+  <p class="subtitle">PostgreSQL専用 — GROUP BY / RANK() / CTE でFirestoreでは不可能な集計を実行</p>
+
+  <div id="mode-banner"></div>
+  <div id="loader"><div class="spinner"></div>データを取得中...</div>
+  <div id="content" style="display:none">
+
+    <!-- ① 全ユーザーblue/red率ランキング -->
+    <div class="section">
+      <div class="section-title">全ユーザー Blue / Red 率ランキング</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>ユーザー</th>
+              <th>ハンド数</th>
+              <th style="min-width:160px">Blue率</th>
+              <th style="min-width:160px">Red率</th>
+              <th>PF率</th>
+            </tr>
+          </thead>
+          <tbody id="user-tbody"></tbody>
+        </table>
+      </div>
+      <div id="user-empty" class="empty" style="display:none">
+        データなし（USE_POSTGRES=true かつ解析完了後に表示されます）
+      </div>
+    </div>
+
+    <!-- ② 先週比赤線率悪化ユーザー -->
+    <div class="section">
+      <div class="section-title">⚠ 先週比 赤線率悪化ユーザー</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ユーザー</th>
+              <th>今週 Red率</th>
+              <th>先週 Red率</th>
+              <th>差分</th>
+            </tr>
+          </thead>
+          <tbody id="worsened-tbody"></tbody>
+        </table>
+      </div>
+      <div id="worsened-empty" class="empty" style="display:none">
+        悪化ユーザーなし（先週比+5%以上のユーザーが検出された場合に表示）
+      </div>
+    </div>
+
+    <p class="fetched-at" id="fetched-at"></p>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+let _auth = null;
+
+(async () => {
+  try {
+    const cfg = await fetch("/api/firebase-config").then(r => r.json());
+    const app = initializeApp(cfg);
+    _auth = getAuth(app);
+    onAuthStateChanged(_auth, user => { if (user) load(); });
+  } catch {
+    load();
+  }
+})();
+
+async function getToken() {
+  if (!_auth) return null;
+  return new Promise(resolve => {
+    onAuthStateChanged(_auth, user => {
+      if (user) user.getIdToken().then(resolve);
+      else resolve(null);
+    });
+  });
+}
+
+function rankBadge(n) {
+  const cls = n === 1 ? 'rank-1' : n === 2 ? 'rank-2' : n === 3 ? 'rank-3' : 'rank-n';
+  return `<span class="rank ${cls}">${n}</span>`;
+}
+
+function barCell(pct, cls) {
+  const w = Math.min(pct, 100).toFixed(1);
+  return `<div class="bar-cell">
+    <div class="bar-bg"><div class="bar-fill ${cls}" style="width:${w}%"></div></div>
+    <span class="bar-val">${pct}%</span>
+  </div>`;
+}
+
+async function load() {
+  document.getElementById('loader').style.display = 'flex';
+  document.getElementById('content').style.display = 'none';
+
+  const token = await getToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch('/api/admin/analytics', { headers });
+  const data = await res.json();
+
+  document.getElementById('loader').style.display = 'none';
+
+  if (data.error) {
+    document.getElementById('loader').style.display = 'flex';
+    document.getElementById('loader').innerHTML = `<span style="color:var(--red)">${data.error}</span>`;
+    return;
+  }
+
+  // モードバナー
+  const banner = document.getElementById('mode-banner');
+  if (data.firebase_mode) {
+    banner.className = 'firebase';
+    banner.textContent = '⚠ Firebaseモードで動作中 — USE_POSTGRES=true に切り替えると集計が有効になります';
+    banner.style.display = '';
+  } else {
+    banner.className = 'postgres';
+    banner.textContent = '✓ PostgreSQLモード — リアルタイムSQL集計';
+    banner.style.display = '';
+  }
+
+  // ① ユーザーランキングテーブル
+  const userStats = data.user_stats || [];
+  const userTbody = document.getElementById('user-tbody');
+  if (userStats.length === 0) {
+    document.getElementById('user-empty').style.display = '';
+    userTbody.closest('.tbl-wrap').style.display = 'none';
+  } else {
+    document.getElementById('user-empty').style.display = 'none';
+    userTbody.innerHTML = userStats.map(u => `
+      <tr>
+        <td>${rankBadge(u.red_rank)}</td>
+        <td style="font-size:12px;color:var(--text2)">${u.email}</td>
+        <td style="font-family:'Space Grotesk',sans-serif;font-weight:600">${u.total_hands.toLocaleString()}</td>
+        <td>${barCell(u.blue_rate, 'bar-blue')}</td>
+        <td>${barCell(u.red_rate, 'bar-red')}</td>
+        <td style="color:var(--text2);font-size:12px">${u.pf_rate}%</td>
+      </tr>
+    `).join('');
+  }
+
+  // ② 悪化ユーザーテーブル
+  const worsened = data.worsened_users || [];
+  const worsenedTbody = document.getElementById('worsened-tbody');
+  if (worsened.length === 0) {
+    document.getElementById('worsened-empty').style.display = '';
+    worsenedTbody.closest('.tbl-wrap').style.display = 'none';
+  } else {
+    document.getElementById('worsened-empty').style.display = 'none';
+    worsenedTbody.innerHTML = worsened.map(u => `
+      <tr class="alert-row">
+        <td style="font-size:12px;color:var(--text2)">${u.email}</td>
+        <td class="diff-bad">${u.this_week_pct}%</td>
+        <td style="color:var(--text2)">${u.last_week_pct}%</td>
+        <td class="diff-bad">▲ ${u.diff_pct}%</td>
+      </tr>
+    `).join('');
+  }
+
+  // 取得時刻
+  document.getElementById('fetched-at').textContent =
+    `取得: ${new Date(data.fetched_at).toLocaleString('ja-JP')}`;
+
+  document.getElementById('content').style.display = '';
+}
+
+</script>
+</body>
+</html>

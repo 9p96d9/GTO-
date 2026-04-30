@@ -155,7 +155,7 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
 
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
-        s.execute(
+        row = s.execute(
             text("""
                 INSERT INTO analyses
                   (user_id, job_id, created_at, hand_count, blue_count, red_count, pf_count,
@@ -171,6 +171,7 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
                   categories = EXCLUDED.categories,
                   classified_snapshot = EXCLUDED.classified_snapshot,
                   snapshot_encoding   = EXCLUDED.snapshot_encoding
+                RETURNING id
             """),
             {
                 "user_id":    user_id,
@@ -185,6 +186,35 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
                 "encoding":   "gzip_b64" if has_snapshot else None,
             },
         )
+        analysis_id = row.fetchone()[0]
+
+        # analysis_hands を再構築（再解析時は削除して書き直す）
+        s.execute(text("DELETE FROM analysis_hands WHERE analysis_id = :aid"), {"aid": analysis_id})
+        ah_rows = []
+        for hand in hands:
+            bc    = hand.get("bluered_classification", {})
+            line  = bc.get("line", "")
+            label = bc.get("category_label", "")
+            hnum  = hand.get("hand_number")
+            if not (line and label and hnum):
+                continue
+            ah_rows.append({
+                "aid":   analysis_id,
+                "hnum":  hnum,
+                "line":  line,
+                "label": label,
+                "pos":   hand.get("hero_position", "") or None,
+                "cat":   hand.get("datetime") or None,
+            })
+        if ah_rows:
+            s.execute(
+                text("""
+                    INSERT INTO analysis_hands
+                      (analysis_id, hand_number, line, category_label, position, captured_at)
+                    VALUES (:aid, :hnum, :line, :label, :pos, :cat)
+                """),
+                ah_rows,
+            )
         s.commit()
     return has_snapshot
 
@@ -412,6 +442,85 @@ def save_gemini_results(uid: str, job_id: str, results: dict):
 
 
 # ─── 管理者 ──────────────────────────────────────────────────────────────────
+
+def get_admin_analytics() -> dict:
+    """全ユーザー横断KPI（PostgreSQLにしかできない集計）"""
+    with _session() as s:
+        # ① 全ユーザーblue/red率ランキング（RANK()ウィンドウ関数）
+        user_rows = s.execute(text("""
+            SELECT
+                u.email,
+                SUM(a.hand_count)  AS total_hands,
+                SUM(a.blue_count)  AS blue,
+                SUM(a.red_count)   AS red,
+                SUM(a.pf_count)    AS pf,
+                ROUND(SUM(a.blue_count)::numeric / NULLIF(SUM(a.hand_count),0) * 100, 1) AS blue_rate,
+                ROUND(SUM(a.red_count)::numeric  / NULLIF(SUM(a.hand_count),0) * 100, 1) AS red_rate,
+                RANK() OVER (
+                    ORDER BY SUM(a.red_count)::float / NULLIF(SUM(a.hand_count),0) DESC
+                ) AS red_rank
+            FROM users u
+            JOIN analyses a ON a.user_id = u.id AND a.deleted_at IS NULL
+            WHERE u.deleted_at IS NULL
+            GROUP BY u.id, u.email
+            ORDER BY red_rate DESC NULLS LAST
+        """)).fetchall()
+
+        # ② 先週比赤線率悪化ユーザー（CTE＋期間比較）
+        worsened_rows = s.execute(text("""
+            WITH this_week AS (
+                SELECT user_id,
+                       SUM(red_count)::float / NULLIF(SUM(hand_count),0) AS red_rate
+                FROM analyses
+                WHERE created_at >= DATE_TRUNC('week', NOW())
+                  AND deleted_at IS NULL
+                GROUP BY user_id
+            ),
+            last_week AS (
+                SELECT user_id,
+                       SUM(red_count)::float / NULLIF(SUM(hand_count),0) AS red_rate
+                FROM analyses
+                WHERE created_at >= DATE_TRUNC('week', NOW()) - INTERVAL '7 days'
+                  AND created_at <  DATE_TRUNC('week', NOW())
+                  AND deleted_at IS NULL
+                GROUP BY user_id
+            )
+            SELECT
+                u.email,
+                ROUND((tw.red_rate * 100)::numeric, 1) AS this_week_pct,
+                ROUND((lw.red_rate * 100)::numeric, 1) AS last_week_pct,
+                ROUND(((tw.red_rate - lw.red_rate) * 100)::numeric, 1) AS diff_pct
+            FROM this_week tw
+            JOIN last_week lw ON lw.user_id = tw.user_id
+            JOIN users u ON u.id = tw.user_id
+            WHERE tw.red_rate - lw.red_rate > 0.05
+            ORDER BY diff_pct DESC
+        """)).fetchall()
+
+    return {
+        "user_stats": [
+            {
+                "email":       r[0] or "—",
+                "total_hands": int(r[1] or 0),
+                "blue_rate":   float(r[5] or 0),
+                "red_rate":    float(r[6] or 0),
+                "pf_rate":     round(float(r[4] or 0) / max(int(r[1] or 1), 1) * 100, 1),
+                "red_rank":    int(r[7]),
+            }
+            for r in user_rows
+        ],
+        "worsened_users": [
+            {
+                "email":         r[0] or "—",
+                "this_week_pct": float(r[1] or 0),
+                "last_week_pct": float(r[2] or 0),
+                "diff_pct":      float(r[3] or 0),
+            }
+            for r in worsened_rows
+        ],
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 def get_admin_summary() -> dict:
     with _session() as s:
