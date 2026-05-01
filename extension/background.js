@@ -18,6 +18,7 @@ const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
 let _app  = null;
 let _auth = null;
 let _user = null;
+let _initPromise = null;
 
 async function getFirebaseConfig() {
   const res = await fetch(SERVER_URL + "/api/firebase-config");
@@ -25,25 +26,32 @@ async function getFirebaseConfig() {
 }
 
 async function initFirebase() {
-  if (_app) return;
-  const cfg = await getFirebaseConfig();
-  _app  = initializeApp(cfg);
-  _auth = getAuth(_app);
-  onAuthStateChanged(_auth, user => {
-    _user = user;
-    if (user) {
-      // ログイン時にプレイ開始タイムスタンプを記録
-      chrome.storage.local.get(["sessionStartAt"], s => {
-        if (!s.sessionStartAt) {
-          chrome.storage.local.set({ sessionStartAt: Date.now() });
+  if (_initPromise) return _initPromise;
+  _initPromise = (async () => {
+    const cfg = await getFirebaseConfig();
+    _app  = initializeApp(cfg);
+    _auth = getAuth(_app);
+    await new Promise(resolve => {
+      let resolved = false;
+      onAuthStateChanged(_auth, user => {
+        _user = user;
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+        if (user) {
+          chrome.storage.local.get(["sessionStartAt"], s => {
+            if (!s.sessionStartAt) chrome.storage.local.set({ sessionStartAt: Date.now() });
+          });
+          _schedulePlaytimeNotify();
+        } else {
+          chrome.storage.local.remove(["sessionStartAt"]);
+          _clearPlaytimeAlarm();
         }
       });
-      _schedulePlaytimeNotify();
-    } else {
-      chrome.storage.local.remove(["sessionStartAt"]);
-      _clearPlaytimeAlarm();
-    }
-  });
+    });
+  })();
+  return _initPromise;
 }
 
 // ─── メッセージハンドラ ──────────────────────────────────────────────────────
@@ -54,6 +62,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 async function handleMessage(msg) {
+  console.log("[GTO]", msg.type);
   await initFirebase();
 
   switch (msg.type) {
@@ -107,7 +116,10 @@ async function handleMessage(msg) {
 
     // リアルタイムハンド取得（Phase 7）
     case "HAND_COMPLETE": {
-      if (!_user) return { ok: false, reason: "未ログイン" };
+      if (!_user) {
+        console.log("[GTO] HAND_COMPLETE: _user null");
+        return { ok: false, reason: "未ログイン" };
+      }
       try {
         const token = await _user.getIdToken(false);
         const captured_at = new Date().toISOString();
@@ -120,11 +132,13 @@ async function handleMessage(msg) {
           body: JSON.stringify({ hand_json: msg.hand, captured_at })
         });
         const result = await res.json();
+        console.log("[GTO] HAND_COMPLETE:", res.status, JSON.stringify(result).slice(0, 120));
         if (result.ok) {
           await _checkAutoAnalyze(token);
         }
         return result;
       } catch(e) {
+        console.log("[GTO] HAND_COMPLETE error:", e.message);
         return { error: e.message };
       }
     }

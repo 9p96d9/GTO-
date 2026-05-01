@@ -86,6 +86,7 @@ async function scrapeHands() {
 // interceptor.js（MAIN world）からの CustomEvent を受け取り background.js に転送する
 
 window.addEventListener('t4_hand_complete', function (e) {
+  console.log('[GTO] t4_hand_complete', e.detail?.tableId);
   chrome.runtime.sendMessage({ type: 'HAND_COMPLETE', hand: e.detail });
 });
 
