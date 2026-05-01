@@ -123,6 +123,32 @@ hand_results = hand_json.get("handResults", [])
 hand_results = hand_json.get("handResults") or []
 ```
 
+### PostgreSQL JSONB カラムの展開ミス
+```python
+# NG: hand_json の中身がトップレベルに展開され "hand_json" キーが消える
+d = {"hand_id": r[0], **r[1], ...}
+# OK: Firebase の doc.to_dict() と同じ形式でネストする
+d = {"hand_id": r[0], "hand_json": r[1], ...}
+```
+
+### SQLAlchemy text() での ::jsonb 構文エラー
+```python
+# NG: SQLAlchemy が :param: と誤解析してSQL構文エラー
+text("SET col = :param::jsonb")
+# OK: CAST() 形式を使う
+text("SET col = CAST(:param AS jsonb)")
+```
+
+### PostgreSQL モードで db.collection() を直叩きしない
+```python
+# NG: USE_POSTGRES=true のとき get_db() は None を返す
+db = get_db()
+db.collection("users").document(uid).collection("hands")...
+# OK: scripts/db.py のラッパーを使う
+from scripts.db import get_hands
+hands = get_hands(uid, limit=30)
+```
+
 ### chrome.runtime の罠
 - `/sessions` ページのコンソールから拡張機能APIは呼べない
 - 拡張機能コンソール（chrome://extensions → background）と別物

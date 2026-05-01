@@ -1258,13 +1258,20 @@ scripts/
 | 2026-04-20 | 分類カテゴリ内のソートをハンド番号昇順（H1, H2...）に変更 |
 | 2026-04-20 | classified_snapshot を gzip+base64 圧縮保存（圧縮前比5〜10倍のハンド数を格納可能に） |
 | 2026-04-20 | sessions 解析履歴で has_snapshot=false の場合「⚠ 再表示不可」を表示しリンクを非表示化 |
+| 2026-05-01 | save_hand の tableId コロンによる SQL 構文エラー修正（`re.sub` + `CAST(:hand_json AS jsonb)`） |
+| 2026-05-01 | `get_hands()` が JSONB カラムを `**r[1]` 展開→解析結果が全件空になるバグ修正 |
+| 2026-05-01 | `::jsonb` 構文を全て `CAST(:param AS jsonb)` に統一（SQLAlchemy text() 誤解析対策） |
+| 2026-05-01 | カート解析の race condition 修正（`startAnalyze` が `hand_numbers` を body に載せて送信） |
+| 2026-05-01 | `/api/debug/hand-sample` が Firestore 直叩きしていたのを `get_hands()` 経由に修正 |
+| 2026-05-01 | 拡張機能 auth race condition 修正（`initFirebase` が `onAuthStateChanged` 確定を await） |
+| 2026-05-01 | manifest.json に apex ドメイン（サブドメインなし）追加（tenfourpoker.com 等） |
 
 ### バグ調査方針
 
 1. 全ユーザーフローを通しで実行して動作確認
 2. ブラウザコンソールエラーの確認
-3. Railway ログの確認（本番エラー）
-4. 拡張機能のService Workerログ確認
+3. ECS ログの確認（本番エラー）
+4. 拡張機能のService Workerログ確認（chrome://extensions → background → Service Worker）
 
 ---
 
