@@ -25,7 +25,7 @@ COPY scripts/ ./scripts/
 COPY static/ ./static/
 COPY extension/ ./extension/
 COPY templates/ ./templates/
-COPY html/ ./html/
+COPY html_pages/ ./html_pages/
 COPY routes/ ./routes/
 COPY state.py pipelines.py server.py ./
 COPY alembic/ ./alembic/

@@ -105,6 +105,53 @@ def export_users(db, auth_client) -> list[str]:
     return uids
 
 
+def _parse_hand_json(hj: dict) -> dict:
+    """hand_json（fastFoldTableState）から分析に使えるフィールドを抽出"""
+    hand_results  = hj.get("handResults") or []
+    my_seat_index = hj.get("mySeatIndex", -1)
+    community     = hj.get("communityCards") or []
+    action_hist   = hj.get("actionHistory") or []
+
+    # ヒーロー情報
+    hero_result = next(
+        (r for r in hand_results if r.get("seatIndex") == my_seat_index), {}
+    )
+    hero_position = hero_result.get("position", "")
+    hero_name     = hero_result.get("playerName", "")
+    hero_profit   = float(hero_result.get("profit", 0.0))
+
+    # プレイヤー数・ポット
+    num_players = len(hand_results)
+
+    # ボードの深さ（フロップ/ターン/リバー到達判定）
+    board_cards = len([c for c in community if c])
+    went_to_flop  = board_cards >= 3
+    went_to_turn  = board_cards >= 4
+    went_to_river = board_cards >= 5
+
+    # 3BETポット判定（プリフロップのRaiseが2回以上）
+    raise_count = sum(
+        1 for line in action_hist
+        if isinstance(line, str) and " RAISE " in line.upper()
+    )
+    is_3bet_pot = raise_count >= 2
+
+    # ウィナー判定
+    hero_is_winner = hero_result.get("isWinner", False)
+
+    return {
+        "hero_name":     hero_name,
+        "hero_position": hero_position,
+        "hero_profit_bb":hero_profit,
+        "num_players":   num_players,
+        "went_to_flop":  int(went_to_flop),
+        "went_to_turn":  int(went_to_turn),
+        "went_to_river": int(went_to_river),
+        "is_3bet_pot":   int(is_3bet_pot),
+        "hero_won":      int(hero_is_winner),
+    }
+
+
 def export_hands(db, uids: list[str]):
     """全ユーザーのhands → hands.csv"""
     print("▶ ハンドデータを取得中...")
@@ -120,26 +167,24 @@ def export_hands(db, uids: list[str]):
         print(f"  uid={uid[:8]}... {len(docs)} hands")
 
         for doc in docs:
-            d = doc.to_dict()
-            hj = d.get("hand_json", {})
+            d  = doc.to_dict()
+            hj = d.get("hand_json") or {}
+            parsed = _parse_hand_json(hj)
 
             rows.append({
-                "uid":          uid,
-                "hand_id":      doc.id,
-                "saved_at":     ts_to_iso(d.get("saved_at")),
-                "captured_at":  d.get("captured_at", ""),
-                "table_id":     hj.get("tableId", ""),
-                "hero_name":    hj.get("heroName", ""),
-                "hero_position":hj.get("heroPosition", ""),
-                "hand_number":  hj.get("handNumber", ""),
-                "num_players":  len(hj.get("players", [])),
-                "pot_size":     hj.get("potSize", ""),
+                "uid":         uid,
+                "hand_id":     doc.id,
+                "saved_at":    ts_to_iso(d.get("saved_at")),
+                "captured_at": d.get("captured_at", ""),
+                "table_id":    hj.get("tableId", ""),
+                **parsed,
             })
 
     _write_csv("hands.csv", rows, [
-        "uid", "hand_id", "saved_at", "captured_at",
-        "table_id", "hero_name", "hero_position", "hand_number",
-        "num_players", "pot_size",
+        "uid", "hand_id", "saved_at", "captured_at", "table_id",
+        "hero_name", "hero_position", "hero_profit_bb", "num_players",
+        "went_to_flop", "went_to_turn", "went_to_river",
+        "is_3bet_pot", "hero_won",
     ])
     print(f"  → 合計 {len(rows)} ハンド")
 

@@ -60,7 +60,7 @@ routes/
   pages.py                   # 画面ルート（/3d_view/{job_id} 含む）
   api.py                     # /api/* ルート（DELETE /api/analyses/{job_id} 含む）
   cart.py                    # /api/cart/* ルート
-html/
+html_pages/
   pages.py                   # Python HTML 生成関数（three_d_view_page 含む）
 templates/
   classify_result.html       # 解析結果画面テンプレート（Jinja2）

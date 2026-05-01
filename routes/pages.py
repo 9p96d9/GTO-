@@ -19,7 +19,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from state import jobs, jobs_lock, event_queues, DATA_DIR, ROOT, OUTPUT_DIR
 from pipelines import run_classify_pipeline, run_pdf_pipeline
-from html.pages import (
+from html_pages.pages import (
     LANDING_PAGE, UPLOAD_PAGE, ERROR_PAGE,
     classify_progress_page, classify_result_page,
     three_d_view_page,
