@@ -232,17 +232,11 @@ async def status(job_id: str):
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page():
-    from scripts.db import is_firebase_enabled
-    if not is_firebase_enabled():
-        return HTMLResponse("<h1>Firebase未設定</h1><p>環境変数 FIREBASE_SERVICE_ACCOUNT_JSON を設定してください。</p>", status_code=503)
     return HTMLResponse(_LOGIN_PAGE_HTML)
 
 
 @router.get("/sessions", response_class=HTMLResponse)
 async def sessions_page():
-    from scripts.db import is_firebase_enabled
-    if not is_firebase_enabled():
-        return HTMLResponse("<h1>Firebase未設定</h1>", status_code=503)
     return HTMLResponse(_SESSIONS_PAGE_HTML)
 
 

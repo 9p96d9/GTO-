@@ -20,9 +20,7 @@ router = APIRouter()
 
 @router.post("/api/upload-from-extension")
 async def upload_from_extension(request: Request):
-    from scripts.db import is_firebase_enabled, save_session
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import save_session
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -46,9 +44,7 @@ async def upload_from_extension(request: Request):
 
 @router.get("/api/sessions")
 async def api_sessions(request: Request):
-    from scripts.db import is_firebase_enabled, get_sessions
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_sessions
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -62,9 +58,7 @@ async def api_sessions(request: Request):
 
 @router.delete("/api/sessions/{session_id}")
 async def api_delete_session(session_id: str, request: Request):
-    from scripts.db import is_firebase_enabled, delete_session
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import delete_session
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -78,9 +72,7 @@ async def api_delete_session(session_id: str, request: Request):
 
 @router.post("/api/sessions/{session_id}/analyze")
 async def api_analyze_session(session_id: str, request: Request, background_tasks: BackgroundTasks):
-    from scripts.db import is_firebase_enabled, get_session, update_session_status
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_session, update_session_status
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -114,9 +106,7 @@ async def api_analyze_session(session_id: str, request: Request, background_task
 
 @router.post("/api/sessions/analyze-multi")
 async def api_analyze_multi(request: Request, background_tasks: BackgroundTasks):
-    from scripts.db import is_firebase_enabled, get_session
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_session
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -156,9 +146,7 @@ async def api_download_text(request: Request):
     import io
     from fastapi.responses import StreamingResponse
     from datetime import date
-    from scripts.db import is_firebase_enabled, get_session
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_session
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -194,9 +182,7 @@ async def api_download_text(request: Request):
 
 @router.get("/api/hands/stats")
 async def api_hands_stats(request: Request):
-    from scripts.db import is_firebase_enabled, get_hands_stats
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_hands_stats
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -204,17 +190,15 @@ async def api_hands_stats(request: Request):
     try:
         stats = get_hands_stats(uid)
     except Exception as e:
-        return JSONResponse({"error": f"Firestore取得失敗: {e}"}, status_code=500)
+        return JSONResponse({"error": f"取得失敗: {e}"}, status_code=500)
     return JSONResponse(stats)
 
 
 @router.post("/api/hands/analyze")
 @limiter.limit("10/minute")
 async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks):
-    from scripts.db import is_firebase_enabled, get_hands
+    from scripts.db import get_hands
     from scripts.hand_converter import convert_hands_batch
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -263,9 +247,7 @@ async def api_hands_analyze(request: Request, background_tasks: BackgroundTasks)
 @router.post("/api/hands/realtime")
 @limiter.limit("120/minute")
 async def api_hands_realtime(request: Request):
-    from scripts.db import is_firebase_enabled, save_hand
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import save_hand
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -289,10 +271,8 @@ async def api_hands_realtime(request: Request):
 @router.get("/api/debug/hand-sample")
 async def api_debug_hand_sample(request: Request):
     """ポストフロップあり最新ハンドのactionHistory＋変換後streets（BET額確認用・認証必須）"""
-    from scripts.db import is_firebase_enabled, get_db
+    from scripts.db import get_db
     from scripts.hand_converter import convert_hand_json
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -334,9 +314,7 @@ async def api_debug_hand_sample(request: Request):
 
 @router.get("/api/analyses")
 async def api_analyses_list(request: Request):
-    from scripts.db import is_firebase_enabled, get_analyses
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_analyses
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -350,9 +328,7 @@ async def api_analyses_list(request: Request):
 
 @router.delete("/api/analyses/{job_id}")
 async def api_analyses_delete(job_id: str, request: Request):
-    from scripts.db import is_firebase_enabled, delete_analysis
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import delete_analysis
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -366,9 +342,7 @@ async def api_analyses_delete(job_id: str, request: Request):
 
 @router.post("/api/analyses/{job_id}/restore")
 async def api_analyses_restore(job_id: str, request: Request):
-    from scripts.db import is_firebase_enabled, get_analysis
-    if not is_firebase_enabled():
-        return JSONResponse({"error": "Firebase未設定"}, status_code=503)
+    from scripts.db import get_analysis
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
@@ -400,13 +374,11 @@ async def api_analyses_restore(job_id: str, request: Request):
 
 @router.get("/api/user/settings")
 async def api_get_user_settings(request: Request):
-    from scripts.db import is_firebase_enabled, get_user_settings
+    from scripts.db import get_user_settings
     try:
         uid = get_uid_from_request(request)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
-    if not is_firebase_enabled():
-        return JSONResponse({"has_key": False, "needs_api_auto_cart": True})
     settings = get_user_settings(uid)
     api_key  = settings.get("encrypted_api_key", "")
     has_key  = bool(api_key)
@@ -420,13 +392,11 @@ async def api_get_user_settings(request: Request):
 
 @router.put("/api/user/settings")
 async def api_put_user_settings(request: Request):
-    from scripts.db import is_firebase_enabled, save_user_settings
+    from scripts.db import save_user_settings
     try:
         uid = get_uid_from_request(request)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
-    if not is_firebase_enabled():
-        return JSONResponse({"ok": False, "error": "Firebase未設定"})
     body = await request.json()
     api_key             = body.get("api_key")
     needs_api_auto_cart = body.get("needs_api_auto_cart")
