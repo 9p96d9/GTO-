@@ -163,7 +163,7 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
                    categories, classified_snapshot, snapshot_encoding)
                 VALUES
                   (:user_id, :job_id, :created_at, :hand_count, :blue_count, :red_count, :pf_count,
-                   :categories::jsonb, :snapshot, :encoding)
+                   CAST(:categories AS jsonb), :snapshot, :encoding)
                 ON CONFLICT (job_id) DO UPDATE SET
                   hand_count = EXCLUDED.hand_count,
                   blue_count = EXCLUDED.blue_count,
@@ -326,7 +326,7 @@ def save_cart_snapshot(uid: str, job_id: str, name: str, hand_numbers: list) -> 
         s.execute(
             text("""
                 INSERT INTO carts (user_id, cart_id, job_id, name, hand_numbers, created_at)
-                VALUES (:user_id, :cart_id, :job_id, :name, :hand_numbers::jsonb, :created_at)
+                VALUES (:user_id, :cart_id, :job_id, :name, CAST(:hand_numbers AS jsonb), :created_at)
             """),
             {
                 "user_id":      user_id,
