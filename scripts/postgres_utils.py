@@ -111,16 +111,17 @@ def get_hands_stats(uid: str) -> dict:
 
 
 def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
-    import json as _json
-    table_id = hand_json.get("tableId", "unknown")
+    import json as _json, re as _re
+    table_id = str(hand_json.get("tableId", "unknown"))
+    safe_table = _re.sub(r'[^a-zA-Z0-9_\-]', '_', table_id)[:64]
     safe_ts = captured_at.replace(":", "").replace(".", "").replace("-", "")
-    hand_id = f"{table_id}_{safe_ts}"
+    hand_id = f"{safe_table}_{safe_ts}"
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         s.execute(
             text("""
                 INSERT INTO hands (user_id, hand_id, hand_json, captured_at, saved_at)
-                VALUES (:user_id, :hand_id, :hand_json::jsonb, :captured_at, :saved_at)
+                VALUES (:user_id, :hand_id, CAST(:hand_json AS jsonb), :captured_at, :saved_at)
                 ON CONFLICT (hand_id) DO NOTHING
             """),
             {
