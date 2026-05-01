@@ -271,30 +271,25 @@ async def api_hands_realtime(request: Request):
 @router.get("/api/debug/hand-sample")
 async def api_debug_hand_sample(request: Request):
     """ポストフロップあり最新ハンドのactionHistory＋変換後streets（BET額確認用・認証必須）"""
-    from scripts.db import get_db
+    from scripts.db import get_hands
     from scripts.hand_converter import convert_hand_json
     try:
         uid = get_uid_from_request(request)
     except Exception as e:
         return JSONResponse({"error": f"認証失敗: {e}"}, status_code=401)
-    db = get_db()
-    docs = list(db.collection("users").document(uid).collection("hands")
-                .order_by("saved_at", direction="DESCENDING").limit(30).stream())
-    if not docs:
+    hands_data = get_hands(uid, limit=30)
+    if not hands_data:
         return JSONResponse({"error": "ハンドなし"})
-    # ポストフロップあり（flop が存在する）ハンドを優先して返す
     target = None
-    for doc in docs:
-        d = doc.to_dict()
+    for d in hands_data:
         hj = d.get("hand_json", {})
         ah = hj.get("actionHistory", [])
         if any("FLOP" in line for line in ah):
             target = d
             break
     if not target:
-        target = docs[0].to_dict()
+        target = hands_data[0]
     hj = target.get("hand_json", {})
-    # 変換後 streets も確認
     try:
         converted = convert_hand_json(hj, target.get("captured_at", ""), hand_index=1)
         streets_debug = {

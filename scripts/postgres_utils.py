@@ -88,7 +88,7 @@ def get_hands(uid: str, limit: int = 500, since_iso: str = "") -> list[dict]:
         ).fetchall()
     result = []
     for r in rows:
-        d = {"hand_id": r[0], **r[1], "captured_at": r[2].isoformat() if r[2] else None, "saved_at": r[3].isoformat() if r[3] else None}
+        d = {"hand_id": r[0], "hand_json": r[1], "captured_at": r[2].isoformat() if r[2] else None, "saved_at": r[3].isoformat() if r[3] else None}
         result.append(d)
     return result
 
