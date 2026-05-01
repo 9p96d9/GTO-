@@ -39,7 +39,10 @@ async def api_update_cart(job_id: str, request: Request):
     body = await request.json()
     hand_numbers = [int(n) for n in body.get("hand_numbers", [])]
     from scripts.db import update_cart
-    update_cart(uid, job_id, hand_numbers)
+    try:
+        update_cart(uid, job_id, hand_numbers)
+    except Exception as e:
+        return JSONResponse({"error": f"カート保存失敗: {e}"}, status_code=500)
     return JSONResponse({"ok": True, "hand_numbers": hand_numbers})
 
 
@@ -93,16 +96,23 @@ async def api_analyze_cart(job_id: str, request: Request):
         )
 
     # body に hand_numbers があれば優先使用（DB sync タイミング問題を回避）
+    hand_numbers = []
     try:
         body = await request.json()
         body_nums = body.get("hand_numbers")
         if body_nums is not None:
             hand_numbers = [int(n) for n in body_nums]
-            update_cart(uid, job_id, hand_numbers)
         else:
             hand_numbers = get_cart(uid, job_id)
     except Exception:
         hand_numbers = get_cart(uid, job_id)
+
+    # DB への永続化（失敗しても hand_numbers は維持）
+    if hand_numbers:
+        try:
+            update_cart(uid, job_id, hand_numbers)
+        except Exception:
+            pass
 
     if not hand_numbers:
         return JSONResponse({"error": "カートが空です"}, status_code=400)

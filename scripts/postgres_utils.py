@@ -311,7 +311,7 @@ def update_cart(uid: str, job_id: str, hand_numbers: list):
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         s.execute(
-            text("UPDATE analyses SET active_cart = :cart::jsonb WHERE user_id = :user_id AND job_id = :job_id"),
+            text("UPDATE analyses SET active_cart = CAST(:cart AS jsonb) WHERE user_id = :user_id AND job_id = :job_id"),
             {"cart": _json.dumps(hand_numbers), "user_id": user_id, "job_id": job_id},
         )
         s.commit()
