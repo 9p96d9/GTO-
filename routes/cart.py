@@ -78,7 +78,7 @@ async def api_analyze_cart(job_id: str, request: Request):
         return JSONResponse({"error": str(e)}, status_code=401)
 
     from scripts.db import (
-        get_cart, get_user_settings,
+        get_cart, update_cart, get_user_settings,
         get_analysis, save_gemini_results,
     )
 
@@ -92,7 +92,18 @@ async def api_analyze_cart(job_id: str, request: Request):
             status_code=400,
         )
 
-    hand_numbers = get_cart(uid, job_id)
+    # body に hand_numbers があれば優先使用（DB sync タイミング問題を回避）
+    try:
+        body = await request.json()
+        body_nums = body.get("hand_numbers")
+        if body_nums is not None:
+            hand_numbers = [int(n) for n in body_nums]
+            update_cart(uid, job_id, hand_numbers)
+        else:
+            hand_numbers = get_cart(uid, job_id)
+    except Exception:
+        hand_numbers = get_cart(uid, job_id)
+
     if not hand_numbers:
         return JSONResponse({"error": "カートが空です"}, status_code=400)
 

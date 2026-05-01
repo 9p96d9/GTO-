@@ -641,7 +641,8 @@ window.startAnalyze = async function() {
   try {
     const resp = await fetch(`/api/cart/${JOB_ID}/analyze`, {
       method: 'POST',
-      headers: {'Authorization': `Bearer ${token}`}
+      headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
+      body: JSON.stringify({hand_numbers: [...cartSet]})
     });
 
     if (!resp.ok) {
