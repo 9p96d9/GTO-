@@ -22,9 +22,16 @@ function fmtDate(iso) {
   return iso.replace("T", " ").slice(0, 16).replace(/-/g, "/");
 }
 
-function fmtPlaytime(startMs) {
-  if (!startMs) return "—";
-  const mins = Math.floor((Date.now() - startMs) / 60000);
+const PLAYTIME_GAP_MS = 15 * 60 * 1000;
+
+function fmtPlaytime(playTimeSecs, lastHandAt) {
+  let secs = playTimeSecs || 0;
+  if (lastHandAt) {
+    const gap = Date.now() - lastHandAt;
+    if (gap < PLAYTIME_GAP_MS) secs += Math.floor(gap / 1000);
+  }
+  if (secs === 0) return "—";
+  const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
@@ -82,8 +89,8 @@ async function loadHistory() {
 }
 
 async function updatePlaytime() {
-  const stored = await chrome.storage.local.get(["sessionStartAt"]);
-  document.getElementById("playtime-display").textContent = fmtPlaytime(stored.sessionStartAt);
+  const stored = await chrome.storage.local.get(["playTimeSecs", "lastHandAt"]);
+  document.getElementById("playtime-display").textContent = fmtPlaytime(stored.playTimeSecs, stored.lastHandAt);
 }
 
 // ─── 設定 ────────────────────────────────────────────────────────────────────

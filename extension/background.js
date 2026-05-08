@@ -13,6 +13,8 @@ import {
 
 const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
 
+const PLAYTIME_GAP_MS = 15 * 60 * 1000; // 15分以上の空白はプレイ時間に含めない
+
 // ─── Firebase初期化 ─────────────────────────────────────────────────────────
 
 let _app  = null;
@@ -40,12 +42,8 @@ async function initFirebase() {
           resolve();
         }
         if (user) {
-          chrome.storage.local.get(["sessionStartAt"], s => {
-            if (!s.sessionStartAt) chrome.storage.local.set({ sessionStartAt: Date.now() });
-          });
           _schedulePlaytimeNotify();
         } else {
-          chrome.storage.local.remove(["sessionStartAt"]);
           _clearPlaytimeAlarm();
         }
       });
@@ -77,8 +75,7 @@ async function handleMessage(msg) {
         const credential = GoogleAuthProvider.credential(null, token);
         const result = await signInWithCredential(_auth, credential);
         _user = result.user;
-        // ログイン時にプレイ開始時刻をリセット
-        await chrome.storage.local.set({ sessionStartAt: Date.now(), handCounter: 0 });
+        await chrome.storage.local.set({ playTimeSecs: 0, lastHandAt: 0, handCounter: 0 });
         _schedulePlaytimeNotify();
         return { uid: _user.uid, email: _user.email, displayName: _user.displayName };
       } catch (e) {
@@ -90,7 +87,7 @@ async function handleMessage(msg) {
       if (_auth) await signOut(_auth);
       _user = null;
       _clearPlaytimeAlarm();
-      await chrome.storage.local.remove(["sessionStartAt", "handCounter"]);
+      await chrome.storage.local.remove(["playTimeSecs", "lastHandAt", "handCounter"]);
       return { ok: true };
 
     case "GET_ID_TOKEN": {
@@ -134,6 +131,7 @@ async function handleMessage(msg) {
         const result = await res.json();
         console.log("[GTO] HAND_COMPLETE:", res.status, JSON.stringify(result).slice(0, 120));
         if (result.ok) {
+          await _accumulatePlaytime();
           await _checkAutoAnalyze(token);
         }
         return result;
@@ -236,6 +234,26 @@ async function _checkAutoAnalyze(token) {
   }
 }
 
+// ─── プレイ時間累積 ──────────────────────────────────────────────────────────
+
+async function _accumulatePlaytime() {
+  const s = await chrome.storage.local.get(["lastHandAt", "playTimeSecs"]);
+  const now = Date.now();
+  const lastHandAt = s.lastHandAt || 0;
+  const gap = lastHandAt ? now - lastHandAt : PLAYTIME_GAP_MS;
+  const newSecs = (s.playTimeSecs || 0) + (gap < PLAYTIME_GAP_MS ? Math.floor(gap / 1000) : 0);
+  await chrome.storage.local.set({ playTimeSecs: newSecs, lastHandAt: now });
+}
+
+function _calcTotalPlaySecs(playTimeSecs, lastHandAt) {
+  let total = playTimeSecs || 0;
+  if (lastHandAt) {
+    const gap = Date.now() - lastHandAt;
+    if (gap < PLAYTIME_GAP_MS) total += Math.floor(gap / 1000);
+  }
+  return total;
+}
+
 // ─── プレイ時間通知 ──────────────────────────────────────────────────────────
 
 const PLAYTIME_ALARM = "gto_playtime";
@@ -254,19 +272,19 @@ function _clearPlaytimeAlarm() {
 
 chrome.alarms.onAlarm.addListener(async alarm => {
   if (alarm.name !== PLAYTIME_ALARM) return;
-  const s = await chrome.storage.local.get(["sessionStartAt", "playtimeNotify"]);
+  const s = await chrome.storage.local.get(["playTimeSecs", "lastHandAt", "playtimeNotify"]);
   const minutes = parseInt(s.playtimeNotify ?? 0);
-  if (!minutes || !s.sessionStartAt) return;
+  if (!minutes) return;
 
-  const elapsed = Math.round((Date.now() - s.sessionStartAt) / 60000);
+  const totalSecs = _calcTotalPlaySecs(s.playTimeSecs, s.lastHandAt);
+  const elapsed = Math.round(totalSecs / 60);
   chrome.notifications.create("playtime_" + Date.now(), {
     type:    "basic",
     iconUrl: "icons/icon48.png",
     title:   "PokerGTO — プレイ時間通知",
-    message: `${elapsed}分プレイ中です。休憩を取りましょう。`,
+    message: `${elapsed}分プレイしました。休憩を取りましょう。`,
   });
 
-  // 繰り返し通知（同じ間隔で再スケジュール）
   chrome.alarms.create(PLAYTIME_ALARM, { delayInMinutes: minutes });
 });
 
