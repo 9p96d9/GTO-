@@ -371,15 +371,15 @@ def get_user_settings(uid: str) -> dict:
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         row = s.execute(
-            text("SELECT encrypted_api_key, needs_api_auto_cart FROM user_settings WHERE user_id = :user_id"),
+            text("SELECT encrypted_api_key FROM user_settings WHERE user_id = :user_id"),
             {"user_id": user_id},
         ).fetchone()
     if not row:
         return {}
-    return {"encrypted_api_key": row[0], "needs_api_auto_cart": row[1]}
+    return {"encrypted_api_key": row[0]}
 
 
-def save_user_settings(uid: str, api_key: str = None, needs_api_auto_cart: bool = None):
+def save_user_settings(uid: str, api_key: str = None):
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         exists = s.execute(
@@ -393,11 +393,6 @@ def save_user_settings(uid: str, api_key: str = None, needs_api_auto_cart: bool 
             s.execute(
                 text("UPDATE user_settings SET encrypted_api_key = :v, updated_at = now() WHERE user_id = :user_id"),
                 {"v": api_key, "user_id": user_id},
-            )
-        if needs_api_auto_cart is not None:
-            s.execute(
-                text("UPDATE user_settings SET needs_api_auto_cart = :v, updated_at = now() WHERE user_id = :user_id"),
-                {"v": needs_api_auto_cart, "user_id": user_id},
             )
         s.commit()
 

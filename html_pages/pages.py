@@ -286,11 +286,8 @@ def classify_result_page(
         is_3bet    = h.get("is_3bet_pot", False)
         pl         = float(h.get("hero_result_bb", 0))
         pl_cls     = "pos" if pl > 0 else "neg" if pl < 0 else "zero"
-        needs_api  = clf.get("needs_api", False)
-
         badge_3bet = '<span class="badge-3bet">3BET</span> ' if is_3bet else ""
-        badge_ai   = '<span class="badge-ai">★</span> ' if needs_api else ""
-        card_cls   = "hand-card needs-ai" if needs_api else "hand-card"
+        card_cls   = "hand-card"
 
         opp_parts      = []
         opp_data_parts = []
@@ -344,7 +341,6 @@ def classify_result_page(
 
         hnum = h.get("hand_number", "")
         line = h.get("bluered_classification", {}).get("line", "")
-        na_attr = ' data-needs-api="1"' if needs_api else ""
         _cards_str = "".join(h.get("hero_cards", []))
         _pl_str    = f"{_fmt_bb(pl)}bb"
         _board_cards = []
@@ -369,9 +365,8 @@ def classify_result_page(
         )
 
         return (
-            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{na_attr}{data_attrs}>'
+            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{data_attrs}>'
             f'<div class="hand-card-head">'
-            f'{badge_ai}'
             f'<span class="hand-num">H{hnum}</span>'
             f'{badge_3bet}'
             f'<span class="hero-pos">{hero_pos}</span>'

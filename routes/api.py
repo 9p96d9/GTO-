@@ -381,7 +381,6 @@ async def api_get_user_settings(request: Request):
     return JSONResponse({
         "has_key": has_key,
         "key_masked": key_masked,
-        "needs_api_auto_cart": settings.get("needs_api_auto_cart", True),
     })
 
 
@@ -393,7 +392,6 @@ async def api_put_user_settings(request: Request):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=401)
     body = await request.json()
-    api_key             = body.get("api_key")
-    needs_api_auto_cart = body.get("needs_api_auto_cart")
-    save_user_settings(uid, api_key=api_key, needs_api_auto_cart=needs_api_auto_cart)
+    api_key = body.get("api_key")
+    save_user_settings(uid, api_key=api_key)
     return JSONResponse({"ok": True})

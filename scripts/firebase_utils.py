@@ -383,14 +383,12 @@ def get_user_settings(uid: str) -> dict:
     return doc.to_dict()
 
 
-def save_user_settings(uid: str, api_key: str = None, needs_api_auto_cart: bool = None):
+def save_user_settings(uid: str, api_key: str = None):
     """users/{uid}/settings/gemini を更新（指定フィールドのみ上書き）"""
     _init()
     update: dict = {}
     if api_key is not None:
         update["encrypted_api_key"] = api_key  # Firebase が保存時に暗号化
-    if needs_api_auto_cart is not None:
-        update["needs_api_auto_cart"] = needs_api_auto_cart
     if update:
         _db.collection("users").document(uid).collection("settings").document("gemini").set(
             update, merge=True

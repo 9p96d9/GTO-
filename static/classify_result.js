@@ -266,21 +266,7 @@ async function loadSettings() {
     });
     _userSettings = await r.json();
     updateApiKeyUI();
-    if (_userSettings.needs_api_auto_cart !== false) {
-      autoAddNeedsApi();
-    }
-  } catch(e) {
-    autoAddNeedsApi();
-  }
-}
-
-function autoAddNeedsApi() {
-  let changed = false;
-  document.querySelectorAll('.hand-card[data-needs-api="1"]').forEach(el => {
-    const num = parseInt(el.dataset.hnum);
-    if (!cartSet.has(num)) { cartSet.add(num); changed = true; }
-  });
-  if (changed) { renderCart(); scheduleSync(); }
+  } catch(e) { /* ignore */ }
 }
 
 // ── カート追加/削除（Firebase拡張版） ────────────────────────────────────────
