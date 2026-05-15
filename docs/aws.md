@@ -419,3 +419,84 @@ ORDER BY diff_pct DESC;
 - [ ] クレジット残高を月次で確認
 - [ ] 有料サービスとして成立しているか評価（成立していれば費用は売上でカバー）
 - [ ] 成立していなければ App Runner or EC2 に移行してコスト削減
+
+♯♯♯コスト分析と改善案
+現在のコスト内訳（問題の所在）
+サービス	月額	代替可能か
+ALB	~$16	← これが元凶。Fargate固定IPが毎回変わるから存在する
+ECS Fargate	~$3	
+RDS t4g.micro	~$1	
+Secrets Manager	~$2	
+合計	~$22	
+ALBは「Fargateのコンテナが再起動するたびIPが変わる」問題を解決するためだけに存在しています。ALBをなくせばそれだけで $16/月 削減できます。
+
+3段階のプラン
+プランA: AWS内でALBを外す（月$4〜6へ）
+変更点: Fargate + ALB → EC2 t3.micro + Nginx + Elastic IP
+
+
+インターネット
+    │ HTTP:80
+    ▼
+EC2 t3.micro（固定IP=Elastic IP）
+    ├── Nginx（リバースプロキシ）
+    └── Docker（FastAPI + Puppeteer）
+ALB廃止で月 $16節約
+EC2 t3.micro: 無料枠12ヶ月内なら$0、以降 ~$8/月
+デプロイはGitHub Actions → SSHでdocker pull & restart
+Puppeteerは確実動作（メモリ制約なし）
+学習コスト: 中（EC2 SSH + Nginx設定 + systemd or docker compose）
+プランB: Fly.io に全移行（月 $0〜3へ）
+変更点: AWS全廃 → Fly.io（compute） + Neon（PostgreSQL）
+
+役割	現在	置き換え	料金
+コンテナ実行	ECS Fargate	Fly.io Machine	無料枠内（$5クレジット/月）
+ロードバランサー	ALB	Fly.io 組み込みProxy	無料
+PostgreSQL	RDS	Neon.tech	無料（0.5GB、停止なし）
+Dockerイメージ	ECR	Fly.io Registry	無料
+環境変数	Secrets Manager	fly secrets set	無料
+CI/CD	GitHub Actions	GitHub Actions（コマンド変更のみ）	無料
+
+# デプロイが Railway 並みに簡単になる
+fly deploy          # これだけ
+月 $0〜3（Puppeteerで512MB〜1GB必要なら $2〜4）
+学習コスト: 低（fly launch / fly deploy だけ覚えればOK）
+唯一の懸念: Puppeteer動作確認が必要（Fly.ioは通常問題なし）
+プランC: Oracle Cloud 永久無料枠（月 $0）
+最も無料度が高い。学習コストは中。
+
+サービス	Oracle Cloud 無料枠
+VM	2 OCPU + 12GB RAM（永久無料）← Puppeteer余裕
+PostgreSQL	Neon / Supabase 無料枠
+デプロイ	GitHub Actions → SSH
+AWSクレジットが尽きた後も $0 で動かせる
+セットアップはAWSと似た感覚（同じクラウド思想）
+SSHログインしてdocker compose管理
+推奨
+今すぐ（クレジットあり）: 特に変えなくていい。$112残高で8ヶ月持つ。
+
+クレジットが $30 を切ったら → プランB (Fly.io)
+
+
+理由:
+1. Railway を知っているなら fly deploy は10分で覚えられる
+2. ALB / IAM / Fargate / ECR の知識が不要になる
+3. Neon の接続文字列を DATABASE_URL に入れるだけでDB移行完了
+4. Puppeteer問題が出たらメモリプランを上げるだけ
+移行時の作業量イメージ:
+
+
+# ① Fly.io CLIインストール
+brew install flyctl
+
+# ② アプリ初期化（Dockerfileがあれば自動検出）
+fly launch
+
+# ③ 環境変数を Secrets Manager から Fly に移す
+fly secrets set FIREBASE_API_KEY=... GROQ_API_KEY=... DATABASE_URL=...
+
+# ④ デプロイ
+fly deploy
+
+# ⑤ GitHub Actions の deploy.yml を fly deploy コマンドに書き換え（5行程度）
+現状のAWSクレジットは学習投資として十分使えているので、今すぐ移行する必要はありません。「$30を切ったらFly.ioへ」という判断軸が一番シンプルだと思います。
