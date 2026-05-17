@@ -252,17 +252,21 @@ async def firebase_config():
 @router.get("/download-extension")
 @router.get("/api/extension.zip")
 async def download_extension():
+    from fastapi.responses import Response as PlainResponse
     ext_dir = ROOT / "extension"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fpath in sorted(ext_dir.rglob("*")):
             if fpath.is_file() and fpath.name != "README.md":
                 zf.write(fpath, fpath.relative_to(ext_dir).as_posix())
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
+    data = buf.getvalue()
+    return PlainResponse(
+        content=data,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=pokergto-extension-v2.2.0.zip"},
+        headers={
+            "Content-Disposition": "attachment; filename=pokergto-extension-v2.2.0.zip",
+            "Content-Length": str(len(data)),
+        },
     )
 
 
