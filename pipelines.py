@@ -87,7 +87,7 @@ async def run_pipeline(job_id: str, txt_path: Path, api_key: str):
 
     def do_generate():
         return subprocess.run(
-            ["node", str(SCRIPTS / "generate.js"), str(OUTPUT_DIR), str(json_path)],
+            [sys.executable, str(SCRIPTS / "generate.py"), str(OUTPUT_DIR), str(json_path)],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
 
@@ -192,7 +192,7 @@ async def run_noapi_pipeline(job_id: str, txt_path: Path):
 
     def do_generate():
         return subprocess.run(
-            ["node", str(SCRIPTS / "generate_noapilist.js"), str(OUTPUT_DIR), str(classified_path)],
+            [sys.executable, str(SCRIPTS / "generate_noapilist.py"), str(OUTPUT_DIR), str(classified_path)],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
 
@@ -376,7 +376,7 @@ async def run_pdf_pipeline(job_id: str, classified_path: str):
 
     def do_generate():
         return subprocess.run(
-            ["node", str(SCRIPTS / "generate_noapilist.js"), str(OUTPUT_DIR), classified_path],
+            [sys.executable, str(SCRIPTS / "generate_noapilist.py"), str(OUTPUT_DIR), classified_path],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=BASE_ENV,
         )
 

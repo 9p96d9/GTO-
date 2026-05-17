@@ -89,10 +89,10 @@ run_classify_pipeline_from_json（バックグラウンド）
 | レイヤー | 技術 |
 |---|---|
 | Webフレームワーク | FastAPI + uvicorn |
-| 言語 | Python 3.11 / Node.js 20 |
+| 言語 | Python 3.11 |
 | AI | Groq llama-3.3-70b（優先・BYOK）/ Gemini 2.5 Flash（フォールバック・レガシー互換） |
 | 手役評価 | treys ライブラリ（classify.py で使用） |
-| PDF生成 | puppeteer（Chromium内蔵） |
+| PDF生成 | WeasyPrint（Python製・Node.js/Chromium不要） |
 | リアルタイム通信 | SSE（Server-Sent Events） |
 | 認証・DB | Firebase Auth（Google）/ Firestore |
 | ブラウザ拡張 | Chrome拡張機能（MV3） |
@@ -132,7 +132,8 @@ GTO-/
 │   ├── classify.py             # 青線/赤線分類（JSON → classified JSON）
 │   ├── hand_converter.py       # fastFoldTableState JSON → parse.py互換JSON変換
 │   ├── analyze2.py             # Groq/Gemini両対応・detailモード/explainモード（現用）
-│   ├── generate_noapilist.js   # NoAPI PDFレポート生成
+│   ├── generate.py             # GTO分析PDFレポート生成（WeasyPrint）
+│   ├── generate_noapilist.py   # NoAPI PDFレポート生成（WeasyPrint）
 │   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ
 ├── extension/                  # Chrome拡張機能（MV3）
 │   ├── manifest.json
@@ -1279,7 +1280,7 @@ scripts/
 
 - `data/` フォルダのJSONは削除しない
 - `.env` / サービスアカウントキーJSONはGitにコミットしない
-- puppeteer（Chromium）が重いためDocker imageは約1GB
+- WeasyPrint（Python製PDF生成）を使用。Node.js/Chromium不要。Docker imageは約1GB（旧比500MB削減）
 - Railway無料枠はストレージ永続化なし（PDFは即ダウンロード推奨）
 - Firestoreの読み取りクォータ: 50,000回/日
 - `order_by("saved_at")` を使う（`captured_at` は一部欠落ドキュメントがある）
