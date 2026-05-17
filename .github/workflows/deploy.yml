@@ -1,4 +1,4 @@
-name: Deploy to AWS ECS
+name: Deploy to EC2
 
 on:
   push:
@@ -11,10 +11,7 @@ concurrency:
 env:
   AWS_REGION: ap-northeast-1
   ECR_REPOSITORY: gto-app
-  ECS_CLUSTER: gto-cluster
-  ECS_SERVICE: gto-service
-  TASK_DEFINITION: aws/task-definition.json
-  CONTAINER_NAME: gto-app
+  ECR_REGISTRY: 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com
 
 jobs:
   deploy:
@@ -32,33 +29,31 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image to ECR
-        id: build-image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Update ECS task definition with new image
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
         with:
-          task-definition: ${{ env.TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
-
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: false
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com
+            docker pull 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app:latest
+            docker stop gto-app || true
+            docker rm gto-app || true
+            docker run -d \
+              --name gto-app \
+              --restart unless-stopped \
+              --env-file /home/ec2-user/gto.env \
+              -p 5000:5000 \
+              273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app:latest
