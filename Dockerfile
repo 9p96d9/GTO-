@@ -1,9 +1,10 @@
 FROM python:3.11-slim
 
 # WeasyPrint依存ライブラリ（Node.js/Chromium不要）
-RUN apt-get update && apt-get install -y \
-    libpango-1.0-0 libcairo2 \
-    libgdk-pixbuf2.0-0 libffi-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b \
+    libcairo2 libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
     fonts-ipafont-gothic fonts-ipafont-mincho \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
