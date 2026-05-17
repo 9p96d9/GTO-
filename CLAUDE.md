@@ -36,16 +36,16 @@
 
 T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → Firestore蓄積 → GTO分類 → Web表示。
 
-**本番URL:** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com/
+**本番URL:** https://hrep.app
 **リポジトリ:** https://github.com/9p96d9/GTO-
-**ホスティング:** AWS ECS Fargate（Docker・mainブランチ自動デプロイ）
+**ホスティング:** AWS EC2 + Cloudflare Tunnel（Docker・mainブランチ自動デプロイ）
 
 | レイヤー | 技術 |
 |---|---|
 | Backend | FastAPI + uvicorn / Python 3.11 |
 | AI | Groq(llama-3.3-70b) / Gemini 2.5 Flash 自動切替（BYOK・`gsk_`→Groq） |
 | DB / 認証 | PostgreSQL（RDS） / Firebase Auth（Google）/ USE_POSTGRESフラグで切替 |
-| PDF | puppeteer（Chromium内蔵・Docker必須の原因） |
+| PDF | WeasyPrint（Python純正・Chromium不要） |
 | 拡張機能 | Chrome MV3 |
 
 ---
@@ -161,15 +161,15 @@ hands = get_hands(uid, limit=30)
 
 ## デプロイ手順
 
-**本番環境:** AWS ECS Fargate（Railway は 2026-05-15 停止済み）  
-**本番URL:** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com/  
+**本番環境:** AWS EC2 t3.micro + Cloudflare Tunnel（ECS/ALB は 2026-05-18 削除済み）  
+**本番URL:** https://hrep.app  
 **CI/CD:** `main` ブランチへの push → GitHub Actions が自動実行
 
 ```
-git push origin main
+git push origin master:main
   ↓ GitHub Actions (.github/workflows/deploy.yml)
-  ↓ Docker build → ECR push → ECS タスク定義更新 → サービス再起動
-  ↓ 所要時間: 約3〜5分（ALBヘルスチェック最適化済み: 間隔10秒・正常しきい値2回）
+  ↓ Docker build → ECR push → SSH → EC2 → docker pull & restart
+  ↓ 所要時間: 約2分
 ```
 
 進捗確認: https://github.com/9p96d9/GTO-/actions
