@@ -1,10 +1,11 @@
 # ポーカーGTO 分析システム 仕様書
 
-**バージョン:** 7.3
-**最終更新:** 2026-04-30
+**バージョン:** 7.4
+**最終更新:** 2026-05-18
 **リポジトリ:** https://github.com/9p96d9/GTO-
-**本番URL (AWS):** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com
+**本番URL:** https://hrep.app
 **旧URL (Railway・停止済み 2026-05-15):** https://gto-production.up.railway.app
+**旧URL (ALB・削除済み 2026-05-18):** http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com
 
 ---
 
@@ -96,10 +97,9 @@ run_classify_pipeline_from_json（バックグラウンド）
 | リアルタイム通信 | SSE（Server-Sent Events） |
 | 認証・DB | Firebase Auth（Google）/ Firestore |
 | ブラウザ拡張 | Chrome拡張機能（MV3） |
-| ホスティング | AWS ECS Fargate（Docker、GitHub Actions自動デプロイ） |
-| CI/CD | GitHub Actions（ECRプッシュ → タスク定義更新 → ECSデプロイ） |
+| ホスティング | AWS EC2 t3.micro + Cloudflare Tunnel（Docker、GitHub Actions自動デプロイ） |
+| CI/CD | GitHub Actions（ECRプッシュ → SSH → EC2 docker restart） |
 | シークレット管理 | AWS Secrets Manager（`gto/production`） |
-| ロードバランサー | AWS ALB（gto-alb、ap-northeast-1） |
 
 ### ファイル構成
 
@@ -112,7 +112,7 @@ GTO-/
 │   ├── pages.py                # 現役画面（/ /sessions /login /classify_result /classify_progress /progress /error /report /pdf /download 等）
 │   ├── api.py                  # /api/hands/* /api/analyses/* /api/sessions/* /api/user/settings
 │   └── cart.py                 # /api/cart/*（Phase 12）
-├── html/
+├── html_pages/
 │   └── pages.py                # HTML生成ラッパー関数（全ページをJinja2テンプレートに外出し済み）
 ├── templates/
 │   ├── classify_result.html    # 解析結果画面（フッターに3D可視化ボタン）
@@ -134,7 +134,10 @@ GTO-/
 │   ├── analyze2.py             # Groq/Gemini両対応・detailモード/explainモード（現用）
 │   ├── generate.py             # GTO分析PDFレポート生成（WeasyPrint）
 │   ├── generate_noapilist.py   # NoAPI PDFレポート生成（WeasyPrint）
-│   └── firebase_utils.py       # Firebase Admin SDK ユーティリティ
+│   ├── firebase_utils.py       # Firebase Admin SDK ユーティリティ
+│   ├── postgres_utils.py       # PostgreSQL実装（firebase_utilsと同一シグネチャ）
+│   ├── db.py                   # USE_POSTGRESフラグでfirebase/postgres切り替え
+│   └── export_firebase_csv.py  # FirebaseデータをCSVエクスポート（Power BI用）
 ├── extension/                  # Chrome拡張機能（MV3）
 │   ├── manifest.json
 │   ├── popup.html / popup.js   # ポップアップUI
