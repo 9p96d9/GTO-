@@ -359,6 +359,7 @@ def evaluate_batch(client: OpenAI, model: str, indexed_hands: list, mode: str = 
                 model=model,
                 messages=messages,
                 temperature=0.3,
+                max_tokens=4000,
             )
             raw     = response.choices[0].message.content.strip()
             results = _parse_json_response(raw)
