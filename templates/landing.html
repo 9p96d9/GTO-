@@ -279,43 +279,64 @@
         <span class="btn-label">インストール動画を見る</span>
       </button>
       <div class="video-collapse" id="step1-video">
-        <video controls preload="none"><source src="/static/exex.mp4" type="video/mp4"></video>
+        <video controls preload="none"><source src="/static/step01_install.mp4" type="video/mp4"></video>
       </div>
       <div class="step-suit">♠</div>
     </div>
     <div class="step-card fade-in">
       <div class="step-number">STEP 02</div>
       <div class="step-icon">🔑</div>
-      <div class="step-title">Google ログイン</div>
-      <div class="step-desc">拡張機能のポップアップを開いて Google アカウントでログイン。ハンドログがクラウドに自動保存されるようになります。</div>
+      <div class="step-title">Google ログイン → T4 でプレイ</div>
+      <div class="step-desc">拡張機能のポップアップを開いて Google アカウントでログイン。あとは <a href="https://tenfour-poker.com" target="_blank" rel="noopener">tenfour-poker.com</a> でプレイするだけ。拡張機能が WebSocket を傍受し、各ハンドをリアルタイムでクラウドに自動蓄積します。手動操作は一切不要。</div>
       <button class="video-toggle-btn" onclick="toggleVideo('step2-video', this)" aria-expanded="false">
         <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
         <span class="btn-label">ログイン動画を見る</span>
       </button>
       <div class="video-collapse" id="step2-video">
-        <video controls preload="none"><source src="/static/PR.mp4" type="video/mp4"></video>
+        <video controls preload="none"><source src="/static/step02_login_play.mp4" type="video/mp4"></video>
       </div>
       <div class="step-suit">♥</div>
     </div>
     <div class="step-card fade-in">
       <div class="step-number">STEP 03</div>
-      <div class="step-icon">🃏</div>
-      <div class="step-title">T4 でプレイするだけ</div>
-      <div class="step-desc"><a href="https://tenfour-poker.com" target="_blank" rel="noopener">tenfour-poker.com</a> にアクセスしてプレイ。拡張機能が WebSocket を傍受し、各ハンドをリアルタイムでクラウドに蓄積します。手動操作は一切不要。</div>
+      <div class="step-icon">⚡</div>
+      <div class="step-title">セッション画面で解析 → PDF 出力</div>
+      <div class="step-desc">プレイ後に <a href="/sessions">/sessions</a> を開いて「⚡ 解析する」ボタンを押すだけ。GTO 観点でハンドを分類した結果レポートが生成されます。そのまま PDF でエクスポートも可能。</div>
+      <button class="video-toggle-btn" onclick="toggleVideo('step3-video', this)" aria-expanded="false">
+        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
+        <span class="btn-label">解析動画を見る</span>
+      </button>
+      <div class="video-collapse" id="step3-video">
+        <video controls preload="none"><source src="/static/step03_analyze.mp4" type="video/mp4"></video>
+      </div>
       <div class="step-suit">♦</div>
     </div>
     <div class="step-card fade-in">
       <div class="step-number">STEP 04</div>
-      <div class="step-icon">⚡</div>
-      <div class="step-title">セッション画面で解析</div>
-      <div class="step-desc">プレイ後に <a href="/sessions">/sessions</a> を開いて「⚡ 解析する」ボタンを押すだけ。GTO 観点でハンドを分類した結果レポートが生成されます。</div>
+      <div class="step-icon">🤖</div>
+      <div class="step-title">AI 解説で深掘り</div>
+      <div class="step-desc">解析結果で気になったハンドを「解析カート」に追加。<a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a> の無料 API キー（カード登録不要）を登録するだけで AI が GTO 評価と改善ポイントを詳しく解説します。</div>
+      <button class="video-toggle-btn" onclick="toggleVideo('step4-video', this)" aria-expanded="false">
+        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
+        <span class="btn-label">AI解析動画を見る</span>
+      </button>
+      <div class="video-collapse" id="step4-video">
+        <video controls preload="none"><source src="/static/step04_ai.mp4" type="video/mp4"></video>
+      </div>
       <div class="step-suit">♣</div>
     </div>
     <div class="step-card fade-in">
       <div class="step-number">STEP 05</div>
-      <div class="step-icon">🤖</div>
-      <div class="step-title">（任意）AI 解説で深掘り</div>
-      <div class="step-desc">解析結果で気になったハンドを「解析カート」に追加。<a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a> の無料 API キー（カード登録不要）を登録するだけで AI が GTO 評価と改善ポイントを詳しく解説します。</div>
+      <div class="step-icon">📊</div>
+      <div class="step-title">3D 可視化で傾向を掴む</div>
+      <div class="step-desc">解析データを 3D バーチャート・Sankey ダイアグラム・バブルチャート・時系列グラフの 4 つの視点で可視化。自分のプレイ傾向と弱点が一目でわかります。</div>
+      <button class="video-toggle-btn" onclick="toggleVideo('step5-video', this)" aria-expanded="false">
+        <span class="play-icon"><svg viewBox="0 0 7 8" fill="white"><polygon points="1,0.5 6.5,4 1,7.5"></polygon></svg></span>
+        <span class="btn-label">3D解析動画を見る</span>
+      </button>
+      <div class="video-collapse" id="step5-video">
+        <video controls preload="none"><source src="/static/step05_3d.mp4" type="video/mp4"></video>
+      </div>
       <div class="step-suit">♠</div>
     </div>
   </div>
