@@ -315,7 +315,16 @@
     .hw-video-col { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
   }
   @media (max-width: 768px) {
-    .hw-card-row { grid-template-columns: repeat(2, 1fr); }
+    .hw-card-row {
+      grid-template-columns: repeat(5, 80vw);
+      overflow-x: auto; scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch; padding-bottom: 8px;
+    }
+    .hw-step-btn { scroll-snap-align: start; }
+    .hw-detail-col { padding: 20px; }
+    .hw-detail-num { font-size: 36px; }
+    .hw-detail-title { font-size: 18px; }
+    .hw-chapters { display: none; }
   }
 </style>
 </head>
