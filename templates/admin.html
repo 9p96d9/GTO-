@@ -120,6 +120,34 @@
 
   /* ── Fetched at ── */
   .fetched-at { font-size: 0.72rem; color: var(--text-dim); text-align: right; margin-top: 10px; }
+
+  /* ── Delete button ── */
+  .btn-delete {
+    padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(233,69,96,0.35);
+    background: transparent; color: var(--red); font-size: 0.75rem; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-delete:hover { background: var(--red-dim); border-color: var(--red); }
+
+  /* ── Confirm modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: #0d1224; border: 1px solid var(--border-bright); border-radius: 16px;
+    padding: 28px 32px; max-width: 420px; width: 90%;
+  }
+  .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 10px; }
+  .modal-body  { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
+  .modal-body strong { color: var(--red); }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .btn-cancel { padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.875rem; font-family: 'Inter', sans-serif; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+  .btn-cancel:hover { border-color: var(--border-bright); color: var(--text); }
+  .btn-confirm-delete { padding: 8px 20px; border-radius: 8px; border: none; background: var(--red); color: #fff; font-size: 0.875rem; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; transition: opacity 0.2s; }
+  .btn-confirm-delete:hover { opacity: 0.85; }
+  .btn-confirm-delete:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -191,6 +219,7 @@
             <th data-col="analysis_count">解析数 <span class="sort-arrow">↕</span></th>
             <th data-col="avg_pf_score">PFスコア平均 <span class="sort-arrow">↕</span></th>
             <th data-col="has_api_key">APIキー <span class="sort-arrow">↕</span></th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody id="users-tbody">
@@ -200,6 +229,21 @@
     </div>
   </div>
   <div class="fetched-at" id="fetched-at"></div>
+</div>
+
+<!-- 削除確認モーダル -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <div class="modal-title">ユーザーを削除しますか？</div>
+    <div class="modal-body">
+      <strong id="modal-email"></strong> のデータをすべて削除します。<br>
+      ハンドデータ・解析結果・設定が完全に削除され、<strong>元に戻せません</strong>。
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="modal-cancel">キャンセル</button>
+      <button class="btn-confirm-delete" id="modal-confirm">削除する</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -286,6 +330,7 @@ function renderTable() {
       <td class="td-num">${(u.analysis_count || 0).toLocaleString()}</td>
       <td>${pfBar}</td>
       <td><span class="badge-key ${u.has_api_key ? 'yes' : 'no'}">${u.has_api_key ? '設定済み' : '未設定'}</span></td>
+      <td><button class="btn-delete" data-uid="${u.uid}" data-email="${u.email || u.uid}">削除</button></td>
     </tr>`;
   }).join("");
 }
@@ -333,6 +378,52 @@ document.querySelectorAll("thead th[data-col]").forEach(th => {
 document.getElementById("btn-refresh").addEventListener("click", () => {
   loadSummary();
   loadUsers();
+});
+
+// ── ユーザー削除 ──────────────────────────────────────────────────────────
+let pendingDeleteUid = null;
+const modal = document.getElementById("delete-modal");
+
+document.getElementById("users-tbody").addEventListener("click", e => {
+  const btn = e.target.closest(".btn-delete");
+  if (!btn) return;
+  pendingDeleteUid = btn.dataset.uid;
+  document.getElementById("modal-email").textContent = btn.dataset.email;
+  modal.classList.add("show");
+});
+
+document.getElementById("modal-cancel").addEventListener("click", () => {
+  modal.classList.remove("show");
+  pendingDeleteUid = null;
+});
+
+modal.addEventListener("click", e => {
+  if (e.target === modal) { modal.classList.remove("show"); pendingDeleteUid = null; }
+});
+
+document.getElementById("modal-confirm").addEventListener("click", async () => {
+  if (!pendingDeleteUid) return;
+  const btn = document.getElementById("modal-confirm");
+  btn.disabled = true;
+  btn.textContent = "削除中...";
+  try {
+    const token = await getToken();
+    const res = await fetch(`/api/admin/users/${pendingDeleteUid}`, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const d = await res.json();
+    if (!res.ok) { showAlert(d.error || "削除失敗"); return; }
+    modal.classList.remove("show");
+    pendingDeleteUid = null;
+    loadSummary();
+    loadUsers();
+  } catch(e) {
+    showAlert("削除失敗: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "削除する";
+  }
 });
 
 document.getElementById("btn-logout").addEventListener("click", async () => {

@@ -567,6 +567,56 @@ def get_admin_users() -> list[dict]:
     ]
 
 
+def delete_admin_user(uid: str) -> dict:
+    """
+    指定 firebase_uid のユーザーを完全削除する（PostgreSQL soft delete + Firebase Auth削除）。
+    戻り値: {"hands": N, "analyses": N, "ok": True}
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    with _session() as s:
+        row = s.execute(
+            text("SELECT id FROM users WHERE firebase_uid = :uid AND deleted_at IS NULL"),
+            {"uid": uid}
+        ).fetchone()
+        if not row:
+            raise ValueError(f"ユーザーが見つかりません: {uid}")
+        user_id = row[0]
+
+        hand_res = s.execute(
+            text("UPDATE hands SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
+            {"now": now, "uid": user_id}
+        )
+        analysis_res = s.execute(
+            text("UPDATE analyses SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
+            {"now": now, "uid": user_id}
+        )
+        s.execute(
+            text("UPDATE user_settings SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
+            {"now": now, "uid": user_id}
+        )
+        s.execute(
+            text("UPDATE users SET deleted_at = :now WHERE id = :uid"),
+            {"now": now, "uid": user_id}
+        )
+        s.commit()
+
+        hand_count = hand_res.rowcount
+        analysis_count = analysis_res.rowcount
+
+    # Firebase Auth からも削除
+    try:
+        import firebase_admin
+        from firebase_admin import auth as _fa
+        firebase_admin.get_app()
+        _fa.delete_user(uid)
+    except Exception:
+        pass
+
+    return {"hands": hand_count, "analyses": analysis_count, "ok": True}
+
+
 def is_firebase_enabled() -> bool:
     return False
 

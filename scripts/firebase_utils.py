@@ -575,3 +575,18 @@ def get_admin_analytics() -> dict:
         "firebase_mode": True,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def delete_admin_user(uid: str) -> dict:
+    """Firebaseモードでの管理者ユーザー削除（Firebase Auth + Firestoreデータ削除）。"""
+    _init()
+    from firebase_admin import auth as _fa
+
+    # Firebase Auth から削除
+    try:
+        _fa.delete_user(uid)
+    except Exception as e:
+        raise ValueError(f"Firebase Auth削除失敗: {e}")
+
+    # Firestoreデータの削除はコスト大のため手動対応
+    return {"hands": 0, "analyses": 0, "ok": True, "note": "Firestoreデータは手動削除が必要"}

@@ -1,10 +1,11 @@
 """
 routes/admin.py - 管理者ダッシュボード（Phase 5・19-A）
-GET /admin                  → 管理者画面
-GET /admin/analytics        → PostgreSQL KPIアナリティクス画面
-GET /api/admin/summary      → KPI サマリー
-GET /api/admin/users        → ユーザー一覧
-GET /api/admin/analytics    → 全ユーザー横断集計（PostgreSQL専用）
+GET    /admin                  → 管理者画面
+GET    /admin/analytics        → PostgreSQL KPIアナリティクス画面
+GET    /api/admin/summary      → KPI サマリー
+GET    /api/admin/users        → ユーザー一覧
+DELETE /api/admin/users/{uid}  → ユーザー削除（PostgreSQL soft delete + Firebase Auth）
+GET    /api/admin/analytics    → 全ユーザー横断集計（PostgreSQL専用）
 """
 
 import os
@@ -73,6 +74,23 @@ async def api_admin_users(request: Request):
         return JSONResponse({"error": "管理者権限が必要です"}, status_code=403)
     try:
         return JSONResponse({"users": get_admin_users()})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.delete("/api/admin/users/{uid}")
+async def api_admin_delete_user(uid: str, request: Request):
+    from scripts.db import delete_admin_user
+    requester_uid = _get_uid(request)
+    if not _check_admin(requester_uid):
+        return JSONResponse({"error": "管理者権限が必要です"}, status_code=403)
+    if uid == requester_uid:
+        return JSONResponse({"error": "自分自身は削除できません"}, status_code=400)
+    try:
+        result = delete_admin_user(uid)
+        return JSONResponse(result)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
