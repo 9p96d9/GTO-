@@ -58,16 +58,19 @@ MAX_RETRY  = 3
 MODE = "detail"  # "standard" or "detail"
 
 SYSTEM_PROMPT_DETAIL = """あなたはポーカーのGTOコーチです。
+個別ハンドの勝敗ではなく「このスポットでHeroのレンジは均衡しているか」を評価軸にしてください。
+
 各ハンドを以下の構造で必ず日本語で出力してください。
 
-- gto_eval: ✅良好 / ⚠️改善 / ❌ミス / 🎲クーラー のいずれか
-- detail: Heroのアクションの評価（述語で終わる1文・数値禁止）
+- spot_range: このポジション・アクションシーケンス・ボードでHeroが均衡上持ちうるレンジの概要（1〜2文）
+- balance_note: ハンドブロック内の[GTO数学]を踏まえ、ポジション・ストリート・相手テンデンシーで補正した均衡コメント（1〜2文）
+  ※フロップ/ターンのブラフはエクイティを持つためMDFは目安に過ぎない。OOPはMDFより多めにフォールドが均衡に近い場合がある。
 - hand_reading: 各ストリートで相手レンジがどう変化したか（1〜2文）
-- opp_gto_diff: 相手がGTOから外れている点（具体的なアクション名で）
-- kaizen: 別の有効なラインがあれば提示。良いプレイなら「このラインで十分」も可
+- opp_exploit: 相手のGTOからの逸脱と、それに対する具体的な搾取戦略（アクション名で）
 - rep: Heroが表現できるハンドを2〜3個列挙（例：ハートフラッシュ・セット88）
+- kaizen: 別の有効なラインがあれば提示。均衡上問題なければ「このラインで十分」も可
 
-数値（bb・%・EV）は一切出力しないこと。"""
+数値（bb・%）はbalance_noteとmath_contextの解釈に限り使用可。"""
 
 
 def resolve_provider() -> tuple[str, str, str]:
@@ -106,6 +109,67 @@ def get_hand_summary(hand: dict) -> str:
     opponents = [p for p in hand.get("players", []) if not p.get("is_hero")]
     opp_pos   = opponents[0].get("position", "?") if opponents else "?"
     return f"{pos} vs {opp_pos}, {pot_type}, {street_str}"
+
+
+# ─── GTO数学的文脈の事前計算 ──────────────────────────────────────────────────
+
+def _compute_gto_math(hand: dict) -> str:
+    """ベット/ポットからα・MDF・スポットタイプを計算してプロンプト用文字列を返す。
+    計算できない場合は空文字。"""
+    clf      = hand.get("bluered_classification") or {}
+    category = clf.get("category", "")
+    streets  = hand.get("streets") or {}
+
+    # 最終ストリートとそのbet/potを抽出
+    last_street = None
+    last_bet    = None
+    last_pot    = None
+    hero_pos    = hand.get("hero_position", "")
+
+    for street_name in ("river", "turn", "flop"):
+        s = streets.get(street_name)
+        if not s or not isinstance(s, dict):
+            continue
+        actions = s.get("actions") or []
+        pot_bb  = s.get("pot_bb")
+        for a in reversed(actions):
+            amt = a.get("amount_bb")
+            if amt and pot_bb:
+                last_street = street_name
+                last_bet    = float(amt)
+                last_pot    = float(pot_bb)
+                break
+        if last_bet is not None:
+            break
+
+    if last_bet is None or last_pot is None or last_pot <= 0:
+        return ""
+
+    alpha = last_bet / (last_pot + last_bet)
+    mdf   = 1 - alpha
+
+    # スポットタイプとメッセージ
+    spot_map = {
+        "fold_unknown":        ("フォールドスポット", f"MDF基準={mdf:.0%}（Heroがフォールド）"),
+        "hero_aggression_won": ("ブラフ/アグレッションスポット", f"必要成功率={alpha:.0%}（相手フォールドが必要な頻度）"),
+        "value_success":       ("バリュースポット", f"バリューターゲット={alpha:.0%}（相手コールレンジに必要な劣勢ハンド率）"),
+        "bluff_catch":         ("ブラフキャッチスポット", f"ポットオッズ={alpha:.0%}（相手ベットへのコール基準）"),
+    }
+    spot_type, spot_msg = spot_map.get(category, ("", ""))
+
+    if not spot_type:
+        # カテゴリ不明でもbet/potが取れた場合は基本情報だけ出す
+        spot_type = "ベットスポット"
+        spot_msg  = f"α={alpha:.0%} / MDF={mdf:.0%}"
+
+    street_label = {"river": "リバー", "turn": "ターン", "flop": "フロップ"}.get(last_street, last_street or "")
+    oop_note = "（OOP: MDF目安より多めのフォールドが均衡に近い場合あり）" if hero_pos in ("BB", "SB") else ""
+
+    return (
+        f"[GTO数学] {spot_type} | {street_label} | "
+        f"ベット={last_bet:.1f}bb / ポット={last_pot:.1f}bb | "
+        f"α={alpha:.0%} | {spot_msg}{oop_note}"
+    )
 
 
 # ─── プロンプト生成 ───────────────────────────────────────────────────────────
@@ -148,6 +212,7 @@ def build_hand_block(idx: int, hand: dict) -> str:
     cards  = " ".join(hand.get("hero_cards", []))
     board  = get_board_summary(hand)
     action = format_action_summary(hand)
+    math   = _compute_gto_math(hand)
 
     allin_ev = hand.get("result", {}).get("allin_ev", {})
     ev_info  = ""
@@ -156,9 +221,10 @@ def build_hand_block(idx: int, hand: dict) -> str:
         if hero_name and hero_name in allin_ev:
             ev_info = f"\nAll-in EV: {allin_ev[hero_name]:+.2f}bb"
 
+    math_line = f"\n{math}" if math else ""
     return f"""=== ハンド {idx} ===
 ヒーロー: {pos} / 手札: {cards}
-ボード: {board}
+ボード: {board}{math_line}
 アクション履歴:
 {action}{ev_info}"""
 
@@ -207,6 +273,7 @@ def build_batch_prompt_detail(indexed_hands: list) -> str:
     n          = len(indexed_hands)
 
     return f"""以下の{n}ハンドを評価してください。
+各ハンドに[GTO数学]ブロックがある場合はその数値を解釈に使ってください（計算は不要です）。
 
 {hands_text}
 
@@ -214,12 +281,12 @@ def build_batch_prompt_detail(indexed_hands: list) -> str:
 [
   {{
     "id": <ハンド番号>,
-    "gto_eval": "✅良好 or ⚠️改善 or ❌ミス or 🎲クーラー",
-    "detail": "Heroアクションの評価（述語で終わる1文）",
+    "spot_range": "このスポットでHeroが均衡上持ちうるレンジの概要（1〜2文）",
+    "balance_note": "[GTO数学]の数値をポジション・ストリート・相手テンデンシーで補正した均衡コメント（1〜2文）",
     "hand_reading": "各ストリートの相手レンジ変化（1〜2文）",
-    "opp_gto_diff": "相手のGTOずれ（具体的なアクション名で）",
-    "kaizen": "代替ライン or 「このラインで十分」",
-    "rep": "Heroが表現できるハンド2〜3個（例: ハートフラッシュ・セット88）"
+    "opp_exploit": "相手のGTOからの逸脱と搾取戦略（具体的なアクション名で）",
+    "rep": "Heroが表現できるハンド2〜3個（例: ハートフラッシュ・セット88）",
+    "kaizen": "代替ライン or 「このラインで十分」"
   }}
 ]"""
 
@@ -229,43 +296,49 @@ def build_batch_prompt_detail(indexed_hands: list) -> str:
 SYSTEM_PROMPT_EXPLAIN = """あなたはプロポーカープレイヤー兼GTOコーチです。
 
 目的：
-初心者〜中級者に対して「なぜそのプレイが良い/悪いのか」を戦略的・論理的に深く解説すること。
+個別ハンドの勝敗ではなく「このスポットでHeroのレンジは均衡しているか」を軸に、
+初心者〜中級者に向けて戦略的・論理的に深く解説すること。
 
 要件：
 - 最低400文字以上、最大1200文字程度
 - 箇条書きと段落を組み合わせて読みやすく
-- 数学的・戦略的理由を具体的に含める
-- ポジション・レンジ・ポットオッズ・スタック深度に言及する
+- [GTO数学]ブロックがある場合はその数値を解釈に使う（再計算不要）
+- MDF・必要成功率・バリューターゲットの意味を文脈に応じて説明する
+- ポジション（OOP/IP）・レンジ構成・ブラフ:バリュー比・スタック深度に言及する
+- 相手のGTOからの逸脱と搾取機会を具体的に述べる
 - 「なぜそうなるか」の因果関係を必ず説明する
 - 初心者にも理解できる言葉で、内容は浅くしない
 
 出力形式（必ずこの構造で日本語で書くこと）：
-GTO評価: [✅良好 / ⚠️改善 / ❌ミス / 🎲クーラー]
+均衡評価: [このスポットでのレンジ均衡についての一言]
 
 （本文：以下のセクションを段落で展開）
-・Heroのプレイ評価と理由
-・レンジ・ポジション・ボードテクスチャの観点
-・相手レンジの変化
+・均衡レンジとHeroのポジション
+・GTO数学的観点（MDF/必要成功率/バリューターゲット）
+・相手レンジの変化と読み
+・相手への搾取戦略
 ・代替ライン
 
 禁止：
 - JSON形式での出力
 - 1〜2文だけの短い説明
-- 根拠のない断定"""
+- 根拠のない断定
+- 個別ハンドの「良い/悪い/ミス」という結果論的評価"""
 
 
 def build_explain_prompt(idx: int, hand: dict) -> str:
     """単一ハンドの詳細解説用ユーザーメッセージ"""
     block = build_hand_block(idx, hand)
     return f"""以下のハンドについて詳しく解説してください。
+[GTO数学]ブロックがある場合はその数値を解釈に使ってください（再計算不要）。
 
 {block}
 
 特に以下を含めてください：
-1. Heroのプレイの評価と理由（なぜ良い/悪いのか）
-2. ポジション・レンジ・ポットオッズの観点
+1. このスポットでHeroが均衡上持ちうるレンジとポジション（OOP/IP）の意味
+2. [GTO数学]の数値（MDF・必要成功率・バリューターゲット）の解釈と意味
 3. 相手レンジの変化と読み
-4. GTO的観点とExploit機会
+4. 相手のGTO逸脱と搾取機会
 5. 代替ライン
 
 長文で詳しく日本語で説明してください。"""
@@ -312,12 +385,13 @@ def evaluate_explain_single(client: OpenAI, model: str, hand_idx: int, hand: dic
 
 
 def reconstruct_evaluation_detail(j: dict) -> str:
-    lines = [f"GTO評価: {j.get('gto_eval', '?')}"]
-    if j.get("detail"):       lines.append(f"詳細: {j['detail']}")
-    if j.get("kaizen"):       lines.append(f"代替ライン: {j['kaizen']}")
+    lines = []
+    if j.get("spot_range"):   lines.append(f"均衡レンジ: {j['spot_range']}")
+    if j.get("balance_note"): lines.append(f"均衡評価: {j['balance_note']}")
     if j.get("hand_reading"): lines.append(f"ハンドリーディング: {j['hand_reading']}")
-    if j.get("opp_gto_diff"): lines.append(f"相手GTOずれ: {j['opp_gto_diff']}")
+    if j.get("opp_exploit"):  lines.append(f"相手搾取: {j['opp_exploit']}")
     if j.get("rep"):          lines.append(f"Heroレンジ: {j['rep']}")
+    if j.get("kaizen"):       lines.append(f"代替ライン: {j['kaizen']}")
     return "\n".join(lines)
 
 

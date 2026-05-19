@@ -393,8 +393,6 @@ def classify_result_page(
             cat_pl    = sum(float(h.get("hero_result_bb", 0)) for h in cat_hands)
             pl_cls    = "pos" if cat_pl > 0 else "neg" if cat_pl < 0 else ""
             cc        = _CAT_CLASS.get(cat, "")
-            needs_api_cnt = sum(1 for h in cat_hands if h.get("bluered_classification", {}).get("needs_api"))
-            ai_badge  = f' <span class="ai-badge">★ 要AI {needs_api_cnt}手</span>' if needs_api_cnt else ""
             pl_sign   = "+" if cat_pl > 0 else ""
 
             sub_cls = f"cat-subheader {cc}" if cc else "cat-subheader"
@@ -403,7 +401,7 @@ def classify_result_page(
                 f'<div class="{sub_cls}">'
                 f'{_esc(cat_label)} <span style="font-weight:400;color:#555">{len(cat_hands)}手</span>'
                 f'<span class="cat-sub-pl {pl_cls}">{pl_sign}{cat_pl:.2f}bb</span>'
-                f'{ai_badge}</div>\n'
+                f'</div>\n'
             )
             for h in cat_hands:
                 html += _build_hand_card(h)

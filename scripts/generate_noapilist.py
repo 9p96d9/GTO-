@@ -315,8 +315,6 @@ def build_section1_html(hands, min_date, max_date):
     red_pl     = sum(h.get('hero_result_bb') or 0 for h in red_hands)
     blue_ev    = calc_ev(blue_hands)
     red_ev     = calc_ev(red_hands)
-    needs_api  = sum(1 for h in hands if (h.get('bluered_classification') or {}).get('needs_api'))
-
     ev_total_str = ''
     if total_ev is not None:
         ev_total_str = (f'EV: <span style="color:{pl_color(total_ev)}">{fmt_bb(total_ev)}</span>'
@@ -325,7 +323,6 @@ def build_section1_html(hands, min_date, max_date):
                    if blue_ev is not None else '')
     red_ev_str  = (f'<span class="hstat-sub">EV {fmt_bb(red_ev)} / 差 {fmt_bb(red_pl - red_ev)}</span>'
                    if red_ev is not None else '')
-    api_note    = f'<span class="api-notice">★要AI: {needs_api}手</span>' if needs_api > 0 else ''
     ev_sub_html = f'<span class="hstat-sub">{ev_total_str}</span>' if ev_total_str else ''
 
     return f"""<div class="header-band">
@@ -352,7 +349,6 @@ def build_section1_html(hands, min_date, max_date):
       <span class="hstat-val" style="color:{pl_color(red_pl)}">{fmt_bb(red_pl)}</span>
       {red_ev_str}
     </div>
-    {api_note}
   </div>
 </div>"""
 
@@ -389,9 +385,8 @@ def build_grouped_cards(filtered_hands, cat_order, line_key):
             clf      = h.get('bluered_classification') or {}
             pl_num   = h.get('hero_result_bb') or 0
             pl_cls   = 'pl-pos' if pl_num > 0 else 'pl-neg' if pl_num < 0 else ''
-            card_cls = 'card-api' if clf.get('needs_api') else card_line_cls
+            card_cls = card_line_cls
             badge3   = '<span class="cat-badge" style="background:#ede0ff;color:#5b00d6;font-size:5pt">3B</span> ' if h.get('is_3bet_pot') else ''
-            api_mark = '<span class="api-flag">★</span>' if clf.get('needs_api') else ''
 
             opp_html_parts = []
             for oc in get_all_opp_cards(h):
@@ -405,7 +400,7 @@ def build_grouped_cards(filtered_hands, cat_order, line_key):
 
             parts.append(f"""<div class="hand-card {card_cls}">
   <div class="hand-top">
-    <span class="hand-num">{api_mark}H{esc(h.get('hand_number'))}</span>
+    <span class="hand-num">H{esc(h.get('hand_number'))}</span>
     <span class="hand-info">
       {badge3}<strong>{esc(h.get('hero_position') or '?')}</strong><span style="color:#888;font-size:5pt">(H)</span>
       {hero_cards_html}
@@ -423,7 +418,6 @@ def build_section2_and3_html(hands):
     red_hands     = [h for h in hands if (h.get('bluered_classification') or {}).get('line') == 'red']
     blue_pl       = sum(h.get('hero_result_bb') or 0 for h in blue_hands)
     red_pl        = sum(h.get('hero_result_bb') or 0 for h in red_hands)
-    needs_api_cnt = sum(1 for h in red_hands if (h.get('bluered_classification') or {}).get('needs_api'))
     blue_cards    = build_grouped_cards(blue_hands, BLUE_CAT_ORDER, 'blue')
     red_cards     = build_grouped_cards(red_hands,  RED_CAT_ORDER,  'red')
     no_data       = '<div style="text-align:center;color:#aaa;font-size:6pt;padding:4pt">該当なし</div>'
@@ -438,7 +432,6 @@ def build_section2_and3_html(hands):
   <div class="flow-section-label red-label">
     赤線 {len(red_hands)}手 &nbsp;
     実収支: <strong style="color:{pl_color(red_pl)}">{fmt_bb(red_pl)}</strong>
-    &nbsp; ★要AI: {needs_api_cnt}
   </div>
   {red_cards or no_data}
 </div>"""
