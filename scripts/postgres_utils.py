@@ -592,10 +592,16 @@ def delete_admin_user(uid: str) -> dict:
             text("UPDATE analyses SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
             {"now": now, "uid": user_id}
         )
-        s.execute(
-            text("UPDATE user_settings SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
-            {"now": now, "uid": user_id}
-        )
+        try:
+            s.execute(
+                text("UPDATE user_settings SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
+                {"now": now, "uid": user_id}
+            )
+        except Exception:
+            s.execute(
+                text("DELETE FROM user_settings WHERE user_id = :uid"),
+                {"uid": user_id}
+            )
         s.execute(
             text("UPDATE users SET deleted_at = :now WHERE id = :uid"),
             {"now": now, "uid": user_id}
