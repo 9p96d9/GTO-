@@ -603,8 +603,8 @@ def delete_admin_user(uid: str) -> dict:
         user_id = row[0]
 
         hand_res = s.execute(
-            text("UPDATE hands SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
-            {"now": now, "uid": user_id}
+            text("DELETE FROM hands WHERE user_id = :uid"),
+            {"uid": user_id}
         )
         analysis_res = s.execute(
             text("UPDATE analyses SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
