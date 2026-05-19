@@ -288,6 +288,15 @@ users/{uid}/opponents/{playerName}  # Phase 11: 未実装
 **拡張機能ID:** `ilkbcfenghigefpfjohppfjodahhoiif`
 **OAuthクライアントID:** `615725442966-l1k8rgi5m43stim6ellgj8e36s8hfn6l.apps.googleusercontent.com`
 
+### Google Cloud プロジェクト
+| 項目 | 値 |
+|---|---|
+| プロジェクト名 | HandReporter（2026-05-19 に poker-gto から変更） |
+| プロジェクトID | `poker-gto`（変更不可・永久固定） |
+| プロジェクト番号 | `615725442966` |
+| OAuth同意画面アプリ名 | HandReporter |
+| 管理URL | console.cloud.google.com（project=poker-gto） |
+
 | ファイル | 役割 |
 |---|---|
 | `background.js` | Service Worker。Firebase Auth管理・HAND_COMPLETE受信・自動解析トリガー |
