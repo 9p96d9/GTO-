@@ -264,7 +264,7 @@ async def download_extension():
         content=data,
         media_type="application/zip",
         headers={
-            "Content-Disposition": "attachment; filename=pokergto-extension-v2.2.0.zip",
+            "Content-Disposition": "attachment; filename=handreporter-extension-v2.2.0.zip",
             "Content-Length": str(len(data)),
         },
     )
