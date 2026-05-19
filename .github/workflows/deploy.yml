@@ -48,12 +48,33 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Docker network
+            docker network create gto-net 2>/dev/null || true
+
+            # PostgreSQL (EC2 local) - start if not running
+            if ! docker ps --format '{{.Names}}' | grep -q '^gto-postgres$'; then
+              docker start gto-postgres 2>/dev/null || \
+              docker run -d \
+                --name gto-postgres \
+                --network gto-net \
+                --restart unless-stopped \
+                -e POSTGRES_USER=gto_user \
+                -e POSTGRES_PASSWORD=Tyty4545 \
+                -e POSTGRES_DB=postgres \
+                -v /data/postgres:/var/lib/postgresql \
+                -p 127.0.0.1:5432:5432 \
+                postgres:18-alpine
+              sleep 8
+            fi
+
+            # App
             aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com
             docker pull 273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app:latest
             docker stop gto-app || true
             docker rm gto-app || true
             docker run -d \
               --name gto-app \
+              --network gto-net \
               --restart unless-stopped \
               --env-file /home/ec2-user/gto.env \
               -p 5000:5000 \
