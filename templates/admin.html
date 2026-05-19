@@ -239,6 +239,7 @@
       <strong id="modal-email"></strong> のデータをすべて削除します。<br>
       ハンドデータ・解析結果・設定が完全に削除され、<strong>元に戻せません</strong>。
     </div>
+    <div id="modal-error" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:8px;background:var(--red-dim);color:var(--red);border:1px solid rgba(233,69,96,0.3);font-size:0.82rem;"></div>
     <div class="modal-actions">
       <button class="btn-cancel" id="modal-cancel">キャンセル</button>
       <button class="btn-confirm-delete" id="modal-confirm">削除する</button>
@@ -404,6 +405,8 @@ modal.addEventListener("click", e => {
 document.getElementById("modal-confirm").addEventListener("click", async () => {
   if (!pendingDeleteUid) return;
   const btn = document.getElementById("modal-confirm");
+  const errEl = document.getElementById("modal-error");
+  errEl.style.display = "none";
   btn.disabled = true;
   btn.textContent = "削除中...";
   try {
@@ -413,13 +416,18 @@ document.getElementById("modal-confirm").addEventListener("click", async () => {
       headers: { "Authorization": "Bearer " + token }
     });
     const d = await res.json();
-    if (!res.ok) { showAlert(d.error || "削除失敗"); return; }
+    if (!res.ok) {
+      errEl.textContent = d.error || `エラー (HTTP ${res.status})`;
+      errEl.style.display = "block";
+      return;
+    }
     modal.classList.remove("show");
     pendingDeleteUid = null;
     loadSummary();
     loadUsers();
   } catch(e) {
-    showAlert("削除失敗: " + e.message);
+    errEl.textContent = "削除失敗: " + e.message;
+    errEl.style.display = "block";
   } finally {
     btn.disabled = false;
     btn.textContent = "削除する";
