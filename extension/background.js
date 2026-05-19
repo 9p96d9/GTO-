@@ -277,6 +277,10 @@ chrome.alarms.onAlarm.addListener(async alarm => {
   if (!minutes) return;
 
   const totalSecs = _calcTotalPlaySecs(s.playTimeSecs, s.lastHandAt);
+  if (totalSecs < minutes * 60) {
+    chrome.alarms.create(PLAYTIME_ALARM, { delayInMinutes: minutes });
+    return;
+  }
   const elapsed = Math.round(totalSecs / 60);
   chrome.notifications.create("playtime_" + Date.now(), {
     type:    "basic",
