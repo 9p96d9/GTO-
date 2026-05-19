@@ -587,7 +587,7 @@ def get_admin_users() -> list[dict]:
 
 def delete_admin_user(uid: str) -> dict:
     """
-    指定 firebase_uid のユーザーを完全削除する（PostgreSQL soft delete + Firebase Auth削除）。
+    指定 firebase_uid のユーザーを完全削除する（ハードDELETE + Firebase Auth削除）。
     戻り値: {"hands": N, "analyses": N, "ok": True}
     """
     from datetime import datetime, timezone
@@ -602,31 +602,13 @@ def delete_admin_user(uid: str) -> dict:
             raise ValueError(f"ユーザーが見つかりません: {uid}")
         user_id = row[0]
 
-        hand_res = s.execute(
-            text("DELETE FROM hands WHERE user_id = :uid"),
-            {"uid": user_id}
-        )
-        analysis_res = s.execute(
-            text("UPDATE analyses SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
-            {"now": now, "uid": user_id}
-        )
-        try:
-            s.execute(
-                text("UPDATE user_settings SET deleted_at = :now WHERE user_id = :uid AND deleted_at IS NULL"),
-                {"now": now, "uid": user_id}
-            )
-        except Exception:
-            s.execute(
-                text("DELETE FROM user_settings WHERE user_id = :uid"),
-                {"uid": user_id}
-            )
-        s.execute(
-            text("UPDATE users SET deleted_at = :now WHERE id = :uid"),
-            {"now": now, "uid": user_id}
-        )
+        hand_res     = s.execute(text("DELETE FROM hands         WHERE user_id = :uid"), {"uid": user_id})
+        analysis_res = s.execute(text("DELETE FROM analyses      WHERE user_id = :uid"), {"uid": user_id})
+        s.execute(text("DELETE FROM user_settings WHERE user_id = :uid"), {"uid": user_id})
+        s.execute(text("UPDATE users SET deleted_at = :now WHERE id = :uid"), {"now": now, "uid": user_id})
         s.commit()
 
-        hand_count = hand_res.rowcount
+        hand_count     = hand_res.rowcount
         analysis_count = analysis_res.rowcount
 
     # Firebase Auth からも削除
