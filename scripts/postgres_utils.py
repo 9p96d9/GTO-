@@ -553,18 +553,36 @@ def get_admin_users() -> list[dict]:
                 ORDER BY hand_count DESC
             """)
         ).fetchall()
-    return [
-        {
-            "uid":            r[0],
-            "email":          r[1],
+
+    # Firebase Auth からメールを補完（DB の email 列が空の場合）
+    firebase_emails: dict[str, str] = {}
+    try:
+        import firebase_admin
+        from firebase_admin import auth as _fa
+        firebase_admin.get_app()
+        page = _fa.list_users()
+        while page:
+            for u in page.users:
+                if u.email:
+                    firebase_emails[u.uid] = u.email
+            page = page.get_next_page()
+    except Exception:
+        pass
+
+    result = []
+    for r in rows:
+        uid = r[0]
+        email = r[1] or firebase_emails.get(uid, "")
+        result.append({
+            "uid":            uid,
+            "email":          email,
             "last_login":     None,
             "hand_count":     r[3],
             "analysis_count": r[4],
             "has_api_key":    False,
             "avg_pf_score":   None,
-        }
-        for r in rows
-    ]
+        })
+    return result
 
 
 def delete_admin_user(uid: str) -> dict:

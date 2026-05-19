@@ -281,7 +281,7 @@ chrome.alarms.onAlarm.addListener(async alarm => {
   chrome.notifications.create("playtime_" + Date.now(), {
     type:    "basic",
     iconUrl: "icons/icon48.png",
-    title:   "PokerGTO — プレイ時間通知",
+    title:   "HandReporter — プレイ時間通知",
     message: `${elapsed}分プレイしました。休憩を取りましょう。`,
   });
 
