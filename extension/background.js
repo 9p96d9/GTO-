@@ -11,7 +11,7 @@ import {
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
+const SERVER_URL = "https://hrep.app";
 
 const PLAYTIME_GAP_MS = 15 * 60 * 1000; // 15分以上の空白はプレイ時間に含めない
 

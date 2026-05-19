@@ -1,6 +1,6 @@
 "use strict";
 
-const SERVER_URL = "http://gto-alb-1734423629.ap-northeast-1.elb.amazonaws.com";
+const SERVER_URL = "https://hrep.app";
 
 function sendBg(msg) {
   return new Promise((resolve, reject) => {
