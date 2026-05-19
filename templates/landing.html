@@ -309,11 +309,20 @@
     display: flex; align-items: center; justify-content: center;
     gap: 16px; padding: 28px 5% 64px;
   }
+  .mobile-only-note {
+    display: none; align-items: center; gap: 10px;
+    padding: 12px 20px; border-radius: 10px;
+    border: 1px solid var(--border-bright); background: var(--surface);
+    color: var(--text-muted); font-size: 0.85rem; font-family: 'Inter', sans-serif;
+  }
   @media (max-width: 960px) {
     .hw-player-block { grid-template-columns: 1fr; }
     .hw-video-col { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
   }
   @media (max-width: 768px) {
+    .nav-btn { display: none; }
+    .desktop-only { display: none !important; }
+    .mobile-only-note { display: flex; }
     .hw-card-row {
       grid-template-columns: repeat(5, 80vw);
       overflow-x: auto; scroll-snap-type: x mandatory;
@@ -355,13 +364,14 @@
     <h1 class="hero-title">Hand<span class="red">Reporter</span></h1>
     <p class="hero-sub">Chrome 拡張機能をインストールするだけ。T4 でプレイすれば自動でハンドを収集し、ボタン1つで<strong> GTO 分析レポート</strong>を生成します。</p>
     <div class="hero-ctas">
-      <a href="/download-extension" class="btn-primary">
+      <a href="/download-extension" class="btn-primary desktop-only">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
         ⬇ 拡張機能をダウンロード
       </a>
-      <a href="/sessions" class="btn-secondary">セッション一覧へ →</a>
+      <a href="/sessions" class="btn-secondary desktop-only">セッション一覧へ →</a>
+      <div class="mobile-only-note">💻 デスクトップ版 Chrome 専用のサービスです</div>
     </div>
   </div>
 </section>
@@ -379,12 +389,13 @@
     </div>
   </div>
   <div class="hw-cta">
-    <a href="/download-extension" class="btn-primary">
+    <a href="/download-extension" class="btn-primary desktop-only">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
       拡張機能をダウンロード
     </a>
+    <div class="mobile-only-note">💻 デスクトップ版 Chrome 専用のサービスです</div>
   </div>
 </section>
 
