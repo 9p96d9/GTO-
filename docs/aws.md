@@ -1,6 +1,8 @@
 # AWS インフラ構成・運用ガイド
 ## HRep — EC2 + Cloudflare Tunnel 構成（2026-05-18〜）
 
+> Phase 21-A 完了（2026-05-20）: RDS削除 → EC2 Docker PostgreSQL移行済み
+
 > 旧ECS+ALB構成は末尾の「過去構成」セクションに記録。
 
 ---
@@ -17,10 +19,12 @@ Cloudflare Edge（証明書・DDoS対策・キャッシュ）
 cloudflared デーモン（EC2上 / systemd管理）
     │ http://localhost:5000
     ▼
-Docker コンテナ gto-app（EC2上）
-    ├── ECR  273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app:latest
-    ├── Secrets Manager  gto/production（gto.env に展開済み）
-    └── RDS PostgreSQL（VPC内 / gto-rds-sg）
+Docker network: gto-net
+    ├── コンテナ gto-app（ECR / --env-file gto.env）
+    │     ├── ECR  273949555510.dkr.ecr.ap-northeast-1.amazonaws.com/gto-app:latest
+    │     └── Secrets Manager  gto/production（gto.env に展開済み）
+    └── コンテナ gto-postgres（postgres:18-alpine / /data/postgres:/var/lib/postgresql）
+          └── バックアップ: systemd timer 毎日3時 → /data/backups/
 
 デプロイフロー:
   git push origin master:main
@@ -36,9 +40,9 @@ Docker コンテナ gto-app（EC2上）
 
 | サービス | 役割 | 設定値 |
 |---|---|---|
-| EC2 t3.micro | アプリ本体実行 | i-06c53e45fc140cb9c / ap-northeast-1 / Amazon Linux 2023 |
+| EC2 t3.small | アプリ + DB実行 | i-06c53e45fc140cb9c / ap-northeast-1 / Amazon Linux 2023 |
 | ECR | Dockerイメージ倉庫 | リポジトリ名: gto-app |
-| RDS db.t4g.micro | PostgreSQL管理 | gto-db / 無料枠〜2027/04/24 |
+| ~~RDS db.t4g.micro~~ | ~~PostgreSQL~~ | **削除済み 2026-05-20** |
 | Secrets Manager | 環境変数の金庫 | シークレット名: gto/production |
 | IAM Role | EC2がECR/SMにアクセスする許可証 | gto-ec2-role / gto-ec2-profile |
 | SG gto-ec2-sg | EC2用ファイアウォール | Port 22のみインバウンド許可 |
@@ -52,10 +56,10 @@ Docker コンテナ gto-app（EC2上）
 | 項目 | 値 |
 |---|---|
 | インスタンスID | i-06c53e45fc140cb9c |
-| タイプ | t3.micro（2vCPU・1GB RAM） |
+| タイプ | t3.small（2vCPU・2GB RAM）*Phase 21-A で変更* |
 | AMI | Amazon Linux 2023 |
-| パブリックIP | 13.158.136.15（**動的 — 停止→起動でIPが変わる**） |
-| キーペアファイル | C:\Users\dkb69\Desktop\gto-key.pem |
+| パブリックIP | 54.199.172.57（**動的 — 停止→起動でIPが変わる**） |
+| キーペアファイル | C:\Users\dkb69\Desktop\2026\gto-key\gto-key.pem |
 | IAMプロファイル | gto-ec2-profile（gto-ec2-roleを含む） |
 | セキュリティグループ | gto-ec2-sg（Port 22のみ） |
 | 無料枠期限 | 2027/04/24 |
@@ -106,7 +110,7 @@ ingress:
 | `GEMINI_API_KEY` | Gemini APIキー |
 | `GROQ_API_KEY` | Groq APIキー |
 | `PORT` | `5000` |
-| `DATABASE_URL` | PostgreSQL接続文字列 |
+| `DATABASE_URL` | `postgresql://gto_user:***@gto-postgres:5432/postgres`（EC2 Docker内） |
 | `USE_POSTGRES` | `true` |
 
 ---
@@ -189,16 +193,20 @@ alembic downgrade -1                          # 1つ前に戻す
 
 ---
 
-## RDS 詳細
+## PostgreSQL（EC2 Docker）詳細
 
 | 項目 | 値 |
 |---|---|
-| インスタンス名 | gto-db |
-| タイプ | db.t4g.micro |
-| エンジン | PostgreSQL 18 |
-| エンドポイント | gto-db.c5suwic8avyn.ap-northeast-1.rds.amazonaws.com:5432 |
-| セキュリティグループ | gto-rds-sg（gto-ec2-sgからのPort 5432のみ許可） |
-| 無料枠期限 | 2027/04/24 |
+| コンテナ名 | gto-postgres |
+| イメージ | postgres:18-alpine |
+| データ永続化 | /data/postgres:/var/lib/postgresql（EC2 EBSに保存） |
+| バックアップ | /data/backups/postgres_YYYYMMDD_HHMMSS.dump（7日保持） |
+| バックアップ設定 | systemd timer: postgres-backup.timer（毎日3:00 UTC） |
+| スクリプト | /home/ec2-user/backup_postgres.sh |
+| Docker network | gto-net（gto-appと同一ネットワーク） |
+| 接続URL | postgresql://gto_user:***@gto-postgres:5432/postgres |
+
+> ~~RDS gto-db 削除済み（2026-05-20）~~ — データは移行済み（1134 hands）
 
 ---
 
@@ -206,16 +214,16 @@ alembic downgrade -1                          # 1つ前に戻す
 
 | サービス | 月額 | 期限 |
 |---|---|---|
-| EC2 t3.micro | $0（無料枠） | 2027/04/24 |
-| RDS db.t4g.micro | $0（無料枠） | 2027/04/24 |
+| EC2 t3.small | ~$15/月（無料枠対象外） | — |
+| ~~RDS~~ | ~~$0~~ | **削除済み 2026-05-20（$12/月節約）** |
 | Cloudflare Tunnel | $0（永久無料） | — |
 | ECR（~1.5GB） | ~$0.10 | — |
 | Secrets Manager | ~$0.40 | — |
 | hrep.app ドメイン | ~$1.18/月（$14.20/年） | 2027-05-17 |
-| **合計** | **~$1.68/月** | |
+| **合計** | **~$16.7/月** | |
 
-> **無料枠終了後（2027/04〜）:** EC2 ~$8/月 + RDS ~$13/月 = ~$21/月  
-> → 2027/04 前に移行先を検討すること（Firebase回帰 or Fly.io等）
+> EC2 t3.small費用は発生するが、RDS廃止で$12/月削減。  
+> コスト削減したい場合は t3.micro + swap設定も検討可。
 
 ---
 
@@ -239,11 +247,11 @@ alembic downgrade -1                          # 1つ前に戻す
 | AWS アカウントID | 273949555510 |
 | リージョン | ap-northeast-1（東京） |
 | EC2 インスタンスID | i-06c53e45fc140cb9c |
+| EC2 パブリックIP | 54.199.172.57（動的） |
 | ECRリポジトリ | gto-app |
 | Secrets Manager | gto/production（ARN末尾: -cxsxWn） |
 | IAMロール | gto-ec2-role |
-| RDS インスタンス | gto-db（db.t4g.micro・PostgreSQL 18） |
-| RDS エンドポイント | gto-db.c5suwic8avyn.ap-northeast-1.rds.amazonaws.com:5432 |
+| PostgreSQL | EC2 Docker gto-postgres（postgres:18-alpine・/data/postgres） |
 | Cloudflare Tunnel ID | bf98b4b5-2f1d-45be-a9b6-1bb3890a3cf7 |
 | 本番URL | https://hrep.app |
 
@@ -323,4 +331,15 @@ ECRにイメージは残っているため即時復旧可能:
 
 ---
 
-*最終更新: 2026-05-18*
+---
+
+## トラブルシューティング追記（Phase 21-A）
+
+| エラー / 症状 | 原因 | 解決策 |
+|---|---|---|
+| ec2:StopInstances UnauthorizedOperation | gto-admin-userにEC2権限なし | IAMコンソールで AmazonEC2FullAccess をアタッチ |
+| pg_dump server version mismatch | RDSがPG18なのにcontainerがPG16 | postgres:18-alpine を使用 |
+| postgres:18コンテナが再起動ループ | v18のマウントパスが変更 `/var/lib/postgresql/data` → `/var/lib/postgresql` | マウント先を `/var/lib/postgresql` に変更 |
+| crontab: command not found | Amazon Linux 2023のデフォルトにcrontabなし | systemd timer（postgres-backup.timer）で代替 |
+
+*最終更新: 2026-05-20（Phase 21-A完了）*

@@ -27,6 +27,7 @@
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止済み: 2026-05-15） |
 | Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
+| **Phase 21-A** | EC2 t3.small化・RDS削除・EC2 Docker PostgreSQL移行 | ✅ 完了（2026-05-20） |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
 
@@ -44,7 +45,7 @@ T4ポーカーサイトのハンドログをChrome拡張でWebSocket傍受 → F
 |---|---|
 | Backend | FastAPI + uvicorn / Python 3.11 |
 | AI | Groq(llama-3.3-70b) / Gemini 2.5 Flash 自動切替（BYOK・`gsk_`→Groq） |
-| DB / 認証 | PostgreSQL（RDS） / Firebase Auth（Google）/ USE_POSTGRESフラグで切替 |
+| DB / 認証 | PostgreSQL（EC2 Docker postgres:18-alpine） / Firebase Auth（Google）/ USE_POSTGRESフラグで切替 |
 | PDF | WeasyPrint（Python純正・Chromium不要） |
 | 拡張機能 | Chrome MV3 |
 
