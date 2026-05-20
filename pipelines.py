@@ -264,19 +264,18 @@ async def run_classify_pipeline_from_json(job_id: str, json_path: Path):
         jobs[job_id]["json_path"] = str(json_path)
         jobs[job_id]["classified_path"] = str(classified_path)
 
-    # Phase 8: 解析結果を Firestore に永続化
+    # Phase 8: 解析結果を DB（PostgreSQL or Firestore）に永続化
     with jobs_lock:
         fb_uid = jobs[job_id].get("firebase_uid", "")
     if fb_uid:
         try:
-            from scripts.firebase_utils import is_firebase_enabled, save_analysis
-            if is_firebase_enabled():
-                with open(classified_path, encoding="utf-8") as _f:
-                    _classified = json.load(_f)
-                has_snap = save_analysis(fb_uid, job_id, _classified)
-                print(f"[job:{job_id[:8]}] Firestore保存完了 snapshot={'あり' if has_snap else 'なし(サイズ超過)'}")
+            from scripts.db import save_analysis
+            with open(classified_path, encoding="utf-8") as _f:
+                _classified = json.load(_f)
+            has_snap = save_analysis(fb_uid, job_id, _classified)
+            print(f"[job:{job_id[:8]}] DB保存完了 snapshot={'あり' if has_snap else 'なし'}")
         except Exception as _e:
-            print(f"[job:{job_id[:8]}] Firestore保存失敗: {_e}")
+            print(f"[job:{job_id[:8]}] DB保存失敗: {_e}")
 
     push({"type": "classify_done"})
     loop.call_soon_threadsafe(q.put_nowait, None)

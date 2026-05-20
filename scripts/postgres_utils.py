@@ -139,7 +139,7 @@ def save_hand(uid: str, hand_json: dict, captured_at: str) -> str:
 # ─── 解析 ────────────────────────────────────────────────────────────────────
 
 def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
-    import json as _json, gzip as _gzip, base64 as _b64
+    import json as _json
     hands = classified_data.get("hands", [])
     blue  = sum(1 for h in hands if h.get("bluered_classification", {}).get("line") == "blue")
     red   = sum(1 for h in hands if h.get("bluered_classification", {}).get("line") == "red")
@@ -150,9 +150,8 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
         if label:
             categories[label] = categories.get(label, 0) + 1
 
-    raw_bytes  = _json.dumps(classified_data, ensure_ascii=False).encode("utf-8")
-    compressed = _b64.b64encode(_gzip.compress(raw_bytes, compresslevel=9)).decode("ascii")
-    has_snapshot = len(compressed.encode("ascii")) <= 900_000
+    # hand_ids: DB の hands.hand_id リスト（restore時に使用）
+    hand_ids = [h.get("_db_hand_id") for h in hands if h.get("_db_hand_id")]
 
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
@@ -160,18 +159,17 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
             text("""
                 INSERT INTO analyses
                   (user_id, job_id, created_at, hand_count, blue_count, red_count, pf_count,
-                   categories, classified_snapshot, snapshot_encoding)
+                   categories, hand_ids)
                 VALUES
                   (:user_id, :job_id, :created_at, :hand_count, :blue_count, :red_count, :pf_count,
-                   CAST(:categories AS jsonb), :snapshot, :encoding)
+                   CAST(:categories AS jsonb), CAST(:hand_ids AS jsonb))
                 ON CONFLICT (job_id) DO UPDATE SET
                   hand_count = EXCLUDED.hand_count,
                   blue_count = EXCLUDED.blue_count,
                   red_count  = EXCLUDED.red_count,
                   pf_count   = EXCLUDED.pf_count,
                   categories = EXCLUDED.categories,
-                  classified_snapshot = EXCLUDED.classified_snapshot,
-                  snapshot_encoding   = EXCLUDED.snapshot_encoding
+                  hand_ids   = EXCLUDED.hand_ids
                 RETURNING id
             """),
             {
@@ -183,8 +181,7 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
                 "red_count":  red,
                 "pf_count":   pf,
                 "categories": _json.dumps(categories),
-                "snapshot":   compressed if has_snapshot else None,
-                "encoding":   "gzip_b64" if has_snapshot else None,
+                "hand_ids":   _json.dumps(hand_ids),
             },
         )
         analysis_id = row.fetchone()[0]
@@ -199,36 +196,51 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
             hnum  = hand.get("hand_number")
             if not (line and label and hnum):
                 continue
+
+            # B4: street_reached（到達した最深ストリート）
+            raw_streets = hand.get("streets", {})
+            street_reached = "preflop"
+            for st in ("flop", "turn", "river"):
+                if raw_streets.get(st):
+                    street_reached = st
+
+            # B4: pot_size_bb（最終ポット = 全勝者の獲得合計）
+            winners = hand.get("result", {}).get("winners", [])
+            pot_size_bb = sum(float(w.get("amount_bb", 0)) for w in winners) if winners else None
+
             ah_rows.append({
-                "aid":   analysis_id,
-                "hnum":  hnum,
-                "line":  line,
-                "label": label,
-                "pos":   hand.get("hero_position", "") or None,
-                "cat":   hand.get("datetime") or None,
+                "aid":            analysis_id,
+                "hnum":           hnum,
+                "line":           line,
+                "label":          label,
+                "pos":            hand.get("hero_position", "") or None,
+                "cat":            hand.get("datetime") or None,
+                "hand_id":        hand.get("_db_hand_id") or None,
+                "pot_size_bb":    pot_size_bb,
+                "street_reached": street_reached,
             })
         if ah_rows:
             s.execute(
                 text("""
                     INSERT INTO analysis_hands
-                      (analysis_id, hand_number, line, category_label, position, captured_at)
-                    VALUES (:aid, :hnum, :line, :label, :pos, :cat)
+                      (analysis_id, hand_number, line, category_label, position, captured_at,
+                       hand_id, pot_size_bb, street_reached)
+                    VALUES (:aid, :hnum, :line, :label, :pos, :cat,
+                            :hand_id, :pot_size_bb, :street_reached)
                 """),
                 ah_rows,
             )
         s.commit()
-    return has_snapshot
+    return bool(hand_ids)
 
 
 def get_analysis(uid: str, job_id: str) -> dict | None:
-    import gzip as _gzip, base64 as _b64
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         row = s.execute(
             text("""
                 SELECT a.job_id, a.created_at, a.hand_count, a.blue_count, a.red_count,
-                       a.pf_count, a.categories, a.classified_snapshot, a.snapshot_encoding,
-                       a.active_cart
+                       a.pf_count, a.categories, a.active_cart, a.hand_ids
                 FROM analyses a
                 WHERE a.user_id = :user_id AND a.job_id = :job_id AND a.deleted_at IS NULL
             """),
@@ -236,7 +248,7 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
         ).fetchone()
     if not row:
         return None
-    d = {
+    return {
         "job_id":     row[0],
         "created_at": row[1].isoformat() if row[1] else None,
         "hand_count": row[2],
@@ -244,15 +256,74 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
         "red_count":  row[4],
         "pf_count":   row[5],
         "categories": row[6],
-        "classified_snapshot": row[7],
-        "snapshot_encoding":   row[8],
-        "active_cart": row[9],
+        "active_cart": row[7],
+        "hand_ids":   row[8] or [],
     }
-    if d.get("snapshot_encoding") == "gzip_b64" and d.get("classified_snapshot"):
-        d["classified_snapshot"] = _gzip.decompress(
-            _b64.b64decode(d["classified_snapshot"])
-        ).decode("utf-8")
-    return d
+
+
+def get_hands_by_ids(uid: str, hand_ids: list) -> list[dict]:
+    """指定した hand_id リストのハンドを取得する（B3 restore用）"""
+    if not hand_ids:
+        return []
+    import json as _json
+    with _session() as s:
+        user_id = _get_or_create_user(s, uid)
+        rows = s.execute(
+            text("""
+                SELECT hand_id, hand_json, captured_at, saved_at
+                FROM hands
+                WHERE user_id = :user_id AND hand_id = ANY(CAST(:ids AS VARCHAR[]))
+                ORDER BY saved_at ASC
+            """),
+            {"user_id": user_id, "ids": "{" + ",".join(hand_ids) + "}"},
+        ).fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            "hand_id":     r[0],
+            "hand_json":   r[1],
+            "captured_at": r[2].isoformat() if r[2] else None,
+            "saved_at":    r[3].isoformat() if r[3] else None,
+        })
+    return result
+
+
+def get_analysis_hands_for_3d(uid: str, job_id: str) -> list[dict]:
+    """3D view用: analysis_hands JOIN hands を返す（B2 DBフォールバック）"""
+    with _session() as s:
+        user_id = _get_or_create_user(s, uid)
+        ana_row = s.execute(
+            text("SELECT id FROM analyses WHERE user_id = :uid AND job_id = :jid AND deleted_at IS NULL"),
+            {"uid": user_id, "jid": job_id},
+        ).fetchone()
+        if not ana_row:
+            return []
+        analysis_id = ana_row[0]
+        rows = s.execute(
+            text("""
+                SELECT ah.hand_number, ah.line, ah.category_label, ah.position,
+                       ah.street_reached, ah.captured_at,
+                       h.hand_json, h.hand_id
+                FROM analysis_hands ah
+                LEFT JOIN hands h ON h.hand_id = ah.hand_id AND h.user_id = :uid
+                WHERE ah.analysis_id = :aid
+                ORDER BY ah.hand_number ASC
+            """),
+            {"aid": analysis_id, "uid": user_id},
+        ).fetchall()
+    return [
+        {
+            "hand_number":    r[0],
+            "line":           r[1],
+            "category_label": r[2],
+            "position":       r[3],
+            "street_reached": r[4],
+            "captured_at":    r[5].isoformat() if r[5] else None,
+            "hand_json":      r[6],
+            "hand_id":        r[7],
+        }
+        for r in rows
+    ]
 
 
 def get_analyses(uid: str, limit: int = 20) -> list[dict]:
@@ -261,7 +332,7 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
         rows = s.execute(
             text("""
                 SELECT job_id, created_at, hand_count, blue_count, red_count, pf_count,
-                       active_cart, snapshot_encoding
+                       active_cart, hand_ids
                 FROM analyses
                 WHERE user_id = :user_id AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -279,7 +350,7 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
             "red_count":    r[4],
             "pf_count":     r[5],
             "active_cart":  r[6],
-            "has_snapshot": r[7] is not None,
+            "has_snapshot": bool(r[7]),
         })
     return result
 

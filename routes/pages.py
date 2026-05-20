@@ -146,26 +146,59 @@ async def classify_result_view(job_id: str):
 
 
 @router.get("/3d_view/{job_id}", response_class=HTMLResponse)
-async def three_d_view(job_id: str):
+async def three_d_view(job_id: str, request: Request):
+    from routes.deps import get_uid_from_request
     with jobs_lock:
         job = jobs.get(job_id)
 
-    if not job or job.get("status") != "done":
+    classified_path = None
+    if job and job.get("status") == "done":
+        classified_path = job.get("classified_path", "")
+    else:
         candidate = DATA_DIR / f"{job_id}_classified.json"
         if candidate.exists():
             classified_path = str(candidate)
-        else:
-            return HTMLResponse(_RESTORE_PAGE_HTML.replace("{job_id}", job_id))
-    else:
-        classified_path = job.get("classified_path", "")
 
+    if classified_path:
+        try:
+            with open(classified_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return HTMLResponse(three_d_view_page(job_id, data.get("hands", [])))
+        except Exception:
+            pass
+
+    # B2: ローカルファイルなし → DBから analysis_hands + hands を再構築
     try:
-        with open(classified_path, encoding="utf-8") as f:
-            data = json.load(f)
+        uid = get_uid_from_request(request)
     except Exception:
-        return HTMLResponse("<h1>データが見つかりません</h1>", status_code=404)
+        return HTMLResponse(_RESTORE_PAGE_HTML.replace("{job_id}", job_id))
+    try:
+        from scripts.db import get_analysis_hands_for_3d
+        from scripts.hand_converter import convert_hand_json
+        ah_rows = get_analysis_hands_for_3d(uid, job_id)
+    except Exception:
+        ah_rows = []
 
-    hands = data.get("hands", [])
+    if not ah_rows:
+        return HTMLResponse(_RESTORE_PAGE_HTML.replace("{job_id}", job_id))
+
+    hands = []
+    for i, row in enumerate(ah_rows, 1):
+        hand_json_data = row.get("hand_json") or {}
+        if not hand_json_data:
+            continue
+        try:
+            hand = convert_hand_json(hand_json_data, row.get("captured_at", ""), hand_index=i)
+        except Exception:
+            continue
+        hand["bluered_classification"] = {
+            "line":           row["line"],
+            "category_label": row["category_label"],
+            "last_street":    row.get("street_reached", ""),
+        }
+        hand["hero_position"] = row.get("position") or hand.get("hero_position", "")
+        hands.append(hand)
+
     return HTMLResponse(three_d_view_page(job_id, hands))
 
 

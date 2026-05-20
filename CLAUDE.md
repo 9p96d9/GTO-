@@ -28,6 +28,7 @@
 | Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
 | **Phase 21-A** | EC2 t3.small化・RDS削除・EC2 Docker PostgreSQL移行 | ✅ 完了（2026-05-20） |
+| **Phase 21-B** | データモデル刷新（classified_snapshot廃止・hand_ids保存・DBリストア） | 🔄 進行中（B1〜B4完了・B5未着手） |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
 

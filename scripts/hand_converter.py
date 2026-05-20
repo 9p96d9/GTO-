@@ -309,15 +309,17 @@ def convert_hands_batch(hands_data: list) -> dict:
     """
     converted = []
     for i, item in enumerate(hands_data, 1):
+        db_hand_id = item.get("hand_id", "")
         try:
             hand = convert_hand_json(
                 item.get("hand_json", {}),
                 item.get("captured_at", ""),
                 hand_index=i,
             )
+            hand["_db_hand_id"] = db_hand_id
             converted.append(hand)
         except Exception as e:
-            print(f"  [WARN] convert error (hand_id={item.get('hand_id', '?')}): {e}", file=sys.stderr)
+            print(f"  [WARN] convert error (hand_id={db_hand_id!r}): {e}", file=sys.stderr)
 
     return {
         "source_file": "realtime_hands",

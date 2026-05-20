@@ -35,6 +35,8 @@
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | **Phase 18** | Railway → AWS 移行（ECS Fargate・IAM・VPC・ALB・Secrets Manager） | ✅ 完了（Railway停止済み: 2026-05-15） |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンアナリティクスダッシュボード | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
+| **Phase 21-A** | EC2 t3.small化・RDS削除・EC2 Docker PostgreSQL移行 | ✅ 完了（2026-05-20） |
+| **Phase 21-B** | データモデル刷新（classified_snapshot廃止・analysis_hands拡張・DBリストア） | 🔄 進行中（B1〜B4完了・B5未着手） |
 
 ---
 
