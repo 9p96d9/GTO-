@@ -351,28 +351,42 @@ async def api_analyses_restore(job_id: str, request: Request, background_tasks: 
         return JSONResponse({"error": "解析結果が見つかりません"}, status_code=404)
 
     hand_ids = analysis.get("hand_ids") or []
-    if not hand_ids:
-        return JSONResponse({"error": "復元用のハンドデータが保存されていません（旧形式の解析）"}, status_code=404)
 
-    # hand_ids から hands を取得して再分類（バックグラウンド）
-    try:
-        hands_data = get_hands_by_ids(uid, hand_ids)
-    except Exception as e:
-        return JSONResponse({"error": f"ハンド取得失敗: {e}"}, status_code=500)
-    if not hands_data:
-        return JSONResponse({"error": "ハンドデータが見つかりません"}, status_code=404)
+    if hand_ids:
+        # 新方式: hand_ids → get_hands_by_ids → 再classify（バックグラウンド）
+        try:
+            hands_data = get_hands_by_ids(uid, hand_ids)
+        except Exception as e:
+            return JSONResponse({"error": f"ハンド取得失敗: {e}"}, status_code=500)
+        if not hands_data:
+            return JSONResponse({"error": "ハンドデータが見つかりません"}, status_code=404)
 
-    parsed_data = convert_hands_batch(hands_data)
-    json_path   = DATA_DIR / f"{job_id}.json"
-    json_path.write_text(json.dumps(parsed_data, ensure_ascii=False), encoding="utf-8")
+        parsed_data = convert_hands_batch(hands_data)
+        json_path   = DATA_DIR / f"{job_id}.json"
+        json_path.write_text(json.dumps(parsed_data, ensure_ascii=False), encoding="utf-8")
 
+        with jobs_lock:
+            jobs[job_id] = {
+                "step": 0, "status": "running", "pdf": "", "log": "",
+                "mode": "classify", "hero_name": "", "firebase_uid": uid,
+            }
+        background_tasks.add_task(run_classify_pipeline_from_json, job_id, json_path)
+        return JSONResponse({"status": "restoring", "progress_url": f"/classify_progress/{job_id}"})
+
+    # 旧方式フォールバック: classified_snapshot が残っている場合
+    snapshot = analysis.get("classified_snapshot")
+    if not snapshot:
+        return JSONResponse({"error": "復元用データがありません（旧形式かつスナップショット未保存）"}, status_code=404)
+
+    classified_path = DATA_DIR / f"{job_id}_classified.json"
+    json_path       = DATA_DIR / f"{job_id}.json"
+    classified_path.write_text(snapshot, encoding="utf-8")
     with jobs_lock:
         jobs[job_id] = {
-            "step": 0, "status": "running", "pdf": "", "log": "",
-            "mode": "classify", "hero_name": "", "firebase_uid": uid,
+            "status": "done", "classified_path": str(classified_path),
+            "json_path": str(json_path), "pdf": "", "log": "", "mode": "classify", "hero_name": "",
         }
-    background_tasks.add_task(run_classify_pipeline_from_json, job_id, json_path)
-    return JSONResponse({"status": "restoring", "progress_url": f"/classify_progress/{job_id}"})
+    return JSONResponse({"status": "ok"})
 
 
 @router.get("/api/user/settings")

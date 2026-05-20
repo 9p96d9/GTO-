@@ -235,12 +235,14 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
 
 
 def get_analysis(uid: str, job_id: str) -> dict | None:
+    import gzip as _gzip, base64 as _b64
     with _session() as s:
         user_id = _get_or_create_user(s, uid)
         row = s.execute(
             text("""
                 SELECT a.job_id, a.created_at, a.hand_count, a.blue_count, a.red_count,
-                       a.pf_count, a.categories, a.active_cart, a.hand_ids
+                       a.pf_count, a.categories, a.active_cart, a.hand_ids,
+                       a.classified_snapshot, a.snapshot_encoding
                 FROM analyses a
                 WHERE a.user_id = :user_id AND a.job_id = :job_id AND a.deleted_at IS NULL
             """),
@@ -248,7 +250,7 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
         ).fetchone()
     if not row:
         return None
-    return {
+    d = {
         "job_id":     row[0],
         "created_at": row[1].isoformat() if row[1] else None,
         "hand_count": row[2],
@@ -258,7 +260,15 @@ def get_analysis(uid: str, job_id: str) -> dict | None:
         "categories": row[6],
         "active_cart": row[7],
         "hand_ids":   row[8] or [],
+        "classified_snapshot": row[9],
+        "snapshot_encoding":   row[10],
     }
+    # 旧方式フォールバック用にデコード
+    if d.get("snapshot_encoding") == "gzip_b64" and d.get("classified_snapshot"):
+        d["classified_snapshot"] = _gzip.decompress(
+            _b64.b64decode(d["classified_snapshot"])
+        ).decode("utf-8")
+    return d
 
 
 def get_hands_by_ids(uid: str, hand_ids: list) -> list[dict]:
@@ -332,7 +342,7 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
         rows = s.execute(
             text("""
                 SELECT job_id, created_at, hand_count, blue_count, red_count, pf_count,
-                       active_cart, hand_ids
+                       active_cart, hand_ids, snapshot_encoding
                 FROM analyses
                 WHERE user_id = :user_id AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -342,6 +352,7 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
         ).fetchall()
     result = []
     for r in rows:
+        # has_snapshot: 新方式(hand_ids) or 旧方式(snapshot_encoding) どちらかがあれば復元可
         result.append({
             "job_id":       r[0],
             "created_at":   r[1].isoformat() if r[1] else None,
@@ -350,7 +361,7 @@ def get_analyses(uid: str, limit: int = 20) -> list[dict]:
             "red_count":    r[4],
             "pf_count":     r[5],
             "active_cart":  r[6],
-            "has_snapshot": bool(r[7]),
+            "has_snapshot": bool(r[7]) or (r[8] is not None),
         })
     return result
 
