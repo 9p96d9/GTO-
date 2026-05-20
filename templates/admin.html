@@ -248,11 +248,11 @@
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const cfg  = await fetch("/api/firebase-config").then(r => r.json());
-const app  = initializeApp(cfg);
+const app  = getApps().length ? getApp() : initializeApp(cfg);
 const auth = getAuth(app);
 let currentUser = null;
 

@@ -181,7 +181,7 @@ tbody td{padding:10px 14px;vertical-align:middle}
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 let _auth = null;
@@ -189,7 +189,7 @@ let _auth = null;
 (async () => {
   try {
     const cfg = await fetch("/api/firebase-config").then(r => r.json());
-    const app = initializeApp(cfg);
+    const app = getApps().length ? getApp() : initializeApp(cfg);
     _auth = getAuth(app);
     onAuthStateChanged(_auth, user => { if (user) load(); });
   } catch {
