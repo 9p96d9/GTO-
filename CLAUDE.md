@@ -28,7 +28,7 @@
 | Phase 5 | 管理者ダッシュボード（/admin・KPI・ユーザー一覧） | ✅ 完了 |
 | **Phase 19** | Firebase → PostgreSQL 移行 ＋ アドミンダッシュボード（USE_POSTGRESフラグで共存） | ✅ 完了（USE_POSTGRES=true・本番稼働中） |
 | **Phase 21-A** | EC2 t3.small化・RDS削除・EC2 Docker PostgreSQL移行 | ✅ 完了（2026-05-20） |
-| **Phase 21-B** | データモデル刷新（classified_snapshot廃止・hand_ids保存・DBリストア） | 🔄 進行中（B1〜B4完了・B5未着手） |
+| **Phase 21-B** | データモデル刷新（classified_snapshot廃止・hand_ids保存・DBリストア） | 🔄 進行中（B1〜B4完了・B5未着手）⚠️デプロイ前にEC2でSQL実行必須 |
 | **Phase 20c** | ドリルパネルリッチ化・バグ修正・UX polish | 🔄 進行中 |
 | Phase 6, 11 | UX改善・対戦相手統計 | ⬜ 未着手 |
 
@@ -161,9 +161,29 @@ hands = get_hands(uid, limit=30)
 
 ---
 
+## Phase 21-B デプロイ手順（⚠️ 初回のみ：DBマイグレーション必須）
+
+**git push前に必ず EC2 で以下を実行すること。** 実行しないとカラムが存在せずエラー。
+
+```bash
+# EC2にSSHして実行
+docker exec -i gto-db psql -U gto_user -d gto_db < migrations/21b_analysis_hands_extend.sql
+# または直接:
+docker exec gto-db psql -U gto_user -d gto_db -c "
+  ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS hand_id VARCHAR(200);
+  ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS pot_size_bb NUMERIC;
+  ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS street_reached VARCHAR(10);
+  ALTER TABLE analyses ADD COLUMN IF NOT EXISTS hand_ids JSONB DEFAULT '[]'::jsonb;
+"
+```
+
+マイグレーション実行後 → `git push origin main` でデプロイ。
+
+---
+
 ## デプロイ手順
 
-**本番環境:** AWS EC2 t3.micro + Cloudflare Tunnel（ECS/ALB は 2026-05-18 削除済み）  
+**本番環境:** AWS EC2 t3.small + Cloudflare Tunnel（ECS/ALB は 2026-05-18 削除済み）  
 **本番URL:** https://hrep.app  
 **CI/CD:** `main` ブランチへの push → GitHub Actions が自動実行
 
