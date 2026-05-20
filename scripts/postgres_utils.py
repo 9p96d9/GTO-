@@ -188,37 +188,36 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
         s.commit()
 
     ah_rows = []
-        for hand in hands:
-            bc    = hand.get("bluered_classification", {})
-            line  = bc.get("line", "")
-            label = bc.get("category_label", "")
-            hnum  = hand.get("hand_number")
-            if not (line and label and hnum):
-                continue
+    for hand in hands:
+        bc    = hand.get("bluered_classification", {})
+        line  = bc.get("line", "")
+        label = bc.get("category_label", "")
+        hnum  = hand.get("hand_number")
+        if not (line and label and hnum):
+            continue
 
-            # B4: street_reached（到達した最深ストリート）
-            raw_streets = hand.get("streets", {})
-            street_reached = "preflop"
-            for st in ("flop", "turn", "river"):
-                if raw_streets.get(st):
-                    street_reached = st
+        # B4: street_reached（到達した最深ストリート）
+        raw_streets = hand.get("streets", {})
+        street_reached = "preflop"
+        for st in ("flop", "turn", "river"):
+            if raw_streets.get(st):
+                street_reached = st
 
-            # B4: pot_size_bb（最終ポット = 全勝者の獲得合計）
-            winners = hand.get("result", {}).get("winners", [])
-            pot_size_bb = sum(float(w.get("amount_bb", 0)) for w in winners) if winners else None
+        # B4: pot_size_bb（最終ポット = 全勝者の獲得合計）
+        winners = hand.get("result", {}).get("winners", [])
+        pot_size_bb = sum(float(w.get("amount_bb", 0)) for w in winners) if winners else None
 
-            ah_rows.append({
-                "aid":            analysis_id,
-                "hnum":           hnum,
-                "line":           line,
-                "label":          label,
-                "pos":            hand.get("hero_position", "") or None,
-                "cat":            hand.get("datetime") or None,
-                "hand_id":        hand.get("_db_hand_id") or None,
-                "pot_size_bb":    pot_size_bb,
-                "street_reached": street_reached,
-            })
-        s.commit()
+        ah_rows.append({
+            "aid":            analysis_id,
+            "hnum":           hnum,
+            "line":           line,
+            "label":          label,
+            "pos":            hand.get("hero_position", "") or None,
+            "cat":            hand.get("datetime") or None,
+            "hand_id":        hand.get("_db_hand_id") or None,
+            "pot_size_bb":    pot_size_bb,
+            "street_reached": street_reached,
+        })
 
     # analysis_hands は別トランザクション（失敗しても analyses は保存済み）
     if ah_rows:
