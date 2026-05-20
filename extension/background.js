@@ -2,7 +2,7 @@
  * background.js - PokerGTO Chrome拡張機能 Service Worker (Phase 9)
  */
 
-import { initializeApp }          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -31,7 +31,7 @@ async function initFirebase() {
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
     const cfg = await getFirebaseConfig();
-    _app  = initializeApp(cfg);
+    _app  = getApps().length ? getApp() : initializeApp(cfg);
     _auth = getAuth(_app);
     await new Promise(resolve => {
       let resolved = false;
