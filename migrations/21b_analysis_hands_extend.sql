@@ -6,6 +6,9 @@
 -- analysis_hands: hand_id（DB内のhands.hand_idへのリンク）
 ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS hand_id VARCHAR(200);
 
+-- line カラムを VARCHAR(20) に拡張（'preflop_only' が12文字で10文字制限に収まらないため）
+ALTER TABLE analysis_hands ALTER COLUMN line TYPE VARCHAR(20);
+
 -- analysis_hands: B4フィールド（GTO統計精度向上）
 ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS bb_size NUMERIC;
 ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS pot_size_bb NUMERIC;
