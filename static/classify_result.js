@@ -321,7 +321,11 @@ function renderCart() {
     return;
   }
   emptyEl.style.display = 'none';
-  document.getElementById('cart-analyze-btn').disabled = false;
+  const analyzeBtn = document.getElementById('cart-analyze-btn');
+  analyzeBtn.disabled = false;
+  if (analyzeBtn.textContent !== '⏳ 解析中...') {
+    analyzeBtn.textContent = '⚡ 解析を実行';
+  }
   _updateTokenEstimate(count);
   const sorted = [...cartSet].sort((a,b) => a-b);
   itemsEl.innerHTML = sorted.map(n => {

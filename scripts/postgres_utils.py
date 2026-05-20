@@ -185,10 +185,9 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
             },
         )
         analysis_id = row.fetchone()[0]
+        s.commit()
 
-        # analysis_hands を再構築（再解析時は削除して書き直す）
-        s.execute(text("DELETE FROM analysis_hands WHERE analysis_id = :aid"), {"aid": analysis_id})
-        ah_rows = []
+    ah_rows = []
         for hand in hands:
             bc    = hand.get("bluered_classification", {})
             line  = bc.get("line", "")
@@ -219,18 +218,26 @@ def save_analysis(uid: str, job_id: str, classified_data: dict) -> bool:
                 "pot_size_bb":    pot_size_bb,
                 "street_reached": street_reached,
             })
-        if ah_rows:
-            s.execute(
-                text("""
-                    INSERT INTO analysis_hands
-                      (analysis_id, hand_number, line, category_label, position, captured_at,
-                       hand_id, pot_size_bb, street_reached)
-                    VALUES (:aid, :hnum, :line, :label, :pos, :cat,
-                            :hand_id, :pot_size_bb, :street_reached)
-                """),
-                ah_rows,
-            )
         s.commit()
+
+    # analysis_hands は別トランザクション（失敗しても analyses は保存済み）
+    if ah_rows:
+        try:
+            with _session() as s:
+                s.execute(text("DELETE FROM analysis_hands WHERE analysis_id = :aid"), {"aid": analysis_id})
+                s.execute(
+                    text("""
+                        INSERT INTO analysis_hands
+                          (analysis_id, hand_number, line, category_label, position, captured_at,
+                           hand_id, pot_size_bb, street_reached)
+                        VALUES (:aid, :hnum, :line, :label, :pos, :cat,
+                                :hand_id, :pot_size_bb, :street_reached)
+                    """),
+                    ah_rows,
+                )
+                s.commit()
+        except Exception as _e:
+            print(f"[WARN] analysis_hands保存失敗: {_e}", file=sys.stderr)
     return bool(hand_ids)
 
 
