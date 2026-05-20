@@ -161,23 +161,20 @@ hands = get_hands(uid, limit=30)
 
 ---
 
-## Phase 21-B デプロイ手順（⚠️ 初回のみ：DBマイグレーション必須）
+## Phase 21-B デプロイ手順（⚠️ 初回のみ：DBマイグレーション必須）→ 2026-05-20 実行済み
 
-**git push前に必ず EC2 で以下を実行すること。** 実行しないとカラムが存在せずエラー。
+**実行済み（再実行不要）。** IF NOT EXISTS 付きなので重複実行は無害。
 
 ```bash
-# EC2にSSHして実行
-docker exec -i gto-db psql -U gto_user -d gto_db < migrations/21b_analysis_hands_extend.sql
-# または直接:
-docker exec gto-db psql -U gto_user -d gto_db -c "
+# コンテナ名: gto-postgres、DB名: postgres（gto_db ではない）
+docker exec gto-postgres psql -U gto_user -d postgres -c "
   ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS hand_id VARCHAR(200);
+  ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS bb_size NUMERIC;
   ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS pot_size_bb NUMERIC;
   ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS street_reached VARCHAR(10);
   ALTER TABLE analyses ADD COLUMN IF NOT EXISTS hand_ids JSONB DEFAULT '[]'::jsonb;
 "
 ```
-
-マイグレーション実行後 → `git push origin main` でデプロイ。
 
 ---
 

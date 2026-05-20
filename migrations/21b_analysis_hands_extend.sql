@@ -1,5 +1,7 @@
 -- Phase 21-B: analysis_hands 拡張 + analyses に hand_ids 追加
--- EC2上で実行: docker exec -i gto-db psql -U gto_user -d gto_db < 21b_analysis_hands_extend.sql
+-- EC2上で実行: docker exec -i gto-postgres psql -U gto_user -d postgres < 21b_analysis_hands_extend.sql
+-- ※ コンテナ名: gto-postgres, DB名: postgres（gto_db ではない）
+-- 2026-05-20 実行済み
 
 -- analysis_hands: hand_id（DB内のhands.hand_idへのリンク）
 ALTER TABLE analysis_hands ADD COLUMN IF NOT EXISTS hand_id VARCHAR(200);
