@@ -290,6 +290,10 @@
     margin: 0 0 14px; letter-spacing: -0.01em; line-height: 1.25; color: #e8ecf5;
   }
   .hw-detail-desc { font-size: 14px; color: #9aa3b8; line-height: 1.7; margin: 0; flex: 1; }
+  .copy-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; padding: 1px 7px; font-size: 12px; color: #cdd5e8; cursor: pointer; user-select: none; vertical-align: middle; transition: background 0.15s; }
+  .copy-chip:hover { background: rgba(255,255,255,0.15); }
+  .copy-chip .copy-icon { font-size: 11px; opacity: 0.7; }
+  .copy-chip.copied { background: rgba(46,125,50,0.25); border-color: rgba(46,125,50,0.5); color: #81c784; }
   .hw-chapters { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); }
   .hw-chapters-label {
     font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px;
@@ -494,6 +498,19 @@
   let hwActive = 0;
 
   function hwRender() {
+    function renderDesc(desc) {
+      return desc.replace(/chrome:\/\/extensions/g,
+        `<span class="copy-chip" onclick="copyChip(this,'chrome://extensions')" title="クリックでコピー"><span class="copy-icon">📋</span>chrome://extensions</span>`
+      );
+    }
+    window.copyChip = function(el, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        el.classList.add('copied');
+        el.querySelector('.copy-icon').textContent = '✓';
+        setTimeout(() => { el.classList.remove('copied'); el.querySelector('.copy-icon').textContent = '📋'; }, 1800);
+      });
+    };
+
     const row = document.getElementById('hw-card-row');
     if (row) {
       row.innerHTML = HW_STEPS.map((s, i) => {
@@ -517,7 +534,7 @@
         <div class="hw-detail-num">${s.n}</div>
         <div class="hw-detail-meta">${s.chip} · ${s.duration}</div>
         <h3 class="hw-detail-title">${s.title}</h3>
-        <p class="hw-detail-desc">${s.desc}</p>
+        <p class="hw-detail-desc">${renderDesc(s.desc)}</p>
         <div class="hw-chapters">
           <div class="hw-chapters-label">このステップのチャプター</div>
           ${s.chapters.map(c => `<button class="hw-chapter-row" onclick="hwSeek('${c.time}')"><span class="hw-chapter-time">${c.time}</span><span class="hw-chapter-name">${c.label}</span></button>`).join('')}
