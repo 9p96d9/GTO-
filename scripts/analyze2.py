@@ -120,17 +120,20 @@ def get_hand_summary(hand: dict) -> str:
 # ─── GTO数学的文脈の事前計算 ──────────────────────────────────────────────────
 
 def _compute_gto_math(hand: dict) -> str:
-    """ベット/ポットからα・MDF・スポットタイプを計算してプロンプト用文字列を返す。
-    計算できない場合は空文字。"""
+    """カテゴリ別にGTO数学コンテキストを計算してプロンプト用文字列を返す。
+    - DEFENDER (bluff_catch/call_lost): コール側の必要エクイティを計算
+    - AGGRESSOR (hero_aggression_won/value_success/bluff_failed): Hero自身のbet/raiseを使用
+    - FOLD系: 直前の相手ベットに対するMDF基準を表示
+    """
     clf      = hand.get("bluered_classification") or {}
     category = clf.get("category", "")
     streets  = hand.get("streets") or {}
+    hero_pos = hand.get("hero_position", "")
 
-    # 最終ストリートとそのbet/potを抽出
-    last_street = None
-    last_bet    = None
-    last_pot    = None
-    hero_pos    = hand.get("hero_position", "")
+    DEFENDER_CATS  = {"bluff_catch", "call_lost"}
+    AGGRESSOR_CATS = {"hero_aggression_won", "value_success", "bluff_failed"}
+
+    street_label_map = {"river": "リバー", "turn": "ターン", "flop": "フロップ"}
 
     for street_name in ("river", "turn", "flop"):
         s = streets.get(street_name)
@@ -138,44 +141,88 @@ def _compute_gto_math(hand: dict) -> str:
             continue
         actions = s.get("actions") or []
         pot_bb  = s.get("pot_bb")
-        for a in reversed(actions):
-            amt = a.get("amount_bb")
-            if amt and pot_bb:
-                last_street = street_name
-                last_bet    = float(amt)
-                last_pot    = float(pot_bb)
-                break
-        if last_bet is not None:
-            break
+        if not actions or not pot_bb:
+            continue
+        pot_bb       = float(pot_bb)
+        street_label = street_label_map.get(street_name, street_name)
 
-    if last_bet is None or last_pot is None or last_pot <= 0:
-        return ""
+        # ── コール側（bluff_catch / call_lost）─────────────────────────
+        if category in DEFENDER_CATS:
+            hero_invested = 0.0
+            opp_bet       = 0.0
+            for a in actions:
+                a_pos = a.get("position") or a.get("name", "")
+                a_amt = float(a.get("amount_bb") or 0)
+                a_act = (a.get("action") or "").lower()
+                if a_pos == hero_pos and a_act in ("bet", "raise") and a_amt:
+                    hero_invested = a_amt
+                elif a_pos != hero_pos and a_act in ("bet", "raise") and a_amt:
+                    opp_bet = a_amt
+            if opp_bet <= 0:
+                continue
+            net_call        = max(0.0, opp_bet - hero_invested)
+            if net_call <= 0:
+                continue
+            pot_before_call = pot_bb + hero_invested + opp_bet
+            equity          = net_call / (pot_before_call + net_call)
+            spot_type = {"bluff_catch": "ブラフキャッチスポット",
+                         "call_lost":   "コール負けスポット"}.get(category, "コールスポット")
+            return (
+                f"[GTO数学] {spot_type} | {street_label} | "
+                f"相手ベット={opp_bet:.1f}bb / コール={net_call:.1f}bb / ポット={pot_before_call:.1f}bb | "
+                f"必要エクイティ={equity:.0%}（コール損益分岐点）"
+            )
 
-    alpha = last_bet / (last_pot + last_bet)
-    mdf   = 1 - alpha
+        # ── アグレッサー（Hero自身のbet/raise）──────────────────────────
+        elif category in AGGRESSOR_CATS:
+            for a in reversed(actions):
+                a_pos = a.get("position") or a.get("name", "")
+                a_act = (a.get("action") or "").lower()
+                a_amt = a.get("amount_bb")
+                if a_pos == hero_pos and a_act in ("bet", "raise") and a_amt:
+                    last_bet = float(a_amt)
+                    alpha    = last_bet / (pot_bb + last_bet)
+                    mdf      = 1 - alpha
+                    spot_map = {
+                        "hero_aggression_won": (
+                            "ブラフ/アグレッションスポット",
+                            f"必要成功率={alpha:.0%}（相手フォールドが必要な頻度）"),
+                        "value_success": (
+                            "バリュースポット",
+                            f"バリューターゲット={alpha:.0%}（相手コールレンジに必要な劣勢ハンド率）"),
+                        "bluff_failed": (
+                            "ブラフ失敗スポット",
+                            f"必要成功率={alpha:.0%}（相手にコールされ失敗）"),
+                    }
+                    spot_type, spot_msg = spot_map.get(category, ("ベットスポット", f"α={alpha:.0%} / MDF={mdf:.0%}"))
+                    return (
+                        f"[GTO数学] {spot_type} | {street_label} | "
+                        f"ベット={last_bet:.1f}bb / ポット={pot_bb:.1f}bb | "
+                        f"α={alpha:.0%} | {spot_msg}"
+                    )
 
-    # スポットタイプとメッセージ
-    spot_map = {
-        "fold_unknown":        ("フォールドスポット", f"MDF基準={mdf:.0%}（Heroがフォールド）"),
-        "hero_aggression_won": ("ブラフ/アグレッションスポット", f"必要成功率={alpha:.0%}（相手フォールドが必要な頻度）"),
-        "value_success":       ("バリュースポット", f"バリューターゲット={alpha:.0%}（相手コールレンジに必要な劣勢ハンド率）"),
-        "bluff_catch":         ("ブラフキャッチスポット", f"ポットオッズ={alpha:.0%}（相手ベットへのコール基準）"),
-    }
-    spot_type, spot_msg = spot_map.get(category, ("", ""))
+        # ── フォールド系・その他（相手のベットに対するMDF基準）──────────
+        else:
+            for a in reversed(actions):
+                a_act = (a.get("action") or "").lower()
+                a_amt = a.get("amount_bb")
+                if a_act in ("bet", "raise") and a_amt:
+                    last_bet = float(a_amt)
+                    alpha    = last_bet / (pot_bb + last_bet)
+                    mdf      = 1 - alpha
+                    spot_map = {
+                        "fold_unknown": ("フォールドスポット",      f"MDF基準={mdf:.0%}（Heroがフォールド）"),
+                        "nice_fold":    ("ナイスフォールドスポット", f"MDF基準={mdf:.0%}（Heroがフォールド）"),
+                        "bad_fold":     ("バッドフォールドスポット", f"MDF基準={mdf:.0%}（Heroがフォールド）"),
+                    }
+                    spot_type, spot_msg = spot_map.get(category, ("ベットスポット", f"α={alpha:.0%} / MDF={mdf:.0%}"))
+                    return (
+                        f"[GTO数学] {spot_type} | {street_label} | "
+                        f"ベット={last_bet:.1f}bb / ポット={pot_bb:.1f}bb | "
+                        f"α={alpha:.0%} | {spot_msg}"
+                    )
 
-    if not spot_type:
-        # カテゴリ不明でもbet/potが取れた場合は基本情報だけ出す
-        spot_type = "ベットスポット"
-        spot_msg  = f"α={alpha:.0%} / MDF={mdf:.0%}"
-
-    street_label = {"river": "リバー", "turn": "ターン", "flop": "フロップ"}.get(last_street, last_street or "")
-    oop_note = "（OOP: MDF目安より多めのフォールドが均衡に近い場合あり）" if hero_pos in ("BB", "SB") else ""
-
-    return (
-        f"[GTO数学] {spot_type} | {street_label} | "
-        f"ベット={last_bet:.1f}bb / ポット={last_pot:.1f}bb | "
-        f"α={alpha:.0%} | {spot_msg}{oop_note}"
-    )
+    return ""
 
 
 # ─── プロンプト生成 ───────────────────────────────────────────────────────────
