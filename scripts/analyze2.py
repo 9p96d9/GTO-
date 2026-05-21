@@ -213,6 +213,26 @@ def get_board_summary(hand: dict) -> str:
     return " ".join(boards) if boards else "(プリフロップのみ)"
 
 
+def _detect_ip_oop(hand: dict) -> str | None:
+    """ポストフロップの先行アクションからHeroのIP/OOPを判定。
+    最初に動くプレイヤー=OOP、それ以外=IP。判定不能な場合はNone。"""
+    hero_pos = hand.get("hero_position", "")
+    streets  = hand.get("streets") or {}
+
+    for street_name in ("flop", "turn", "river"):
+        s = streets.get(street_name)
+        if not s or not isinstance(s, dict):
+            continue
+        actions = s.get("actions") or []
+        if not actions:
+            continue
+        first_pos = actions[0].get("position") or actions[0].get("name", "")
+        if first_pos:
+            return "OOP" if first_pos == hero_pos else "IP"
+
+    return None
+
+
 def build_hand_block(idx: int, hand: dict) -> str:
     pos    = hand.get("hero_position", "不明")
     cards  = " ".join(hand.get("hero_cards", []))
@@ -222,9 +242,10 @@ def build_hand_block(idx: int, hand: dict) -> str:
 
     clf            = hand.get("bluered_classification") or {}
     category_label = clf.get("category_label") or clf.get("category") or ""
-    # BTN=確実IP / BB・SB=確実OOP / それ以外は相手次第で不明のため省略
-    _IP_OOP = {"BTN": "IP", "BB": "OOP", "SB": "OOP"}
-    ip_oop  = _IP_OOP.get(pos)
+    # アクション順から判定（最も正確）。プリフロップのみはBTNのみ確実IP
+    ip_oop = _detect_ip_oop(hand)
+    if ip_oop is None and pos == "BTN":
+        ip_oop = "IP"
 
     allin_ev = hand.get("result", {}).get("allin_ev", {})
     ev_info  = ""
