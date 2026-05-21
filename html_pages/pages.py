@@ -364,6 +364,13 @@ def classify_result_page(
             if line != "preflop_only" else ""
         )
 
+        gto_math_raw = h.get("gto_math", "")
+        if gto_math_raw:
+            display = gto_math_raw[len("[GTO数学] "):] if gto_math_raw.startswith("[GTO数学] ") else gto_math_raw
+            gto_math_html = f'<div class="hand-gto-math">📐 {_esc(display)}</div>'
+        else:
+            gto_math_html = ""
+
         return (
             f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{data_attrs}>'
             f'<div class="hand-card-head">'
@@ -378,6 +385,7 @@ def classify_result_page(
             f'{cart_btn}'
             f'</div>'
             f'<div class="hand-card-body">{streets_html}</div>'
+            f'{gto_math_html}'
             f'<div class="hand-ai-inline" id="hai-{hnum}"></div>'
             f'</div>'
         )

@@ -99,11 +99,22 @@ async def classify_result_view(job_id: str):
         return HTMLResponse("<h1>データが見つかりません</h1>", status_code=404)
 
     hands = data.get("hands", [])
+    try:
+        from scripts.analyze2 import _compute_gto_math
+        _gto_math_available = True
+    except Exception:
+        _gto_math_available = False
+
     for hand in hands:
         clf = hand.get("bluered_classification", {})
         if clf.get("category") == "value_or_bluff_success":
             clf["category"] = "value_success"
             clf["category_label"] = "バリュー成功"
+        if _gto_math_available and "gto_math" not in hand:
+            try:
+                hand["gto_math"] = _compute_gto_math(hand)
+            except Exception:
+                hand["gto_math"] = ""
 
     blue_count = red_count = pf_count = 0
     categories: dict = {}
