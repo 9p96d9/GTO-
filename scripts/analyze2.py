@@ -167,10 +167,10 @@ def _compute_gto_math(hand: dict) -> str:
             equity          = net_call / (pot_before_call + net_call)
             spot_type = {"bluff_catch": "ブラフキャッチスポット",
                          "call_lost":   "コール負けスポット"}.get(category, "コールスポット")
+            # raw数字（bet/pot）を渡すとAIが自前でαを再計算するため、equity結果のみ返す
             return (
                 f"[GTO数学] {spot_type} | {street_label} | "
-                f"相手ベット={opp_bet:.1f}bb / コール={net_call:.1f}bb / ポット={pot_before_call:.1f}bb | "
-                f"必要エクイティ={equity:.0%}（コール損益分岐点）"
+                f"必要エクイティ={equity:.0%}（コール損益分岐点 / 相手ベット{opp_bet:.1f}bb コール{net_call:.1f}bb）"
             )
 
         # ── アグレッサー（Hero自身のbet/raise）──────────────────────────
@@ -203,6 +203,9 @@ def _compute_gto_math(hand: dict) -> str:
 
         # ── フォールド系・その他（相手のベットに対するMDF基準）──────────
         else:
+            # Heroがこのストリートに存在しない場合はスキップ（preflop foldなど）
+            if not any((a.get("position") or a.get("name", "")) == hero_pos for a in actions):
+                continue
             for a in reversed(actions):
                 a_act = (a.get("action") or "").lower()
                 a_amt = a.get("amount_bb")
