@@ -35,7 +35,9 @@ body {
 .section-body { padding: 12px 14px; }
 /* ─── カテゴリ内訳 ─── */
 .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
-.cat-item { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; border-radius: 4px; border: 1px solid #e0e0e0; }
+.cat-item { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; border-radius: 4px; border: 1px solid #e0e0e0; cursor: pointer; transition: opacity .15s, box-shadow .15s; }
+.cat-item:hover { opacity: 0.75; box-shadow: 0 0 0 2px rgba(0,0,0,0.15); }
+.cat-item.cat-active-filter { box-shadow: 0 0 0 2px #1a1a2e; }
 .cat-label { font-size: 11px; font-weight: 600; }
 .cat-count { font-size: 14px; font-weight: 800; }
 .cat-item.cat-blue { background: #e8f4fd; border-color: #b8d9f5; }
@@ -186,7 +188,7 @@ body.design-c .cart-panel.open { right: 0; }
 .hero-cards { font-size: 14px; font-weight: 700; }
 .vs-label { font-size: 10px; color: #777; }
 .opp-cards { font-size: 11px; }
-.opp-pos { font-size: 9px; color: #666; }
+.opp-pos { font-size: 11px; font-weight: 700; color: #333; background: #f0f0f0; border-radius: 3px; padding: 0 4px; }
 .hand-pl { margin-left: auto; font-size: 13px; font-weight: 800; white-space: nowrap; }
 .hand-pl.pos { color: #2e7d32; } .hand-pl.neg { color: #c0392b; } .hand-pl.zero { color: #999; }
 /* ─── アクションライン ─── */
@@ -209,6 +211,28 @@ body.design-c .cart-panel.open { right: 0; }
 .badge-line-blue { font-size: 9px; background: #dbeafe; color: #1a6abf; border-radius: 2px; padding: 1px 4px; font-weight: 700; }
 .badge-line-red  { font-size: 9px; background: #fee2e2; color: #c0392b; border-radius: 2px; padding: 1px 4px; font-weight: 700; }
 .badge-line-pf   { font-size: 9px; background: #f5f5f5; color: #999; border-radius: 2px; padding: 1px 4px; }
+/* ─── 高難度正解セクション ─── */
+.nice-plays-section { margin: 12px 20px 0; border: 1px solid #c8d8f0; border-radius: 8px; overflow: hidden; background: #f8fbff; }
+.np-section-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #1a1a2e; color: #fff; }
+.np-section-icon { font-size: 14px; }
+.np-section-title { font-size: 13px; font-weight: 800; color: #fff; }
+.np-section-sub { font-size: 10px; color: #aab; margin-left: 4px; }
+.np-list { display: flex; flex-direction: column; gap: 0; }
+.np-card { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #dde8f8; text-decoration: none; color: inherit; transition: background .12s; }
+.np-card:last-child { border-bottom: none; }
+.np-card:hover { background: #eef4ff; }
+.np-rank { font-size: 18px; font-weight: 900; color: #1a1a2e; min-width: 28px; opacity: .35; }
+.np-info { flex: 1; }
+.np-header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.np-hnum { font-size: 12px; font-weight: 800; color: #1a1a2e; }
+.np-cat { font-size: 10px; background: #dbeafe; color: #1a4abf; border-radius: 3px; padding: 1px 6px; font-weight: 700; }
+.np-street { font-size: 10px; color: #555; }
+.np-pos { font-size: 11px; color: #555; }
+.np-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.np-cards { font-size: 13px; font-weight: 700; }
+.np-score { font-size: 10px; color: #1a6abf; letter-spacing: 1px; }
+.np-pl { font-size: 11px; font-weight: 700; }
+.np-pl.pos { color: #2e7d32; } .np-pl.neg { color: #c0392b; } .np-pl.zero { color: #888; }
 /* ─── GTO数学インライン表示 ─── */
 .hand-gto-math { padding: 3px 10px; font-size: 10px; color: #4a6fa5; background: #f0f5ff; border-top: 1px solid #dce8fb; line-height: 1.6; }
 /* ─── AI インラインパネル（手牌カード内） ─── */
@@ -288,6 +312,8 @@ body.design-c .cart-panel.open { right: 0; }
 </div>
 
 {{ ev_html }}
+
+{{ nice_plays_html }}
 
 <!-- タブ -->
 <div class="tab-bar">
@@ -460,6 +486,6 @@ body.design-c .cart-panel.open { right: 0; }
 const _CHIP_DATA = {{ chip_data_json }};
 const JOB_ID    = '{{ job_id }}';
 </script>
-<script src="/static/classify_result.js?v=20260520"></script>
+<script src="/static/classify_result.js?v=20260531"></script>
 </body>
 </html>

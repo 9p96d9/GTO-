@@ -173,6 +173,77 @@ def classify_result_page(
     hands: list = None,
 ) -> str:
 
+    # ─── 高難度正解セクション ──────────────────────────────────────────────────
+    from scripts.analyze2 import NICE_PLAY_THRESHOLD
+    _STREET_JP = {"river": "リバー", "turn": "ターン", "flop": "フロップ", "preflop": "プリフロップ"}
+    _CAT_LABEL_JP = {"bluff_catch": "ブラフキャッチ", "nice_fold": "ナイスフォールド"}
+
+    def _deepest_street(hand):
+        streets = hand.get("streets") or {}
+        for st in ("river", "turn", "flop", "preflop"):
+            if streets.get(st):
+                return st
+        return "preflop"
+
+    nice_candidates = sorted(
+        [h for h in (hands or []) if h.get("nice_play_score", 0) >= NICE_PLAY_THRESHOLD],
+        key=lambda h: h.get("nice_play_score", 0),
+        reverse=True,
+    )[:3]
+
+    if nice_candidates:
+        _cards_block = []
+        for rank, h in enumerate(nice_candidates, 1):
+            hnum        = h.get("hand_number", "?")
+            hero_pos    = h.get("hero_position", "?")
+            clf         = h.get("bluered_classification") or {}
+            category    = clf.get("category", "")
+            cat_label   = _CAT_LABEL_JP.get(category, clf.get("category_label", category))
+            street      = _deepest_street(h)
+            street_jp   = _STREET_JP.get(street, street)
+            score       = h.get("nice_play_score", 0)
+            score_pct   = int(score * 100)
+            stars       = "●" * round(score * 5) + "○" * (5 - round(score * 5))
+            opponents   = [p for p in h.get("players", []) if not p.get("is_hero")]
+            opp_pos     = opponents[0].get("position", "?") if opponents else "?"
+            hero_cards  = "".join(h.get("hero_cards", []))
+            cards_disp  = _card_html(hero_cards) if hero_cards else "—"
+            pl          = float(h.get("hero_result_bb", 0))
+            pl_str      = f'{"+" if pl > 0 else ""}{pl:.1f}bb'
+            pl_cls      = "pos" if pl > 0 else "neg" if pl < 0 else "zero"
+
+            _cards_block.append(
+                f'<a class="np-card" href="#hcard-{hnum}" onclick="document.querySelector(\'#tab-hands .tab-btn\')&&switchTab(\'tab-hands\',document.querySelector(\'.tab-btn\'))">'
+                f'<div class="np-rank">#{rank}</div>'
+                f'<div class="np-info">'
+                f'<div class="np-header">'
+                f'<span class="np-hnum">H{hnum}</span>'
+                f'<span class="np-cat">{_esc(cat_label)}</span>'
+                f'<span class="np-street">{street_jp}</span>'
+                f'</div>'
+                f'<div class="np-pos">{_esc(hero_pos)} vs {_esc(opp_pos)}</div>'
+                f'</div>'
+                f'<div class="np-right">'
+                f'<div class="np-cards">{cards_disp}</div>'
+                f'<div class="np-score" title="難易度スコア {score_pct}">{stars}</div>'
+                f'<div class="np-pl {pl_cls}">{_esc(pl_str)}</div>'
+                f'</div>'
+                f'</a>'
+            )
+
+        nice_plays_html = (
+            f'<div class="nice-plays-section">'
+            f'<div class="np-section-header">'
+            f'<span class="np-section-icon">⚡</span>'
+            f'<span class="np-section-title">高難度正解</span>'
+            f'<span class="np-section-sub">分散と切り離した判断品質 — bluff catch / nice fold スポットを難易度順に表示</span>'
+            f'</div>'
+            f'<div class="np-list">{"".join(_cards_block)}</div>'
+            f'</div>'
+        )
+    else:
+        nice_plays_html = ""
+
     # カテゴリ行HTML（白背景グリッドスタイル）
     cat_rows = ""
     _CAT_CLS_MAP = {
@@ -188,7 +259,12 @@ def classify_result_page(
     }
     for label, count in sorted(categories.items(), key=lambda x: -x[1]):
         cc = _CAT_CLS_MAP.get(label, "cat-gray")
-        cat_rows += f'<div class="cat-item {cc}"><span class="cat-label">{_esc(label)}</span><span class="cat-count">{count}</span></div>\n'
+        cat_rows += (
+            f'<div class="cat-item {cc}" onclick="filterByCat(\'{_esc(label)}\')" title="{_esc(label)}でフィルター">'
+            f'<span class="cat-label">{_esc(label)}</span>'
+            f'<span class="cat-count">{count}</span>'
+            f'</div>\n'
+        )
 
     # オールインEV差HTML（Heroのみ表示）
     ev_html = ""
@@ -349,6 +425,7 @@ def classify_result_page(
             if _s and isinstance(_s, dict):
                 _board_cards.extend([c for c in _s.get("board", []) if c and c != "-"])
         _board_str = " ".join(_board_cards)
+        _cat_label = clf.get("category_label", "")
         data_attrs = (
             f' data-pos="{_esc(hero_pos)}"'
             f' data-cards="{_esc(_cards_str)}"'
@@ -356,6 +433,7 @@ def classify_result_page(
             f' data-pl-num="{pl:.2f}"'
             f' data-board="{_esc(_board_str)}"'
             f' data-opp="{_esc(opp_data_str)}"'
+            f' data-cat="{_esc(_cat_label)}"'
             + (' data-3bet="1"' if is_3bet else '')
         )
         cart_btn = (
@@ -372,7 +450,7 @@ def classify_result_page(
             gto_math_html = ""
 
         return (
-            f'<div class="{card_cls}" data-hnum="{hnum}" data-line="{line}"{data_attrs}>'
+            f'<div class="{card_cls}" id="hcard-{hnum}" data-hnum="{hnum}" data-line="{line}"{data_attrs}>'
             f'<div class="hand-card-head">'
             f'<span class="hand-num">H{hnum}</span>'
             f'{badge_3bet}'
@@ -602,6 +680,7 @@ def classify_result_page(
         red_count=red_count,
         pf_count=pf_count,
         ev_html=ev_html,
+        nice_plays_html=nice_plays_html,
         cat_rows=cat_rows,
         hands_html=hands_html,
         pos_stats_html=pos_stats_html,

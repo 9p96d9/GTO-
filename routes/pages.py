@@ -100,7 +100,7 @@ async def classify_result_view(job_id: str):
 
     hands = data.get("hands", [])
     try:
-        from scripts.analyze2 import _compute_gto_math
+        from scripts.analyze2 import _compute_gto_math, _compute_difficulty, _compute_nice_play_score
         _gto_math_available = True
     except Exception:
         _gto_math_available = False
@@ -115,6 +115,13 @@ async def classify_result_view(job_id: str):
                 hand["gto_math"] = _compute_gto_math(hand)
             except Exception:
                 hand["gto_math"] = ""
+        if _gto_math_available:
+            try:
+                hand["difficulty_score"] = _compute_difficulty(hand)
+                hand["nice_play_score"]  = _compute_nice_play_score(hand)
+            except Exception:
+                hand["difficulty_score"] = 0.0
+                hand["nice_play_score"]  = 0.0
 
     blue_count = red_count = pf_count = 0
     categories: dict = {}

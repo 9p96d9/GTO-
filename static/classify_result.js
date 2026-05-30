@@ -722,8 +722,9 @@ window.startAnalyze = async function() {
 
 // ─── フィルター/ソート ────────────────────────────────────────────────────────
 
-var _currentFilter  = 'all';
-var _currentSort    = null;       // null = Pythonデフォルト順
+var _currentFilter    = 'all';
+var _currentSort      = null;
+var _currentCatFilter = null;
 var _cardOrigParent = {};         // hnum -> original parentElement
 
 var _POS_ORDER_JS = ['UTG','UTG+1','LJ','HJ','CO','BTN','SB','BB'];
@@ -751,10 +752,17 @@ function _getOrCreateFlatView(line) {
 function _applyFilter() {
   document.querySelectorAll('#hand-list-body .hand-card').forEach(function(c) {
     var show = true;
-    if      (_currentFilter === 'blue') show = c.dataset.line === 'blue';
-    else if (_currentFilter === 'red')  show = c.dataset.line === 'red';
-    else if (_currentFilter === '3bet') show = c.dataset['3bet'] === '1';
-    else if (_currentFilter === 'ai')   show = !!(_geminiResults && _geminiResults[c.dataset.hnum]);
+    if (_currentCatFilter) {
+      show = c.dataset.cat === _currentCatFilter;
+    } else if (_currentFilter === 'blue') {
+      show = c.dataset.line === 'blue';
+    } else if (_currentFilter === 'red') {
+      show = c.dataset.line === 'red';
+    } else if (_currentFilter === '3bet') {
+      show = c.dataset['3bet'] === '1';
+    } else if (_currentFilter === 'ai') {
+      show = !!(_geminiResults && _geminiResults[c.dataset.hnum]);
+    }
     c.style.display = show ? '' : 'none';
   });
   // 空の cat-group を非表示
@@ -806,8 +814,30 @@ function _applySort() {
 
 window.applyFilter = function(type, btn) {
   _currentFilter = type;
+  _currentCatFilter = null;
   document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.cat-item').forEach(function(b) { b.classList.remove('cat-active-filter'); });
   if (btn) btn.classList.add('active');
+  _applyFilter();
+};
+
+window.filterByCat = function(catLabel) {
+  if (_currentCatFilter === catLabel) {
+    // 同じカテゴリを再クリック → リセット
+    _currentCatFilter = null;
+    document.querySelectorAll('.cat-item').forEach(function(b) { b.classList.remove('cat-active-filter'); });
+    _currentFilter = 'all';
+    document.querySelectorAll('.filter-btn').forEach(function(b) {
+      b.classList.toggle('active', b.textContent.trim() === '全て');
+    });
+  } else {
+    _currentCatFilter = catLabel;
+    _currentFilter = null;
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.cat-item').forEach(function(b) {
+      b.classList.toggle('cat-active-filter', b.querySelector('.cat-label') && b.querySelector('.cat-label').textContent === catLabel);
+    });
+  }
   _applyFilter();
 };
 
