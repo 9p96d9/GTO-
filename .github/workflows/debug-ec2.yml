@@ -17,4 +17,4 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
           script: |
-            docker logs gto-app --since 5m 2>&1 | grep -v "wp-\|\.php\|xmlrpc" | tail -30
+            docker logs gto-app --since 10m 2>&1 | grep -v "wp-\|\.php\|xmlrpc\|bypass" | grep -E "ERROR|500|Exception|classify_result_page|job:" | tail -40
