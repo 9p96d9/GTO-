@@ -1,12 +1,9 @@
 name: Debug EC2
 
 on:
-  workflow_dispatch:
-    inputs:
-      command:
-        description: 'Command to run on EC2'
-        required: false
-        default: "docker logs gto-app --since 24h 2>&1 | grep -E 'ERROR|Exception|Traceback|result' | tail -80"
+  push:
+    paths:
+      - '.github/workflows/debug-ec2.yml'
 
 jobs:
   debug:
@@ -19,4 +16,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
-          script: ${{ github.event.inputs.command }}
+          script: |
+            docker logs gto-app --since 48h 2>&1 | grep -E 'ERROR|Exception|Traceback|classify_result|500' | tail -80
+            echo "---DB CHECK---"
+            docker exec gto-postgres psql -U gto_user -d postgres -c "SELECT job_id, created_at FROM analyses ORDER BY created_at DESC LIMIT 3;"
