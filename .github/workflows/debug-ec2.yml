@@ -17,4 +17,4 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
           script: |
-            docker logs gto-app --since 72h 2>&1 | grep -A 30 "Exception in ASGI" | tail -60
+            docker logs gto-app --since 72h 2>&1 | tail -200
