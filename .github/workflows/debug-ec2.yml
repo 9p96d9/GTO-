@@ -17,11 +17,4 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
           script: |
-            echo "=== ディスク使用量 ==="
-            df -h /
-            echo "=== Docker使用量 ==="
-            docker system df
-            echo "=== 不要イメージ削除 ==="
-            docker image prune -a -f
-            echo "=== 削除後ディスク ==="
-            df -h /
+            docker logs gto-app --since 5m 2>&1 | grep -v "wp-\|\.php\|xmlrpc" | tail -30
