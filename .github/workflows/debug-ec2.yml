@@ -17,4 +17,4 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
           script: |
-            docker logs gto-app --since 72h 2>&1 | tail -200
+            docker logs gto-app --since 30m 2>&1 | grep -E "ERROR|500|classify_result_page" -A 30 | tail -80

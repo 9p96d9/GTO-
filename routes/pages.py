@@ -157,10 +157,16 @@ async def classify_result_view(job_id: str):
                 hero_name_found = name
     allin_ev_diffs = {hero_name_found: hero_ev_total} if hero_name_found and abs(hero_ev_total) > 0.05 else {}
 
-    return HTMLResponse(classify_result_page(
-        job_id, total_hands, blue_count, red_count, pf_count,
-        categories, allin_ev_diffs, classified_path, json_path, hands,
-    ))
+    import traceback as _tb
+    try:
+        return HTMLResponse(classify_result_page(
+            job_id, total_hands, blue_count, red_count, pf_count,
+            categories, allin_ev_diffs, classified_path, json_path, hands,
+        ))
+    except Exception as _e:
+        import logging as _log
+        _log.error("classify_result_page 500: %s\n%s", _e, _tb.format_exc())
+        raise
 
 
 @router.get("/3d_view/{job_id}", response_class=HTMLResponse)
