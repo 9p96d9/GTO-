@@ -1,0 +1,21 @@
+name: Debug EC2
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run on EC2'
+        required: false
+        default: "docker logs gto-app --since 24h 2>&1 | grep -E 'ERROR|Exception|Traceback|result' | tail -80"
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run command on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: ${{ github.event.inputs.command }}
