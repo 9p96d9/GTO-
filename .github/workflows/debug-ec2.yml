@@ -17,7 +17,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           capture_stdout: true
           script: |
-            echo "=== RECENT REQUESTS ==="
-            docker logs gto-app --since 48h 2>&1 | grep -v "wp-\|xmlrpc\|\.php\|bypass\|install\|robots\|sitemap" | tail -60
-            echo "=== HAND COUNT PER ANALYSIS ==="
-            docker exec gto-postgres psql -U gto_user -d postgres -c "SELECT a.job_id, a.created_at, COUNT(ah.id) as hands FROM analyses a LEFT JOIN analysis_hands ah ON a.id=ah.analysis_id GROUP BY a.job_id, a.created_at ORDER BY a.created_at DESC LIMIT 5;"
+            echo "=== ERROR LOGS ==="
+            docker logs gto-app --since 72h 2>&1 | grep -E "ERROR|Exception|Traceback|500|cb880d75" | tail -50
+            echo "=== JOB IN DB ==="
+            docker exec gto-postgres psql -U gto_user -d postgres -c "SELECT job_id, created_at FROM analyses WHERE job_id='cb880d7597de4d7992d40e9fe53b1c2b';"
